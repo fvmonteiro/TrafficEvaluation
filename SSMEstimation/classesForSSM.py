@@ -165,12 +165,13 @@ class DataReader:
             return df
 
     def post_process_output(self):
-        # Computes relative velocity to the vehicle's leader (own vel minus leader vel)
-        # Note: we need this function because VISSIM's output 'SpeedDiff' is not always correct. It has been observed to
-        # equal the vehicle's own speed at the previous time step.
+        # Adds data to the dataframe
 
         warm_up_time = 10  # [s]
 
+        # 1. Compute relative velocity to the vehicle's leader (own vel minus leader vel)
+        # Note: we need this function because VISSIM's output 'SpeedDiff' is not always correct. It has been observed to
+        # equal the vehicle's own speed at the previous time step.
         for df in self.sim_output.values():
             df.set_index('time', inplace=True)
             df.drop(index=[i for i in df.loc[0:warm_up_time].index], inplace=True)
@@ -185,6 +186,9 @@ class DataReader:
                 adj_matrix[veh_idx, df.loc[t, 'leader number'].values - 1] = -1
                 vel_vector[veh_idx] = df.loc[t, 'vx']
                 df.loc[t, 'delta v'] = np.matmul((identity + adj_matrix), vel_vector)[veh_idx]
+                # df.loc[t, 'leader type'] =
+
+        # TODO: 2. Add maximum deceleration at that time instant. Decide how to define max brake
 
     def save_to_csv(self):
         for filename, df in self.sim_output.items():
@@ -203,7 +207,7 @@ class SSMAnalyzer:
         # TTC = deltaX/deltaV if follower is faster; otherwise infinity
         for df in df_dict.values():
             df['TTC'] = df['delta x'] / df['delta v']
-            df.loc[df['delta v'] < 0, 'TTC'] = float('Inf')
+            df.loc[df['delta v'] < 0, 'TTC'] = float('inf')
             ttc_mean = df.loc[df['TTC'] < float('inf'), 'TTC'].mean()
             print('Mean TTC: ', ttc_mean)
 
@@ -255,3 +259,51 @@ class SSMAnalyzer:
                     df.loc[idx, 'CPI'] = truncnorm.cdf(df.loc[idx, 'DRAC'], a=first_row['norm_min'],
                                                        b=first_row['norm_max'], loc=(-1)*madr_array,
                                                        scale=first_row['std'])
+
+    @staticmethod
+    def include_safe_gaps(df_dict, max_decel_df, rho=0.2, free_flow_vel=30):
+        # Safe gap is the worst-case collision-free gap (as close as possible to minimum gap to avoid collision under
+        # emergency braking)
+        # Time headway-based gap (th gap) is the linear overestimation of the safe gap
+        # @rho is the expected maximum relative velocity as vE - vL <= rho.vE
+        # @free_flow_vel should be given in m/s
+
+        # TODO: braking parameters set based on typical values. Consider extracting from VISSIM
+        # TODO: get leader max brake from its type
+        # TODO: consider case where (ego max brake) > (leader max brake)
+
+        # Veh types:
+        veh_types = set()
+        for df in df_dict.values():
+            [veh_types.add(v_type) for v_type in np.unique(df['veh type'])]
+
+        # Parameters
+        mps_to_kph = 3.6
+        accel_t0 = 0.5
+        max_brake = {100: 6.5, 200: 5.5}
+        max_jerk = {100: 50, 200: 30}
+        tau_d = 0.2
+        veh_params = pd.DataFrame(columns=['max_brake', 'lambda0', 'lambda1'])
+        for key in max_brake.keys():
+            tau_j = (accel_t0 + max_brake[key])/max_jerk[key]
+            lambda1 = (accel_t0 + max_brake[key])*(tau_d + tau_j/2)
+            lambda0 = -(accel_t0 + max_brake[key])/2 * (tau_d**2 + tau_d*tau_j + tau_j**2/3)
+            veh_params.loc[key] = [max_brake[key], lambda0, lambda1]
+
+        for df in df_dict.values():
+            df['safe gap'] = 0
+            change_idx = df['number'] != df['leader number']
+            ego_vel = df['vx'] / mps_to_kph
+            leader_vel = ego_vel - df['delta v'] / mps_to_kph
+            for v_type in veh_types:
+                max_brake_ego, lambda0, lambda1 = veh_params.loc[v_type]
+                gamma = 1  # max_brake_ego/max_brake_leader
+                time_headway = ((1/2 - (1-rho)**2/2/gamma)*free_flow_vel + lambda1)/max_brake_ego
+                standstill_gap = lambda1**2/2/max_brake_ego + lambda0
+
+                df.loc[(df['veh type'] == v_type) & change_idx, 'safe gap'] = \
+                    ego_vel**2/2/max_brake_ego - leader_vel**2/2/veh_params.loc[v_type, 'max_brake'] \
+                    + lambda1*ego_vel/max_brake_ego + lambda1**2/2/max_brake_ego + lambda0
+                df.loc[(df['veh type'] == v_type) & change_idx, 'time headway gap'] = \
+                    time_headway*ego_vel + standstill_gap
+        print(df.loc[df['safe gap'] > 0, ['delta v', 'safe gap', 'time headway gap']])

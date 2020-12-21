@@ -12,9 +12,10 @@ def main():
     data_reader.load_data_from_csv()
     data_reader.load_max_decel_data()
 
-    SSMAnalyzer.include_ttc(data_reader.sim_output)
-    SSMAnalyzer.include_drac(data_reader.sim_output)
-    SSMAnalyzer.include_cpi(data_reader.sim_output, data_reader.max_decel)
+    # SSMAnalyzer.include_ttc(data_reader.sim_output)
+    # SSMAnalyzer.include_drac(data_reader.sim_output)
+    # SSMAnalyzer.include_cpi(data_reader.sim_output, data_reader.max_decel)
+    SSMAnalyzer.include_safe_gaps(data_reader.sim_output, data_reader.max_decel)
 
     # TODO: Check these cases in VISSIM
     # df = data_reader.get_single_dataframe()
