@@ -17,47 +17,88 @@ class VissimInterface:
     # Note: list attributes should be defined inside the constructor. Otherwise they are shared by all instances of
     # the class
 
-    def __init__(self, network_file, layout_file = None):
+    def __init__(self, network_file, layout_file=None):
         self.network_file = network_file
-        self.layout_file = layout_file
+        self.layout_file = network_file if layout_file is None else layout_file
         self.vissim = None
 
-    def open_and_set_simulation(self, random_seed=1, final_time=150, veh_volumes=None):
+    def open_simulation(self):
         """
         Opens a VISSIM scenario and optionally sets some parameters.
-        :param random_seed: default 1 to get reproducible results
-        :param final_time: low default value for quick prototyping
-        :param veh_volumes: for highway_in_and_out_lanes should be a dictionary {in_flow: X, main_flow: Y}
         :return: None
         """
-        if veh_volumes is None:
-            veh_volumes = dict()
 
-        file_full_path = os.path.join(self.networks_folder, self.network_file + self.vissim_net_ext)
+        net_full_path = os.path.join(self.networks_folder, self.network_file + self.vissim_net_ext)
         vissim_id = "Vissim.Vissim"  # "VISSIM.Vissim.1000" # Useful if more than one Vissim version installed
 
-        if os.path.isfile(file_full_path):
+        if os.path.isfile(net_full_path):
             # Connect to the COM server, which opens a new Vissim window
             # vissim = com.gencache.EnsureDispatch("Vissim.Vissim")  # if connecting for the first time ever
             print("Client: Creating a Vissim instance")
             self.vissim = com.Dispatch(vissim_id)
-            self.vissim.LoadNet(file_full_path)
-            if self.layout_file is not None:
-                self.vissim.LoadLayout(os.path.join(self.networks_folder, self.layout_file))
-            print('File loaded.')
+            print("Client: Loading file")
+            self.vissim.LoadNet(net_full_path)
+            layout_full_path = os.path.join(self.networks_folder, self.layout_file + self.vissim_layout_ext)
+            if os.path.isfile(layout_full_path):
+                self.vissim.LoadLayout(layout_full_path)
+            else:
+                print('Client: Layout file {} not found.'.format(net_full_path))
         else:
-            print('File {} not found. Exiting program.'.format(file_full_path))
+            print('Client: File {} not found. Exiting program.'.format(net_full_path))
             # sys.exit()  # better to use this?
             return
 
-        # Setting simulation parameters
-        self.vissim.Simulation.SetAttValue('RandSeed', random_seed)
-        # self.vissim.Simulation.SetAttValue('SimRes', sim_resolution)
-        self.vissim.Simulation.SetAttValue('SimPeriod', final_time)
-        self.vissim.Simulation.SetAttValue('UseMaxSimSpeed', True)
-        self.vissim.Evaluation.SetAttValue('VehRecWriteFile', 1)  # ensure we are saving vehicle records
+    def run_toy_scenario(self, sim_params=None, veh_volumes=None):
+        """
+        Runs a VISSIM scenario. Vehicle results are automatically saved.
+        :param sim_params: dictionary with {param_name: param_value}. Check VISSIM COM docs for possible parameters
+        :param veh_volumes: vehicle input (veh/hr). Dictionary like {veh input name: input value}
+        :return: None
+        """
+        # TODO: after initial tests, we should save results according to the simulation parameters, that is, create
+        #  folders for each vehicle input volume and change file names to reflect the random seed used
 
-        # Vehicle inputs - change to different function? This can change at each run
+        if self.vissim is None:
+            self.open_simulation()
+        if sim_params is None:  # Simulation will use previously set parameters
+            sim_params = dict()
+        if veh_volumes is None:  # No change to previously used vehicle inputs
+            veh_volumes = dict()
+
+        # Setting simulation parameters
+        print("Client: Setting simulation parameters")
+        for param_name, param_value in sim_params.items():
+            self.vissim.Simulation.SetAttValue(param_name, param_value)
+
+        evaluation = self.vissim.Evaluation
+        # First we check if vehicle records are being exported and get a chance to set it to true if we forgot
+        veh_rec_saved = evaluation.AttValue('VehRecWriteFile')  # ensure we are saving vehicle records
+        if not veh_rec_saved:
+            print('Current  configuration does not export vehicle records\n'
+                  'You can open VISSIM now and change this.')
+            user_decision = input('Press [y] to continue and run simulation or [n] to stop execution')
+            if user_decision != 'y':
+                self.vissim = None
+                return
+
+        # If vehicle records are being exported, we check whether the necessary variables are selected
+        if evaluation.GetAttValue('VehRecWriteFile'):
+            needed_variables = {'SIMSEC', 'NO', 'LANE\LINK\\NO', 'LANE\INDEX', 'POS', 'SPEED', 'POSLAT', 'FOLLOWDIST',
+                                'VEHTYPE', 'LEADTARGNO'}
+            att_selection_container = evaluation.VehRecAttributes
+            recorded_variables = set()
+            for att_selection in att_selection_container:
+                recorded_variables.add(att_selection.AttValue('AttributeID'))
+            if not needed_variables.issubset(recorded_variables):
+                missing = needed_variables.difference(recorded_variables)
+                warnings.warn('Current evaluation configuration does not export:{}'
+                              '\nPlease open VISSIM and select those attributes.'.format(str(missing)))
+                user_decision = input('Press [y] to continue and run simulation or [n] to stop execution')
+                if user_decision != 'y':
+                    self.vissim = None
+                    return
+
+        # Vehicle inputs - change to different function
         veh_inputs = self.vissim.Net.VehicleInputs.GetAll()  # TODO: check if GetAll() is necessary
         for vi in veh_inputs:
             vi_name = vi.AttValue('Name')
@@ -65,257 +106,109 @@ class VissimInterface:
                 print('Vehicle input {} set to {}'.format(vi_name, veh_volumes[vi_name]))
                 veh_inputs[vi].SetAttValue('Volume(1)', veh_volumes[vi_name])
 
-    def generate_data(self):
-        """
-        Runs a VISSIM scenario. Vehicle results are automatically saved.
-        :return: None
-        """
-        # TODO: after initial tests, we should save results according to the simulation parameters, that is, create
-        #  folders for each vehicle input volume and change file names to reflect the random seed used
-
-        if self.vissim is None:
-            self.open_and_set_simulation()
-        # Ensure the simulation exports the proper results as a text file
-        needed_variables = {'SIMSEC', 'NO', 'LANE\LINK\\NO', 'LANE\INDEX', 'POS', 'SPEED', 'POSLAT', 'FOLLOWDIST',
-                            'VEHTYPE', 'LEADTARGNO'}
-        evaluation = self.vissim.Evaluation
-        evaluation.SetAttValue('VehRecWriteFile', 1)
-        att_selection_container = evaluation.VehRecAttributes
-        recorded_variables = set()
-        for att_selection in att_selection_container:
-            recorded_variables.add(att_selection.AttValue('AttributeID'))
-        if not needed_variables.issubset(recorded_variables):
-            missing = needed_variables.difference(recorded_variables)
-            warnings.warn('Current evaluation configuration does not export:{}'
-                          '\nPlease open VISSIM and select those attributes.'.format(str(missing)))
-            user_decision = input('Press [y] to continue and run simulation or [n] to stop execution')
-            if user_decision != 'y':
-                self.vissim = None
-                return
-
         evaluation.SetAttValue('VehRecFromTime', 0)  # when simulation gets longer, ignore warm-up time
         # Run
+        print('Simulation starting.')
         self.vissim.Simulation.RunContinuous()
         print('Simulation done.')
         self.close_vissim()
 
-    def run_simulation(self, final_time, idx_scenario, idx_lane_closure, random_seed, folder_dir, demand):
-        """run PTV VISSIM simulation using given arguments
-        Parameters
-        ----------
-            final_time : int
-                Simulation time (s)
-            demand : int
-                vehicle input (veh/hr)
-            idx_scenario : int
-                Index of simulation scenarios
-            idx_lane_closure : int
-                Whether Lane Change control is added
-            random_seed : int
-                seed for random numbers
-            folder_dir : string, path
-                location of data files
+    def run_i710_simulation(self, sim_params, idx_scenario, demand, save_veh_rec=False):
+        """
+        Run PTV VISSIM simulation using given arguments
+        :param sim_params: dictionary with {param_name: param_value}. Check VISSIM COM docs for possible parameters
+        :param idx_scenario: index of simulation scenarios[int]
+        :param demand: vehicle input (veh/hr) [int]
+        :param save_veh_rec: Defines if VISSIM should save a vehicle record file [boolean]
         """
 
-        # Link Groups
-        link_groups = [
-            # {'MAINLINE': (1,2,3,4,5,6),   'ONRAMP': (),      'OFFRAMP': (),     'DC': 1, 'VSL': (1,2,3,4,5,6,7,8,9,10,
-            # 11,12,13,14,15,16,17,18)},
-            {'MAINLINE': (1, 5, 6), 'DC': 1},
-            {'MAINLINE': (7, 8), 'DC': 4},
-            {'MAINLINE': (10, 11), 'DC': 5},
-            {'MAINLINE': (12, 34), 'DC': 6},
-            {'MAINLINE': (17, 30), 'DC': 7},
-            {'MAINLINE': (16, 24), 'DC': 8},
-            {'MAINLINE': (13, 10010), 'DC': 9},
-            {'MAINLINE': (9,), 'DC': 10},
-        ]
-
-        '''setting of scenarios'''
-        scenarios = [{'link': 9, 'lane': 2, 'coordinate': 10, 'start_time_sec': 30, 'end_time_sec': 30},
-                     {'link': 9, 'lane': 2, 'coordinate': 10, 'start_time_sec': 30, 'end_time_sec': 3570},
-                     {'link': 9, 'lane': 2, 'coordinate': 10, 'start_time_sec': 600, 'end_time_sec': 4800}]
-
-        n_sec = len(link_groups)  # number of sections
-        sim_resolution = 5  # No. of simulation steps per second
-        t_data_sec = 30.0  # Data sampling period
+        # Definition of scenarios
+        scenarios = [{'link': 9, 'lane': 2, 'coordinate': 10, 'incident_start_time': 30, 'incident_end_time': 30},
+                     {'link': 9, 'lane': 2, 'coordinate': 10, 'incident_start_time': 30, 'incident_end_time': 3570},
+                     {'link': 9, 'lane': 2, 'coordinate': 10, 'incident_start_time': 600, 'incident_end_time': 1800}]
 
         # Incident time period
-        start_time_sec = scenarios[idx_scenario]['start_time_sec']
-        end_time_sec = scenarios[idx_scenario]['end_time_sec']
+        incident_start_time = scenarios[idx_scenario]['incident_start_time']
+        incident_end_time = scenarios[idx_scenario]['incident_end_time']
 
-        # speed[]: average speed of each section
-        # density[]: vehicle density of each section
-        # flow_section[]: flow rate of each section
-        # flowLane[]: flow rate of each lane at bottleneck section
-        speed = [0.0] * n_sec
-        density = [0.0] * n_sec
-        flow_section = [0.0] * n_sec
-
-        '''Define log file names'''
-        flow_file_name = os.path.join(folder_dir, "flow_Log.txt")
-        den_file_name = os.path.join(folder_dir, "den_Log.txt")
-        vtt_file_name = os.path.join(folder_dir, "vtt_Log.txt")
-
-        vissim_id = "VISSIM.Vissim.1000"
-
-        ''' Start VISSIM simulation '''
-        ''' COM lines'''
+        if self.vissim is None:
+            self.open_simulation()
+        # COM lines
         try:
-            print("Client: Creating a Vissim instance")
-            vs = com.Dispatch(vissim_id)
+            # Setting simulation parameters
+            print("Client: Setting simulation parameters")
+            for param_name, param_value in sim_params.items():
+                self.vissim.Simulation.SetAttValue(param_name, param_value)
 
-            print("Client: read network and layout")
-            vs.LoadNet(os.path.join(self.networks_folder, self.network_file + self.vissim_net_ext), 0)
-            vs.LoadLayout(os.path.join(self.networks_folder, self.layout_file + self.vissim_layout_ext))
+            self.vissim.Evaluation.SetAttValue('VehRecWriteFile', save_veh_rec)
 
-            ''' initialize simulations '''
-            ''' setting random seed, simulation time, simulation resolution, simulation speed '''
-            print("Client: Setting simulations")
-            vs.Simulation.SetAttValue('SimRes', sim_resolution)
-            vs.Simulation.SetAttValue('UseMaxSimSpeed', True)
-            vs.Simulation.SetAttValue('RandSeed', random_seed)
-
-            # Reference to road network
-            net = vs.Net
-
-            ''' Set vehicle input '''
+            # Set vehicle input
+            net = self.vissim.Net
             veh_inputs = net.VehicleInputs
             veh_input = veh_inputs.ItemByKey(1)
             veh_input.SetAttValue('Volume(1)', demand)
 
-            ''' Get Data collection and link objects '''
-            data_collections = net.DataCollectionMeasurements
+            # Get link and vehicle objects
             links = net.Links
-            vtt_container = net.VehicleTravelTimeMeasurements
+            vehs = net.Vehicles
 
             # Make sure that all lanes are open
-            link_n_lane = {}
-            link_length = {}
-
             for link in links:
-                link_id = link.AttValue('No')
-                link_n_lane[link_id] = link.AttValue('NumLanes')
-                link_length[link_id] = link.AttValue('Length2D')  # meter
                 # Open all lanes
                 for lane in link.Lanes:
                     lane.SetAttValue('BlockedVehClasses', '')
 
-            section_length = [0.0] * n_sec  # length of each section
-            for iSec in range(len(link_groups)):  # xrange
-                for linkID in link_groups[iSec]['MAINLINE']:
-                    link = links.ItemByKey(linkID)
-                    section_length[iSec] += link.AttValue('Length2D')  # meter
-
             bus_no = 2  # No. of buses used to block the lane
             bus_array = [0] * bus_no
 
-            vehs = net.Vehicles
+            # Get total simulation time and set a break point
+            sim_time = self.vissim.Simulation.AttValue('SimPeriod')
+            self.vissim.Simulation.SetAttValue("SimBreakAt", incident_start_time)
 
-            # start simulation
-            print("Client: Starting simulation")
+            # Start simulation
             print("Scenario:", idx_scenario)
-            # print("Lane Closure:", idx_lane_closure, "section")
-            print("Random Seed:", random_seed)
+            print("Random Seed:", self.vissim.Simulation.AttValue('RandSeed'))
+            print("Client: Starting simulation")
+            self.vissim.Simulation.RunContinuous()
 
-            current_time = 0
+            # Create incident (simulation stops automatically at the SimBreakAt value)
+            if sim_time >= incident_start_time:
+                print('Client: Creating incident')
+                for i in range(bus_no):  # xrange
+                    bus_array[i] = vehs.AddVehicleAtLinkPosition(300, scenarios[idx_scenario]['link'],
+                                                                 scenarios[idx_scenario]['lane'],
+                                                                 scenarios[idx_scenario]['coordinate'] + 20 * i, 0,
+                                                                 0)
+                self.vissim.Simulation.SetAttValue("SimBreakAt", incident_end_time)
+                print('Client: Running again')
+                self.vissim.Simulation.RunContinuous()
 
-            # vs.Simulation.SetAttValue("SimBreakAt", 200)
-            # vs.Simulation.RunContinuous()
+            # Remove the incident
+            if sim_time >= incident_end_time:
+                print('Client: Removing incident')
+                for veh in bus_array:
+                    vehs.RemoveVehicle(veh.AttValue('No'))
+                # open all closed lanes
+                for link in links:
+                    for lane in link.Lanes:
+                        lane.SetAttValue('BlockedVehClasses', '')
+                print('Client: Running again')
+                self.vissim.Simulation.RunContinuous()
 
-            '''Link Segment Results'''
-
-            while current_time <= final_time:
-                # run single step of simulation
-                vs.Simulation.RunSingleStep()
-                current_time = vs.Simulation.AttValue('SimSec')
-
-                # Data acquisition
-                # if current_time % t_data_sec == 0:
-                #     # Get density, flow, speed of each section
-                #     for iSection in range(n_sec):  # xrange
-                #         # Flow volume in one sampling period
-                #         data_collection = data_collections.ItemByKey(link_groups[iSection]['DC'])
-                #         flow_section[iSection] = data_collection.AttValue('Vehs(Current,Last,All)')
-                #
-                #         # Density and Speed in each section
-                #         n_veh = 0
-                #         dist = 0
-                #         denominator = 0
-                #         for linkID in link_groups[iSection]['MAINLINE']:
-                #             link = links.ItemByKey(linkID)
-                #             link_vehs = link.vehs
-                #             num_vehs = link_vehs.count
-                #             sum_speed = 0
-                #             if num_vehs == 0:
-                #                 v = 0
-                #             else:
-                #                 for link_veh in link_vehs:
-                #                     sum_speed += link_veh.AttValue('Speed')
-                #                 v = sum_speed / num_vehs
-                #             n_veh += link_vehs.count
-                #             dist += v * link_vehs.count  # total distance traveled by all vehicles in one link
-                #             denominator += link_length[linkID]
-                #         density[iSection] = 1000 * n_veh / denominator  # number of vehicles per km
-                #         if 0 == n_veh:
-                #             speed[iSection] = 0
-                #         else:
-                #             speed[iSection] = dist / n_veh  # km/h
-                #
-                #     ''' vehicle travel time '''
-                #     vtt = vtt_container.ItemByKey(1)
-                #     trav_tm = vtt.AttValue('TravTm(Current,Last,All)')
-                #
-                #     ''' write log files : flow_section, speed, density '''
-                #
-                #     den_file = open(den_file_name, "a")
-                #     flow_file = open(flow_file_name, "a")
-                #     vtt_file = open(vtt_file_name, "a")
-                #
-                #     for i in range(n_sec):
-                #         den_file.write(str(density[i]) + '\t')
-                #         flow_file.write(str(density[i] * speed[i]) + '\t')
-                #     vtt_file.write(str(trav_tm) + '\t')
-                #
-                #     den_file.write('\n')
-                #     den_file.close()
-                #     flow_file.write('\n')
-                #     flow_file.close()
-                #     vtt_file.write('\n')
-                #     vtt_file.close()
-
-                if current_time == start_time_sec:
-                    # set incident scenario
-                    for i in range(bus_no):  # xrange
-                        bus_array[i] = vehs.AddVehicleAtLinkPosition(300, scenarios[idx_scenario]['link'],
-                                                                     scenarios[idx_scenario]['lane'],
-                                                                     scenarios[idx_scenario]['coordinate'] + 20 * i, 0,
-                                                                     0)
-
-                if current_time == end_time_sec:
-                    # Remove the incident
-                    for veh in bus_array:
-                        vehs.RemoveVehicle(veh.AttValue('No'))
-
-                    # open all closed lanes
-                    for link in links:
-                        for lane in link.Lanes:
-                            lane.SetAttValue('BlockedVehClasses', '')
+            print('Simulation done')
 
         except pywintypes.com_error as err:
-            vs = None
+            self.vissim = None
             print("err=", err)
 
-            '''
-            Error
-            The specified configuration is not defined within VISSIM.
-
-            Description
-            Some methods for evaluations results need a previously configuration for data collection. 
-            The error occurs when requesting results that have not been previously configured.
-            For example, using the GetSegmentResult() method of the ILink interface to request
-            density results can end up with this error if the density has not been requested within the configuration
-            '''
+            # Error
+            # The specified configuration is not defined within VISSIM.
+            #
+            # Description
+            # Some methods for evaluations results need a previously configuration for data collection.
+            # The error occurs when requesting results that have not been previously configured.
+            # For example, using the GetSegmentResult() method of the ILink interface to request
+            # density results can end up with this error if the density has not been requested within the configuration
 
     def get_max_decel_data(self):
         """
@@ -325,7 +218,7 @@ class VissimInterface:
         """
 
         if self.vissim is None:
-            self.open_and_set_simulation()
+            self.open_simulation()
 
         # Stats of the uniform distribution (0, 1) from which VISSIM draws numbers
         vissim_mu = 0.5
@@ -368,12 +261,13 @@ class VissimInterface:
 
 class DataReader:
     column_names = VissimInterface.column_names
+
     # ('time', 'number', 'veh type', 'link', 'lane', 'x', 'vx', 'y', 'leader number', 'delta x')
 
     def __init__(self, data_dir, sim_name):
         self.data_dir = data_dir
         self.sim_name = sim_name
-        self.sim_output = None # dictionary of dataframes
+        self.sim_output = None  # dictionary of dataframes
         self.max_decel = None
 
     def load_data_from_vissim(self):
@@ -426,7 +320,7 @@ class DataReader:
             for t in np.unique(df.index):
                 adj_matrix = np.zeros([n_veh, n_veh])
                 vel_vector = np.zeros(n_veh)
-                veh_idx = [i-1 for i in df.loc[t, 'number']]
+                veh_idx = [i - 1 for i in df.loc[t, 'number']]
                 adj_matrix[veh_idx, df.loc[t, 'leader number'].values - 1] = -1
                 vel_vector[veh_idx] = df.loc[t, 'vx']
                 df.loc[t, 'delta v'] = np.matmul((identity + adj_matrix), vel_vector)[veh_idx]
@@ -436,7 +330,7 @@ class DataReader:
 
     def save_to_csv(self):
         for filename, df in self.sim_output.items():
-            df.to_csv(os.path.join(self.data_dir, filename+'.csv'))
+            df.to_csv(os.path.join(self.data_dir, filename + '.csv'))
 
 
 class SSMAnalyzer:
@@ -514,9 +408,9 @@ class SSMAnalyzer:
                     max_vel = max(possible_vel)
                     decel_min_vel = max_decel_df.loc[veh_type, min_vel]['mean']
                     decel_max_vel = max_decel_df.loc[veh_type, max_vel]['mean']
-                    madr_array = decel_min_vel + (decel_max_vel-decel_min_vel)/max_vel * df.loc[idx, 'vx']
+                    madr_array = decel_min_vel + (decel_max_vel - decel_min_vel) / max_vel * df.loc[idx, 'vx']
                     df.loc[idx, 'CPI'] = truncnorm.cdf(df.loc[idx, 'DRAC'], a=first_row['norm_min'],
-                                                       b=first_row['norm_max'], loc=(-1)*madr_array,
+                                                       b=first_row['norm_max'], loc=(-1) * madr_array,
                                                        scale=first_row['std'])
 
     @staticmethod
@@ -550,9 +444,9 @@ class SSMAnalyzer:
         tau_d = 0.2
         veh_params = pd.DataFrame(columns=['max_brake', 'lambda0', 'lambda1'])
         for key in max_brake.keys():
-            tau_j = (accel_t0 + max_brake[key])/max_jerk[key]
-            lambda1 = (accel_t0 + max_brake[key])*(tau_d + tau_j/2)
-            lambda0 = -(accel_t0 + max_brake[key])/2 * (tau_d**2 + tau_d*tau_j + tau_j**2/3)
+            tau_j = (accel_t0 + max_brake[key]) / max_jerk[key]
+            lambda1 = (accel_t0 + max_brake[key]) * (tau_d + tau_j / 2)
+            lambda0 = -(accel_t0 + max_brake[key]) / 2 * (tau_d ** 2 + tau_d * tau_j + tau_j ** 2 / 3)
             veh_params.loc[key] = [max_brake[key], lambda0, lambda1]
 
         for df in df_dict.values():
@@ -563,12 +457,12 @@ class SSMAnalyzer:
             for v_type in veh_types:
                 max_brake_ego, lambda0, lambda1 = veh_params.loc[v_type]
                 gamma = 1  # max_brake_ego/max_brake_leader
-                time_headway = ((1/2 - (1-rho)**2/2/gamma)*free_flow_vel + lambda1)/max_brake_ego
-                standstill_gap = lambda1**2/2/max_brake_ego + lambda0
+                time_headway = ((1 / 2 - (1 - rho) ** 2 / 2 / gamma) * free_flow_vel + lambda1) / max_brake_ego
+                standstill_gap = lambda1 ** 2 / 2 / max_brake_ego + lambda0
 
                 df.loc[(df['veh type'] == v_type) & change_idx, 'safe gap'] = \
-                    ego_vel**2/2/max_brake_ego - leader_vel**2/2/veh_params.loc[v_type, 'max_brake'] \
-                    + lambda1*ego_vel/max_brake_ego + lambda1**2/2/max_brake_ego + lambda0
+                    ego_vel ** 2 / 2 / max_brake_ego - leader_vel ** 2 / 2 / veh_params.loc[v_type, 'max_brake'] \
+                    + lambda1 * ego_vel / max_brake_ego + lambda1 ** 2 / 2 / max_brake_ego + lambda0
                 df.loc[(df['veh type'] == v_type) & change_idx, 'time headway gap'] = \
-                    time_headway*ego_vel + standstill_gap
+                    time_headway * ego_vel + standstill_gap
         print(df.loc[df['safe gap'] > 0, ['delta v', 'safe gap', 'time headway gap']])
