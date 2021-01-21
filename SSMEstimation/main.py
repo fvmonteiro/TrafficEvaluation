@@ -1,4 +1,4 @@
-from classesForSSM import VissimInterface, SSMAnalyzer, DataReader
+from classesForSSM import VissimInterface, DataReader, DataAnalyzer
 import pandas as pd
 import os
 
@@ -10,11 +10,6 @@ def run_toy_example():
     vi = VissimInterface(network_file, layout_file)
     vi.open_simulation()
     vi.run_toy_scenario(sim_params)
-    # data_reader = DataReader(VissimInterface.networks_folder, network_file)
-    # data_reader.load_data_from_vissim()
-    # data_reader.post_process_output()
-    # data_reader.get_single_dataframe()
-    # data_reader.save_to_csv()
 
 
 def run_i170_scenario(save_veh_record=False):
@@ -38,30 +33,57 @@ def run_i170_scenario(save_veh_record=False):
         vi.run_i710_simulation(sim_params, idx_scenario, demand, save_veh_record)
 
 
-def create_all_ssm():
-    network_file = 'highway_in_and_out_lanes'
-    data_reader = DataReader(VissimInterface.networks_folder, network_file)
-    data_reader.load_data_from_csv()
-    data_reader.load_max_decel_data()
-    # SSMAnalyzer.include_ttc(data_reader.sim_output)
-    # SSMAnalyzer.include_drac(data_reader.sim_output)
-    # SSMAnalyzer.include_cpi(data_reader.sim_output, data_reader.max_decel)
-    # SSMAnalyzer.include_safe_gaps(data_reader.sim_output, data_reader.max_decel)
+def post_process_and_save(network_file):
+    data_analyzer = DataAnalyzer(VissimInterface.networks_folder, network_file, raw=True)
+    data_analyzer.post_process_output()
+    data_analyzer.save_to_csv(VissimInterface.networks_folder)
 
-    # TODO: Check these cases in VISSIM
-    # df = data_reader.get_single_dataframe()
-    # print(df[df['CPI'] > 0])
+
+def create_all_ssm(network_file):
+    data_analyzer = DataAnalyzer(VissimInterface.networks_folder, network_file, raw=False)
+
+    # print('Computing TTC')
+    # data_analyzer.include_ttc()
+    # for df in data_analyzer.veh_records.values():
+    #     valid_ttc = df.loc[df['TTC'] < float('inf'), 'TTC']
+    #     print('Mean TTC: {} for {} samples'.format(valid_ttc.mean(), valid_ttc.count()))
+    # print('Saving TTC')
+    # data_analyzer.save_to_csv(VissimInterface.networks_folder)
+
+    # print('Computing DRAC')
+    # data_analyzer.include_drac()
+    # for df in data_analyzer.veh_records.values():
+    #     valid_drac = df.loc[df['DRAC'] > 0, 'DRAC']
+    #     print('Mean DRAC: {} for {} samples'.format(valid_drac.mean(), valid_drac.count()))
+    # print('Saving DRAC')
+    # data_analyzer.save_to_csv(VissimInterface.networks_folder)
+
+    # print('Computing CPI')
+    # data_analyzer.include_cpi()
+    # for df in data_analyzer.veh_records.values():
+    #     valid_cpi = df.loc[df['CPI'] > 0, 'CPI']
+    #     print('Mean CPI: {} for {} samples'.format(valid_cpi.mean(), valid_cpi.count()))
+    # data_analyzer.save_to_csv(VissimInterface.networks_folder)
+    # print('Saving CPI')
+
+    print('Computing Safe Gaps')
+    data_analyzer.include_safe_gaps()
+    for df in data_analyzer.veh_records.values():
+        valid_safe_gap = df.loc[df['safe gap'] > 0, 'safe gap']
+        print('Mean safe gap: {} for {} samples'.format(valid_safe_gap.mean(), valid_safe_gap.count()))
+        risky_gaps = df.loc[df['DTSG'] < 0, 'DTSG']
+        print('Mean unsafe gap: {} for {} samples'.format(risky_gaps.mean(), risky_gaps.count()))
+    print('Saving Safe Gaps')
+    data_analyzer.save_to_csv(VissimInterface.networks_folder)
 
 
 def main():
-    # network_file = "I710 - MultiSec - 3mi"
-    network_file = 'highway_in_and_out_lanes'
-    data_reader = DataReader(VissimInterface.networks_folder, network_file)
-    data_reader.load_data_from_vissim()
-    SSMAnalyzer.include_drac(data_reader.sim_output)
-    df = data_reader.get_single_dataframe()
-    df.info()
-    print('DRAC' in df.columns)
+    network_file = "I710 - MultiSec - 3mi"
+    # network_file = 'highway_in_and_out_lanes'
+    # vi = VissimInterface(network_file)
+    # vi.get_max_decel_data()
+    # post_process_and_save(network_file)
+    create_all_ssm(network_file)
 
 
 if __name__ == '__main__':
