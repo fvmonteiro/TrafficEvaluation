@@ -1,6 +1,8 @@
 import pandas as pd
 import os
-from classesForSSM import VissimInterface, DataReader, DataAnalyzer, OnLineDataReader, NGSIMDataReader
+from classesForSSM import DataAnalyzer
+import readers
+from vissim_interface import VissimInterface
 
 
 def run_toy_example():
@@ -35,7 +37,7 @@ def run_i170_scenario(save_veh_record=False):
 
 def post_process_and_save(network_file):
     data_analyzer = DataAnalyzer(VissimInterface.networks_folder, network_file, raw=True)
-    data_analyzer.post_process_vissim_output()
+    data_analyzer.post_process_vissim_data()
     data_analyzer.save_to_csv(VissimInterface.networks_folder)
 
 
@@ -83,9 +85,8 @@ def main():
     # network_file = 'highway_in_and_out_lanes'
     # post_process_and_save(network_file)
     # create_all_ssm(network_file)
+    analyzer = readers.NGSIMDataReader('us-101')
 
-
-    return 0
 
 
 if __name__ == '__main__':
