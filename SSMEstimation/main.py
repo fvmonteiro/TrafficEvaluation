@@ -135,7 +135,6 @@ def create_ssm(data_source, network_name, ssm_names):
     data = data_reader.load_data()
     ssm_estimator = SSMEstimator(data)
 
-    # TODO: treat CPI differently
     for ssm in ssm_names:
         try:
             ssm_method = getattr(ssm_estimator, 'include_' + ssm.lower())
@@ -146,7 +145,14 @@ def create_ssm(data_source, network_name, ssm_names):
 
         print('Computing ' + ssm)
         data_rows_before = data.shape[0]
-        ssm_method()
+        if ssm == 'CPI':
+            if data_source.lower() == 'vissim':
+                max_decel_data = readers.VissimDataReader.load_max_decel_data()
+                ssm_method(max_decel_data)
+            else:
+                print('Can only compute CPI for VISSIM simulations')
+        else:
+            ssm_method()
         data_rows_after = data.shape[0]
 
         # Temporary check
@@ -257,22 +263,25 @@ def explore_issues():
 
 
 def main():
+    image_folder = "G:\\My Drive\\Safety in Mixed Traffic\\images"
+
     # Generate data
     # run_i170_scenario(True)
     # run_toy_example()
-    generate_us_101_reduced_speed_table(1)
+    # generate_us_101_reduced_speed_table(1)
 
     # Define data source
-    # network_file = 'toy'  # Options: i710, us-101, toy
-    # data_source = 'vissim'
+    network_file = 'i710'  # Options: i710, us-101, toy
+    data_source = 'vissim'
 
     # Post processing
     # post_process_and_save(data_source, network_file)
 
     # Save all SSMs
     # ssm_names = ['TTC', 'DRAC', 'collision_free_gap',
-    #              'vehicle_following_gap',
+    #              'vehicle_following_gap', 'CPI',
     #              'exact_risk', 'estimated_risk']
+    # ssm_names = ['CPI']
     # create_ssm(data_source, network_file, ssm_names)
 
     # SSM one by one
@@ -282,16 +291,18 @@ def main():
     # ssm_estimator.include_exact_risk()
 
     # Check results graphically
-    # reader = readers.PostProcessedDataReader(data_source, network_file)
-    # data = reader.load_data()
-    # ssm_estimator = SSMEstimator(data)
+    reader = readers.PostProcessedDataReader(data_source, network_file)
+    data = reader.load_data()
+    ssm_estimator = SSMEstimator(data)
     # ssm_estimator.plot_ssm('TTC')
     # ssm_estimator.plot_ssm('exact_risk')
     # ssm_estimator.plot_ssm('estimated_risk')
     # ssm_estimator.plot_ssm('vx')
-
-    # ssm_estimator.plot_ssm_moving_average('TTC')
-    # ssm_estimator.plot_ssm_moving_average('exact_risk')
+    image_path = os.path.join(image_folder, network_file)
+    ssm_estimator.plot_ssm_moving_average('TTC', 500, image_path)
+    ssm_estimator.plot_ssm_moving_average('DRAC', 500, image_path)
+    ssm_estimator.plot_ssm_moving_average('CPI', 500, image_path)
+    ssm_estimator.plot_ssm_moving_average('exact_risk', 500, image_path)
     # ssm_estimator.plot_ssm_moving_average('estimated_risk')
     # ssm_estimator.plot_ssm_moving_average('vx')
 

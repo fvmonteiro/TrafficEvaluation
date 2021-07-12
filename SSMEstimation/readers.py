@@ -23,8 +23,8 @@ class DataReader:
     def load_data(self):
         pass
 
-    def load_max_decel_data(self):
-        pass
+    # def load_max_decel_data(self):
+    #     pass
 
     def get_simulation_identifier(self):
         pass
@@ -100,12 +100,13 @@ class VissimDataReader(DataReader):
         self.select_relevant_columns(sim_output)
         return sim_output
 
-    def load_max_decel_data(self):
+    @staticmethod
+    def load_max_decel_data():
         """ Loads data describing maximum deceleration distribution per vehicle
          type and velocity
         :return: pandas dataframe with double index
         """
-        max_decel_data = pd.read_csv(os.path.join(self.data_dir,
+        max_decel_data = pd.read_csv(os.path.join(VissimDataReader.vissim_dir,
                                                   'max_decel_data.csv'))
         kph_to_mps = 1 / 3.6
         max_decel_data['vel'] = max_decel_data['vel'] * kph_to_mps

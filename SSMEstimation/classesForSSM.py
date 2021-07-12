@@ -3,6 +3,7 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from scipy.stats import truncnorm
 
 from Vehicle import Vehicle
@@ -258,10 +259,19 @@ class DataPostProcessor:
 class SSMEstimator:
     coded_ssms = {'TTC', 'DRAC', 'CPI', 'safe_gap', 'DTSG', 'vf_gap',
                   'exact_risk', 'estimated_risk'}
+    ssm_unit_map = {'TTC': 's', 'low_TTC': '# vehicles',
+                    'DRAC': 'm/s^2', 'high_DRAC': '# vehicles',
+                    'CPI': 'dimensionless', 'DTSG': 'm',
+                    'exact_risk': 'm/s', 'estimated_risk': 'm/s'}
+    ssm_pretty_name_map = {'low_TTC': 'Low TTC',
+                           'high_DRAC': 'High DRAC',
+                           'CPI': 'CPI',
+                           'exact_risk': 'CRI'}
 
     def __init__(self, veh_data):
         self.veh_data = veh_data
         self.ttc_threshold = 1.5  # [s]
+        self.drac_threshold = 3.5  # [m/s2]
 
     def include_ttc(self):
         """
@@ -296,7 +306,7 @@ class SSMEstimator:
         Includes Crash Probability Index (CPI) to the dataframe
 
         CPI = Prob(DRAC > MADR), where MADR is the maximum available
-        deceleration rate Formally, we should check the truncated Gaussian
+        deceleration rate. Formally, we should check the truncated Gaussian
         parameters for each velocity. However, the default VISSIM max
         decel is a linear function of the velocity and the other three
         parameters are constant. We make use of this to speed up this
@@ -318,7 +328,21 @@ class SSMEstimator:
         # veh_types = np.unique(df['veh type'])
         for veh_type in veh_types:
             idx = (df['veh_type'] == veh_type) & (df['DRAC'] > 0)
-            if not is_default_vissim:
+            if is_default_vissim:
+                first_row = max_decel_data.loc[veh_type, 0]
+                possible_vel = max_decel_data.loc[veh_type].index
+                min_vel = 0
+                max_vel = max(possible_vel)
+                decel_min_vel = max_decel_data.loc[veh_type, min_vel]['mean']
+                decel_max_vel = max_decel_data.loc[veh_type, max_vel]['mean']
+                madr_array = (decel_min_vel + (decel_max_vel - decel_min_vel)
+                              / max_vel * df.loc[idx, 'vx'])
+                df.loc[idx, 'CPI'] = truncnorm.cdf(df.loc[idx, 'DRAC'],
+                                                   a=first_row['norm_min'],
+                                                   b=first_row['norm_max'],
+                                                   loc=(-1) * madr_array,
+                                                   scale=first_row['std'])
+            else:
                 a_array = []
                 b_array = []
                 madr_array = []
@@ -333,20 +357,6 @@ class SSMEstimator:
                                                    a=a_array, b=b_array,
                                                    loc=madr_array,
                                                    scale=std_array)
-            else:
-                first_row = max_decel_data.loc[veh_type, 0]
-                possible_vel = max_decel_data.loc[veh_type].index
-                min_vel = 0
-                max_vel = max(possible_vel)
-                decel_min_vel = max_decel_data.loc[veh_type, min_vel]['mean']
-                decel_max_vel = max_decel_data.loc[veh_type, max_vel]['mean']
-                madr_array = (decel_min_vel + (decel_max_vel - decel_min_vel)
-                              / max_vel * df.loc[idx, 'vx'])
-                df.loc[idx, 'CPI'] = truncnorm.cdf(df.loc[idx, 'DRAC'],
-                                                   a=first_row['norm_min'],
-                                                   b=first_row['norm_max'],
-                                                   loc=(-1) * madr_array,
-                                                   scale=first_row['std'])
 
     def include_collision_free_gap(self, same_type_gamma=1):
         """
@@ -666,6 +676,8 @@ class SSMEstimator:
     def plot_ssm(self, ssm_names):
         """Plots the sum of the surrogate safety measure over all vehicles
         versus time
+        Plotting this way is not recommended as we get too much noise.
+        Better to use the moving average plot.
         :param ssm_names: list of strings with the desired surrogate safety 
         measures"""
 
@@ -673,52 +685,54 @@ class SSMEstimator:
             ssm_names = [ssm_names]
 
         fig, ax = plt.subplots()
+        aggregated_data = self._aggregate_ssm(ssm_names)
         for ssm in ssm_names:
             if ssm == 'TTC':
-                ssm = 'Low TTC'
-                self.veh_data[ssm] = (self.veh_data['TTC']
-                                      < self.ttc_threshold)
+                ssm = 'low_TTC'
             if ssm == 'DTSG':  # distance to safe gap
                 ssm = 'abs(min(0, DTSG))'
-                self.veh_data[ssm] = self.veh_data['DTSG']
-                self.veh_data.loc[self.veh_data[ssm] > 0, ssm] = 0
-                self.veh_data[ssm] = np.abs(self.veh_data[ssm])
-            aggregated_data = self.veh_data[['time', ssm]].groupby(
-                np.floor(self.veh_data['time'])).sum()
-            ax.plot(aggregated_data.index, aggregated_data[ssm],
+            ax.plot(aggregated_data[ssm].index, aggregated_data[ssm][ssm],
                     label=ssm)
         ax.legend()
         plt.show()
 
-    def plot_ssm_moving_average(self, ssm_names, window=100):
-        """Plots the moving average of the surrogate safety measure over all
+    def plot_ssm_moving_average(self, ssm_name, window=100, save_path=None):
+        """
+        Plots the moving average of the surrogate safety measure over all
         vehicles versus time
         :param window: moving average window
-        :param ssm_names: list of strings with the desired surrogate safety
-        measures"""
+        :param ssm_name: string with the desired surrogate safety measure
+        :param save_path: path including folder and simulation name. The
+        function adds the ssm_name to the figure name.
+        """
+        label_font_size = 18
 
-        if isinstance(ssm_names, str):
-            ssm_names = [ssm_names]
-
-        fig, ax = plt.subplots()
-        for ssm in ssm_names:
-            if ssm == 'TTC':
-                ssm = 'Low TTC'
-                self.veh_data[ssm] = (self.veh_data['TTC']
-                                      < self.ttc_threshold)
-            if ssm == 'DTSG':  # distance to safe gap
-                ssm = 'abs(min(0, DTSG))'
-                self.veh_data[ssm] = self.veh_data['DTSG']
-                self.veh_data.loc[self.veh_data[ssm] > 0, ssm] = 0
-                self.veh_data[ssm] = np.abs(self.veh_data[ssm])
-            aggregated_data = self.veh_data[['time', ssm]].groupby(
-                'time').sum()
-            aggregated_data['Mov. Avg. ' + ssm] = aggregated_data[ssm].rolling(
-                window=window, min_periods=10).mean()
-            ax.plot(aggregated_data.index, aggregated_data['Mov. Avg. ' + ssm],
-                    label='Mov. Avg. ' + ssm)
-        ax.legend()
+        with sns.axes_style("darkgrid"):
+            fig, ax = plt.subplots()
+        aggregated_data = self._aggregate_ssm(ssm_name)
+        # sns.set_theme()
+        if ssm_name == 'TTC':
+            ssm_name = 'low_TTC'
+        elif ssm_name == 'DTSG':  # distance to safe gap
+            ssm_name = 'abs(min(0, DTSG))'
+        elif ssm_name == 'DRAC':
+            ssm_name = 'high_DRAC'
+        aggregated_data['Mov. Avg. ' + ssm_name] = aggregated_data[
+            ssm_name].rolling(window=window, min_periods=10).mean()
+        sns.lineplot(x=aggregated_data.index,
+                     y=aggregated_data['Mov. Avg. ' + ssm_name],
+                     ax=ax)
+        ax.set_xlabel('time (s)', fontsize=label_font_size)
+        if ssm_name in self.ssm_pretty_name_map:
+            ssm_plot_name = self.ssm_pretty_name_map[ssm_name]
+        else:
+            ssm_plot_name = ssm_name
+        ax.set_ylabel(ssm_plot_name + ' (' + self.ssm_unit_map[ssm_name] + ')',
+                      fontsize=label_font_size)
         plt.show()
+
+        if save_path is not None:
+            fig.savefig(save_path + ssm_name)
 
     def plot_risk_counter(self, ssm_name):
         """Temporary function to compare how the exact and estimated risks
@@ -732,3 +746,24 @@ class SSMEstimator:
                 label=ssm_counter)
         ax.legend()
         plt.show()
+
+    def _aggregate_ssm(self, ssm_name):
+
+        if ssm_name == 'TTC':
+            ssm_name = 'low_TTC'
+            self.veh_data[ssm_name] = (self.veh_data['TTC']
+                                       < self.ttc_threshold)
+        elif ssm_name == 'DTSG':  # distance to safe gap
+            ssm_name = 'abs(min(0, DTSG))'
+            self.veh_data[ssm_name] = self.veh_data['DTSG']
+            self.veh_data.loc[self.veh_data[ssm_name] > 0, ssm_name] = 0
+            self.veh_data[ssm_name] = np.abs(self.veh_data[ssm_name])
+        elif ssm_name == 'DRAC':
+            ssm_name = 'high_DRAC'
+            self.veh_data[ssm_name] = (self.veh_data['DRAC']
+                                       > self.drac_threshold)
+        aggregated_data = self.veh_data[['time', ssm_name]].groupby(
+            'time').sum()
+        # aggregated_data[ssm] = self.veh_data[['time', ssm]].groupby(
+        #     np.floor(self.veh_data['time'])).sum()
+        return aggregated_data
