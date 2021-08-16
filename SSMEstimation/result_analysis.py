@@ -6,6 +6,7 @@ import pandas as pd
 import seaborn as sns
 from scipy.stats import truncnorm
 
+import readers
 from Vehicle import Vehicle
 
 
@@ -161,7 +162,7 @@ class DataPostProcessor:
 
         veh_data = self.veh_records
         total_samples = veh_data.shape[0]
-        print('Adding distance, relative speed and leader index for {} '
+        print('Adding distance, relative speed and leader type for {} '
               'samples'.format(total_samples))
 
         percent = 0.1
@@ -254,6 +255,39 @@ class DataPostProcessor:
             distance = veh_data['delta_x']
 
         return distance
+
+
+class FlowAnalyzer:
+
+    def __init__(self, network_name):
+        self.link_evaluation_reader = readers.LinkEvaluationReader(
+            network_name)
+        self.data_collections_reader = readers.DataCollectionReader(
+            network_name)
+
+    def plot_fundamental_diagram(self):
+        """Loads all measures of flow and density of a network to plot the
+        fundamental diagram"""
+        seconds_in_hour = 3600
+        link_evaluation_data = (
+            self.link_evaluation_reader.load_data_from_all_simulations())
+        data_collections_data = (
+            self.data_collections_reader.load_data_from_all_simulations())
+        # We merge to be sure we're properly matching data collection results
+        # and link evaluation data (same simulation, same time interval)
+        full_data = link_evaluation_data.merge(data_collections_data)
+        time_interval = full_data['time_interval'].iloc[0]
+        interval_start, _, interval_end = time_interval.partition('-')
+        measurement_period = int(interval_end) - int(interval_start)
+        full_data['flow'] = (seconds_in_hour / measurement_period
+                             * full_data['vehicle_count(ALL)'])
+        plt.scatter(full_data['density(ALL)'], full_data['flow'])
+        plt.show()
+
+    def plot_capacity_vs_ssm(self):
+        """Gets the maximum capacity from the fundamental diagram and the
+        mean ssm value of simulations with the same parameters then plots one
+        against the other"""
 
 
 class SSMEstimator:

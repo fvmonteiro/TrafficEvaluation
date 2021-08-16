@@ -1,10 +1,12 @@
 class Vehicle:
     """Class containing vehicle parameters"""
 
+    # TODO: create some form of enum
     NGSIM_MOTORCYCLE_ID = 1
     NGSIM_CAR_ID = 2
     NGSIM_TRUCK_ID = 3
     VISSIM_CAR_ID = 100
+    VISSIM_AUTONOMOUS_CAR_ID = 110
     VISSIM_TRUCK_ID = 200
     VISSIM_BUS_ID = 300
     TYPE_CAR = 'car'
@@ -17,7 +19,8 @@ class Vehicle:
     # VISSIM and NGSIM codes for different vehicle types
     INT_TO_NAME = {NGSIM_MOTORCYCLE_ID: TYPE_MOTORCYCLE,
                    NGSIM_CAR_ID: TYPE_CAR, NGSIM_TRUCK_ID: TYPE_TRUCK,
-                   VISSIM_CAR_ID: TYPE_CAR, VISSIM_TRUCK_ID: TYPE_TRUCK,
+                   VISSIM_CAR_ID: TYPE_CAR, VISSIM_AUTONOMOUS_CAR_ID: TYPE_CAR,
+                   VISSIM_TRUCK_ID: TYPE_TRUCK,
                    VISSIM_BUS_ID: TYPE_BUS}
 
     # Typical parameters values
@@ -26,7 +29,7 @@ class Vehicle:
     _MAX_JERK_PER_TYPE = {TYPE_CAR: 50, TYPE_TRUCK: 30}
     _FREE_FLOW_VELOCITY_PER_TYPE = {TYPE_CAR: 30, TYPE_TRUCK: 25}
 
-    def __init__(self, i_type, gamma=1):
+    def __init__(self, i_type: int, gamma: float = 1):
         """Assigns typical vehicle values based on the vehicle type
         :param i_type: integer describing the vehicle type
         :param gamma: factor multiplying standard value maximum braking
@@ -58,7 +61,8 @@ class Vehicle:
                        self.brake_delay ** 2 + self.brake_delay * self.tau_j
                        + self.tau_j ** 2 / 3)
 
-    def compute_vehicle_following_parameters(self, leader_max_brake, rho):
+    def compute_vehicle_following_parameters(self, leader_max_brake: float,
+                                             rho: float) -> (float, float):
         """
         Computes time headway (h) and constant term (d) of the time headway
         policy: g = h.v + d.
@@ -68,7 +72,7 @@ class Vehicle:
 
         :param leader_max_brake:
         :param rho: defines the lower bound on the leader velocity following
-        (1-rho)vE(t) <= vL(t). Must be in the interval [0, 1]
+         (1-rho)vE(t) <= vL(t). Must be in the interval [0, 1]
         :return: time headway (h) and constant term (d)
         """
 

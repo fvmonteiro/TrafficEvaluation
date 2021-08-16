@@ -4,7 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from classesForSSM import DataPostProcessor, SSMEstimator
+import vissim_interface
+from result_analysis import DataPostProcessor, SSMEstimator
 from data_writer import SyntheticDataWriter
 import readers
 from vissim_interface import VissimInterface
@@ -74,22 +75,25 @@ def save_post_processed_data(data, data_source, simulation_name):
 
 def run_toy_example():
     network_file = 'highway_in_and_out_lanes'
-    layout_file = 'highway_in_and_out_lanes'
     sim_params = {'SimPeriod': 200, 'RandSeed': 1}
-    vi = VissimInterface(network_file, layout_file)
-    vi.open_simulation()
-    vi.run_toy_scenario(sim_params)
+    vi = VissimInterface()
+    if not vi.load_simulation(network_file):
+        return
+    vi.set_evaluation_outputs(False, False, False, False)
+    vi.set_simulation_parameters(sim_params)
+    vi.run_toy_scenario()
     vi.close_vissim()
 
 
 def run_i170_scenario(save_results=False):
     network_file = "I710-MultiSec-3mi"
-    layout_file = "I710-MultiSec-3mi"
     sim_resolution = 5  # No. of simulation steps per second
     simulation_time = 3600  # 5400  # 4000
-    vi = VissimInterface(network_file, layout_file)
-    vi.open_simulation()
-
+    vi = VissimInterface()
+    if not vi.load_simulation(network_file):
+        return
+    vi.set_evaluation_outputs(save_results, save_results,
+                              save_results, save_results)
     idx_scenario = 2  # 0: No block, 1: All time block, 2: Temporary block
     demands = [5500, ]
     # Vehicle Composition ID
@@ -100,9 +104,8 @@ def run_i170_scenario(save_results=False):
         random_seed = 1
         sim_params = {'SimPeriod': simulation_time, 'SimRes': sim_resolution,
                       'UseMaxSimSpeed': True, 'RandSeed': random_seed}
-        vi.run_i710_simulation(sim_params, idx_scenario, demand,
-                               save_veh_rec=save_results,
-                               save_ssam_file=save_results)
+        vi.set_simulation_parameters(sim_params)
+        vi.run_i710_simulation(idx_scenario, demand)
 
 
 def post_process_and_save(data_source, network_name):
@@ -147,7 +150,7 @@ def create_ssm(data_source, network_name, ssm_names):
         data_rows_before = data.shape[0]
         if ssm == 'CPI':
             if data_source.lower() == 'vissim':
-                max_decel_data = readers.VissimDataReader.load_max_decel_data()
+                max_decel_data = readers.VissimDataReader.load_max_deceleration_data()
                 ssm_method(max_decel_data)
             else:
                 print('Can only compute CPI for VISSIM simulations')
@@ -262,8 +265,57 @@ def explore_issues():
     return veh_record
 
 
+def check_dll_UDAs():
+    """Notes after some tests: couldn't find the previous issues with VISSIM
+    speeddiff. Remember to do a quick check in the scenario with accident,
+    but it looks like we can use VISSIM's measurement directly."""
+    network_file = 'toy'
+    data_source = 'vissim'
+    min_diff = 1
+    reader = readers.VissimDataReader(network_file)
+    data = reader.load_data()
+    data_pp = DataPostProcessor(data_source, data)
+    data_pp.post_process_data()
+
+    dll_vehs_idx = data['veh_type'] == 110
+    data_different_gap = data[dll_vehs_idx
+                              & (data['veh_id'] != data['leader_id'])
+                              & (np.abs(data['dll_delta_x']
+                                        - data['delta_x']) > min_diff)]
+    dll_n_changes = data_different_gap.shape[0]
+    print("Changed dll gaps: {}".format(dll_n_changes))
+    print(data_different_gap[['time', 'veh_id', 'link', 'leader_id',
+                              'dll_delta_x', 'delta_x']].head(10))
+    max_diff = np.max(np.abs(data_different_gap['dll_delta_x']
+                             - data_different_gap['delta_x']))
+    print("Max gaps difference: {}".format(max_diff))
+    print(data_different_gap.loc[
+              np.abs(data_different_gap['dll_delta_x']
+                     - data_different_gap['delta_x']) == max_diff,
+              ['time', 'veh_id', 'link', 'leader_id', 'dll_delta_x',
+               'delta_x']])
+
+    # data_different_type = data[dll_vehs_idx
+    #                            & (data['dll_leader_type']
+    #                               != data['leader_type'])]
+    # dll_type_changes = data_different_type.shape[0]
+    # print("Changed types: {}".format(dll_type_changes))
+    # print(data_different_type[['time', 'veh_id', 'link', 'leader_id',
+    #                            'dll_leader_type', 'leader_type']].head(10))
+
+
+def get_data_for_fundamental_diagram(network_name):
+    vi = vissim_interface.VissimInterface()
+    vi.open_vissim()
+    vi.load_simulation(network_name)
+    vi.set_evaluation_outputs(True, True, True, True, 0, 60)
+    vi.set_random_seed(42)
+    vi.set_random_seed_increment(1)
+    vi.run_with_increasing_demand(300, 100, 3000, 10)
+
+
 def main():
-    image_folder = "G:\\My Drive\\Safety in Mixed Traffic\\images"
+    # image_folder = "G:\\My Drive\\Safety in Mixed Traffic\\images"
 
     # Generate data
     # run_i170_scenario(True)
@@ -271,8 +323,12 @@ def main():
     # generate_us_101_reduced_speed_table(1)
 
     # Define data source
-    network_file = 'i710'  # Options: i710, us-101, toy
-    data_source = 'vissim'
+    network_file = 'toy'  # Options: i710, us-101, toy
+    vi = VissimInterface()
+    vi.load_simulation('toy')
+    vi.run_with_increasing_autonomous_penetration(
+        autonomous_percentage_increase=10)
+    # vi.create_time_intervals(30)
 
     # Post processing
     # post_process_and_save(data_source, network_file)
@@ -291,18 +347,18 @@ def main():
     # ssm_estimator.include_exact_risk()
 
     # Check results graphically
-    reader = readers.PostProcessedDataReader(data_source, network_file)
-    data = reader.load_data()
-    ssm_estimator = SSMEstimator(data)
-    # ssm_estimator.plot_ssm('TTC')
-    # ssm_estimator.plot_ssm('exact_risk')
-    # ssm_estimator.plot_ssm('estimated_risk')
-    # ssm_estimator.plot_ssm('vx')
-    image_path = os.path.join(image_folder, network_file)
-    ssm_estimator.plot_ssm_moving_average('TTC', 500, image_path)
-    ssm_estimator.plot_ssm_moving_average('DRAC', 500, image_path)
-    ssm_estimator.plot_ssm_moving_average('CPI', 500, image_path)
-    ssm_estimator.plot_ssm_moving_average('exact_risk', 500, image_path)
+    # reader = readers.PostProcessedDataReader(data_source, network_file)
+    # data = reader.load_data()
+    # ssm_estimator = SSMEstimator(data)
+    # # ssm_estimator.plot_ssm('TTC')
+    # # ssm_estimator.plot_ssm('exact_risk')
+    # # ssm_estimator.plot_ssm('estimated_risk')
+    # # ssm_estimator.plot_ssm('vx')
+    # image_path = os.path.join(image_folder, network_file)
+    # ssm_estimator.plot_ssm_moving_average('TTC', 500, image_path)
+    # ssm_estimator.plot_ssm_moving_average('DRAC', 500, image_path)
+    # ssm_estimator.plot_ssm_moving_average('CPI', 500, image_path)
+    # ssm_estimator.plot_ssm_moving_average('exact_risk', 500, image_path)
     # ssm_estimator.plot_ssm_moving_average('estimated_risk')
     # ssm_estimator.plot_ssm_moving_average('vx')
 
