@@ -4,8 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-import vissim_interface
-from result_analysis import DataPostProcessor, SSMEstimator
+import result_analysis
 from data_writer import SyntheticDataWriter
 import readers
 from vissim_interface import VissimInterface
@@ -14,7 +13,7 @@ from vissim_interface import VissimInterface
 def generate_us_101_reduced_speed_table(first_file_number=2):
     """Get the link mean speeds for simulations with different speed limits
     and organize them in a nice looking dataframe"""
-    reader = readers.VissimDataReader('US_101')
+    reader = readers.ReducedSpeedAreaReader('US_101')
     all_rsa = reader.read_all_reduced_speed_area_files(
         first_file_number=first_file_number)
     last_sim_number = len(all_rsa) + first_file_number - 1
@@ -110,7 +109,7 @@ def run_i170_scenario(save_results=False):
 
 def post_process_and_save(data_source, network_name):
     if data_source.upper() == 'VISSIM':
-        data_reader = readers.VissimDataReader(network_name)
+        data_reader = readers.VehicleRecordReader(network_name)
     elif data_source.upper() == 'NGSIM':
         data_reader = readers.NGSIMDataReader(network_name)
     elif data_source == 'synthetic_data':
@@ -123,7 +122,7 @@ def post_process_and_save(data_source, network_name):
           format(data_source, network_name))
     data = data_reader.load_data()
     print('Raw data shape: ', data.shape)
-    data_pp = DataPostProcessor(data_source, data)
+    data_pp = result_analysis.VehicleRecordPostProcessor(data_source, data)
     data_pp.post_process_data()
     print('Post processed data shape: ', data.shape)
     save_post_processed_data(data, data_source,
@@ -136,7 +135,7 @@ def create_ssm(data_source, network_name, ssm_names):
 
     data_reader = readers.PostProcessedDataReader(data_source, network_name)
     data = data_reader.load_data()
-    ssm_estimator = SSMEstimator(data)
+    ssm_estimator = result_analysis.SSMEstimator(data)
 
     for ssm in ssm_names:
         try:
@@ -150,7 +149,8 @@ def create_ssm(data_source, network_name, ssm_names):
         data_rows_before = data.shape[0]
         if ssm == 'CPI':
             if data_source.lower() == 'vissim':
-                max_decel_data = readers.VissimDataReader.load_max_deceleration_data()
+                max_decel_data = (
+                    readers.VissimDataReader.load_max_deceleration_data())
                 ssm_method(max_decel_data)
             else:
                 print('Can only compute CPI for VISSIM simulations')
@@ -169,7 +169,7 @@ def create_ssm(data_source, network_name, ssm_names):
     print('Saving ' + ', '.join(ssm_names))
     save_post_processed_data(ssm_estimator.veh_data,
                              data_reader.data_source,
-                             data_reader.file_name)
+                             data_reader.network_name)
 
 
 def create_and_save_synthetic_data():
@@ -182,14 +182,14 @@ def create_and_save_synthetic_data():
 
 def test_safe_gap_computation():
     # create_and_save_synthetic_data()
-    network_file = 'synthetic_data'
+    data_source = 'synthetic'
     # post_process_and_save('synthetic_data', network_file)
-    data_reader = readers.PostProcessedDataReader(network_file)
+    data_reader = readers.PostProcessedDataReader(data_source)
     data = data_reader.load_data()
 
     gamma = 1 / 0.8
     rho = 0.2
-    ssm_estimator = SSMEstimator(data)
+    ssm_estimator = result_analysis.SSMEstimator(data)
     ssm_estimator.include_exact_risk(same_type_gamma=gamma)
     ssm_estimator.include_estimated_risk(rho=rho, same_type_gamma=gamma)
     risk_gap = data.loc[data['delta_x'] <= (data['safe_gap'] + 0.02),
@@ -211,11 +211,11 @@ def test_safe_gap_computation():
 
 def explore_issues():
     """Explore the source of difference between trj and veh record data"""
-    vissim_reader = readers.VissimDataReader('highway_in_and_out_lanes')
+    vissim_reader = readers.VehicleRecordReader('highway_in_and_out_lanes')
     veh_record = vissim_reader.load_data()
-    pp = DataPostProcessor('vissim', veh_record)
+    pp = result_analysis.VehicleRecordPostProcessor('vissim', veh_record)
     pp.post_process_data()
-    ssm_estimator = SSMEstimator(veh_record)
+    ssm_estimator = result_analysis.SSMEstimator(veh_record)
     ssm_estimator.include_ttc()
 
     conflicts = pd.read_csv(VissimInterface.networks_folder
@@ -256,7 +256,7 @@ def explore_issues():
                       format(i + 1, follower_idx))
 
     """Conclusions after running on the toy scenario:
-        1. Not all rear end conflicst found by the SSAM software can be found
+        1. Not all rear end conflicts found by the SSAM software can be found
         by our code that checks the vehicle record file.
         2. Even after looking at the trj file (the CSV equivalent of it), I
         could not figure out why SSAM considers those moments as conflicts.
@@ -265,98 +265,54 @@ def explore_issues():
     return veh_record
 
 
-def check_dll_UDAs():
-    """Notes after some tests: couldn't find the previous issues with VISSIM
-    speeddiff. Remember to do a quick check in the scenario with accident,
-    but it looks like we can use VISSIM's measurement directly."""
-    network_file = 'toy'
-    data_source = 'vissim'
-    min_diff = 1
-    reader = readers.VissimDataReader(network_file)
-    data = reader.load_data()
-    data_pp = DataPostProcessor(data_source, data)
-    data_pp.post_process_data()
-
-    dll_vehs_idx = data['veh_type'] == 110
-    data_different_gap = data[dll_vehs_idx
-                              & (data['veh_id'] != data['leader_id'])
-                              & (np.abs(data['dll_delta_x']
-                                        - data['delta_x']) > min_diff)]
-    dll_n_changes = data_different_gap.shape[0]
-    print("Changed dll gaps: {}".format(dll_n_changes))
-    print(data_different_gap[['time', 'veh_id', 'link', 'leader_id',
-                              'dll_delta_x', 'delta_x']].head(10))
-    max_diff = np.max(np.abs(data_different_gap['dll_delta_x']
-                             - data_different_gap['delta_x']))
-    print("Max gaps difference: {}".format(max_diff))
-    print(data_different_gap.loc[
-              np.abs(data_different_gap['dll_delta_x']
-                     - data_different_gap['delta_x']) == max_diff,
-              ['time', 'veh_id', 'link', 'leader_id', 'dll_delta_x',
-               'delta_x']])
-
-    # data_different_type = data[dll_vehs_idx
-    #                            & (data['dll_leader_type']
-    #                               != data['leader_type'])]
-    # dll_type_changes = data_different_type.shape[0]
-    # print("Changed types: {}".format(dll_type_changes))
-    # print(data_different_type[['time', 'veh_id', 'link', 'leader_id',
-    #                            'dll_leader_type', 'leader_type']].head(10))
-
-
-def get_data_for_fundamental_diagram(network_name):
-    vi = vissim_interface.VissimInterface()
-    vi.open_vissim()
-    vi.load_simulation(network_name)
-    vi.set_evaluation_outputs(True, True, True, True, 0, 60)
-    vi.set_random_seed(42)
-    vi.set_random_seed_increment(1)
-    vi.run_with_increasing_demand(300, 100, 3000, 10)
-
-
 def main():
     # image_folder = "G:\\My Drive\\Safety in Mixed Traffic\\images"
 
-    # Generate data
+    # Define data source #
+    network_file = 'toy'  # Options: i710, us-101, toy
+
+    # Running #
     # run_i170_scenario(True)
     # run_toy_example()
     # generate_us_101_reduced_speed_table(1)
+    # vi = VissimInterface()
+    # vi.load_simulation('toy')
+    # vi.run_with_increasing_autonomous_penetration(
+    #     autonomous_percentage_increase=-20,
+    #     initial_autonomous_percentage=100,
+    #     final_autonomous_percentage=40)
 
-    # Define data source
-    network_file = 'toy'  # Options: i710, us-101, toy
-    vi = VissimInterface()
-    vi.load_simulation('toy')
-    vi.run_with_increasing_autonomous_penetration(
-        autonomous_percentage_increase=10)
-    # vi.create_time_intervals(30)
-
-    # Post processing
+    # Post processing #
     # post_process_and_save(data_source, network_file)
 
-    # Save all SSMs
+    # Save all SSMs #
     # ssm_names = ['TTC', 'DRAC', 'collision_free_gap',
     #              'vehicle_following_gap', 'CPI',
     #              'exact_risk', 'estimated_risk']
     # ssm_names = ['CPI']
     # create_ssm(data_source, network_file, ssm_names)
 
-    # SSM one by one
+    # SSM one by one #
     # reader = readers.PostProcessedDataReader(data_source, network_file)
     # data = reader.load_data()
     # ssm_estimator = SSMEstimator(data)
     # ssm_estimator.include_exact_risk()
 
-    # Check results graphically
+    # Check results graphically #
+    result_analyzer = result_analysis.ResultAnalyzer(network_file)
+    for autonomous_percentage in [0]:
+        result_analyzer.vehicle_record_to_ssm_summary(autonomous_percentage)
+    # result_analyzer.plot_fundamental_diagram([0, 100])
     # reader = readers.PostProcessedDataReader(data_source, network_file)
     # data = reader.load_data()
     # ssm_estimator = SSMEstimator(data)
-    # # ssm_estimator.plot_ssm('TTC')
+    # # ssm_estimator.plot_ssm('low_TTC')
     # # ssm_estimator.plot_ssm('exact_risk')
     # # ssm_estimator.plot_ssm('estimated_risk')
     # # ssm_estimator.plot_ssm('vx')
     # image_path = os.path.join(image_folder, network_file)
-    # ssm_estimator.plot_ssm_moving_average('TTC', 500, image_path)
-    # ssm_estimator.plot_ssm_moving_average('DRAC', 500, image_path)
+    # ssm_estimator.plot_ssm_moving_average('low_TTC', 500, image_path)
+    # ssm_estimator.plot_ssm_moving_average('high_DRAC', 500, image_path)
     # ssm_estimator.plot_ssm_moving_average('CPI', 500, image_path)
     # ssm_estimator.plot_ssm_moving_average('exact_risk', 500, image_path)
     # ssm_estimator.plot_ssm_moving_average('estimated_risk')

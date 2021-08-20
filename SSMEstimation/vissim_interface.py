@@ -31,6 +31,20 @@ class VissimInterface:
         self.vissim = None
         self.open_vissim()
 
+    @staticmethod
+    def get_file_name_from_network_name(network_name):
+        if network_name in VissimInterface.existing_networks:
+            network_name = VissimInterface.existing_networks[network_name]
+        elif network_name in VissimInterface.existing_networks.values():
+            pass
+        else:
+            raise ValueError('Network "{}" is not in the list of valid '
+                             'simulations\nCheck whether the network exists  '
+                             'and add it to the VissimInterface attribute '
+                             'existing_networks'.
+                             format(network_name))
+        return network_name
+
     def open_vissim(self):
         # Connect to the COM server, which opens a new Vissim window
         # vissim = com.gencache.EnsureDispatch("Vissim.Vissim")  # if
@@ -40,28 +54,19 @@ class VissimInterface:
         print("Client: Creating a Vissim instance")
         self.vissim = com.Dispatch(vissim_id)
 
-    def load_simulation(self, network_file: str, layout_file: str = None):
+    def load_simulation(self, network_name: str, layout_file: str = None):
         """ Loads a VISSIM network and optionally sets it to save vehicle
         records and ssam files.
 
-        :param network_file: Network name. Either the actual file name or the
+        :param network_name: Network name. Either the actual file name or the
          network nickname. Currently available: toy, i710, us101
         :param layout_file: Optionally defines the layout file for the network
         :return: boolean indicating if simulation was properly loaded
         """
 
-        if network_file in self.existing_networks:
-            network_file = self.existing_networks[network_file]
-        elif network_file in self.existing_networks.values():
-            pass
-        else:
-            raise ValueError('Network "{}" is not in the list of valid '
-                             'simulations\nCheck whether the network exists  '
-                             'and add it to the class attribute '
-                             'existing_networks'.
-                             format(network_file))
-        self.network_file = network_file
-        self.layout_file = network_file if layout_file is None else layout_file
+        self.network_file = VissimInterface.get_file_name_from_network_name(
+            network_name)
+        self.layout_file = network_name if layout_file is None else layout_file
         net_full_path = os.path.join(self.networks_folder,
                                      self.network_file + self.vissim_net_ext)
 
@@ -370,10 +375,9 @@ class VissimInterface:
             # Finally, we set the percentage and run the simulation
             self.set_autonomous_percentage(autonomous_percentage)
             self.run_with_increasing_demand(input_increase_per_lane=300,
-                                            initial_input_per_lane=1000,
-                                            max_input_per_lane=2000,
-                                            runs_per_input=2,
-                                            simulation_period=300)
+                                            initial_input_per_lane=200,
+                                            max_input_per_lane=2500,
+                                            runs_per_input=10)
 
     def run_us_101_with_different_speed_limits(self, possible_speeds=None):
         if (self.vissim.AttValue('InputFile')
@@ -655,6 +659,7 @@ class VissimInterface:
          deleting data."""
 
         # Double check we're not doing anything stupid
+
         if warning_active:
             print('You are trying to reset the current simulation count.\n',
                   'This might lead to previous results being overwritten.')
@@ -673,10 +678,13 @@ class VissimInterface:
         # configuration to not keep results of previous simulations and then
         # run a single simulation step.
         print('Client: Resetting simulation count...')
+        result_folder = self.vissim.Evaluation.AttValue('EvalOutDir')
+        self.use_debug_folder_for_results()
         self.vissim.Evaluation.SetAttValue('KeepPrevResults', 'KEEPNONE')
         self.vissim.Simulation.RunSingleStep()
         self.vissim.Simulation.Stop()
         self.vissim.Evaluation.SetAttValue('KeepPrevResults', 'KEEPALL')
+        self.vissim.Evaluation.SetAttValue('EvalOutDir', result_folder)
 
     def use_debug_folder_for_results(self):
         debug_log_folder = os.path.join(self.networks_folder, self.network_file,

@@ -1,4 +1,4 @@
-import time
+from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -8,9 +8,10 @@ from scipy.stats import truncnorm
 
 import readers
 from Vehicle import Vehicle
+from data_writer import SSMDataWriter
 
 
-class DataPostProcessor:
+class VehicleRecordPostProcessor:
     VISSIM = 'vissim'
     NGSIM = 'ngsim'
     SYNTHETIC = 'synthetic'
@@ -48,14 +49,15 @@ class DataPostProcessor:
         veh_data['vx'] = veh_data['vx'] * kph_to_mps
 
         # Only use samples after some vehicles have already left the simulation
-        n_discarded = 10  # number of vehicles
-        # Define warm up time as moment when first 10 vehicles have
-        # left simulation
-        discarded_idx = veh_data['veh_id'] <= n_discarded
-        if any(discarded_idx):
-            warm_up_time = max(veh_data['time'].loc[discarded_idx])
-        else:
-            warm_up_time = veh_data.iloc[0]['time']
+        # n_discarded = 10  # number of vehicles
+        # # Define warm up time as moment when first 10 vehicles have
+        # # left simulation
+        # discarded_idx = veh_data['veh_id'] <= n_discarded
+        # if any(discarded_idx):
+        #     warm_up_time = max(veh_data['time'].loc[discarded_idx])
+        # else:
+        #     warm_up_time = veh_data.iloc[0]['time']
+        warm_up_time = 60
         self.remove_early_samples(warm_up_time)
 
         # By convention, if vehicle has no leader, we set it as its own leader
@@ -177,9 +179,9 @@ class DataPostProcessor:
             leader_idx = current_data['leader_id'].to_numpy()
             min_idx = min(veh_idx)
             max_idx = max(veh_idx)
-            n = max_idx - min_idx + 1
-            vel_vector = np.zeros(n)
-            type_vector = np.zeros(n)
+            n_vehicles = max_idx - min_idx + 1
+            vel_vector = np.zeros(n_vehicles)
+            type_vector = np.zeros(n_vehicles)
 
             # If leader is not in the current time, we proceed as if there
             # was no leader (happens more often with NGSIM data)
@@ -194,13 +196,15 @@ class DataPostProcessor:
 
             adjusted_idx = veh_idx - min_idx
             adjusted_leader_idx = leader_idx - min_idx
-            vel_vector[adjusted_idx] = current_data['vx']
-            type_vector[adjusted_idx] = current_data['veh_type']
 
+            vel_vector[adjusted_idx] = current_data['vx']
             delta_v[counter:counter + current_data.shape[0]] = (
                     vel_vector[adjusted_idx] - vel_vector[adjusted_leader_idx])
+
+            type_vector[adjusted_idx] = current_data['veh_type']
             leader_type[counter:counter + current_data.shape[0]] = (
                 type_vector[adjusted_leader_idx])
+
             distance[counter:counter + current_data.shape[0]] = (
                 self.compute_distance_to_leader(current_data, adjusted_idx,
                                                 adjusted_leader_idx))
@@ -210,7 +214,7 @@ class DataPostProcessor:
                 print('{:.0f}%'.format(counter / total_samples * 100))
                 percent += 0.1
 
-        veh_data['delta_v'] = delta_v
+        veh_data['my_delta_v'] = delta_v
         veh_data['leader_type'] = leader_type
         veh_data['delta_x'] = distance
 
@@ -256,23 +260,227 @@ class DataPostProcessor:
 
         return distance
 
+    def create_time_bins_and_labels(self, period):
+        """Creates equally spaced time intervals, generates labels
+        that go with them and includes a time_interval column to the
+        dataframe.
 
-class FlowAnalyzer:
+        :param period: time interval length
+        :return None; alters the data in place"""
+        final_time = int(self.veh_records['time'].iloc[-1])
+        interval_limits = []
+        interval_labels = []
+        for i in range(period, final_time + period,
+                       period):
+            interval_limits.append(i)
+            interval_labels.append(str(i) + '-'
+                                   + str(i + period))
+        self.veh_records['time_interval'] = pd.cut(
+            x=self.veh_records['time'], bins=interval_limits,
+            labels=interval_labels[:-1])
+
+
+class ResultAnalyzer:
+    units_map = {'TTC': 's', 'low_TTC': '# vehicles',
+                 'DRAC': 'm/s^2', 'high_DRAC': '# vehicles',
+                 'CPI': 'dimensionless', 'DTSG': 'm',
+                 'exact_risk': 'm/s', 'estimated_risk': 'm/s',
+                 'flow': 'veh/h', 'density': 'veh/km'}
+    ssm_pretty_name_map = {'low_TTC': 'Low TTC',
+                           'high_DRAC': 'High DRAC',
+                           'CPI': 'CPI',
+                           'exact_risk': 'CRI'}
 
     def __init__(self, network_name):
-        self.link_evaluation_reader = readers.LinkEvaluationReader(
+        self._link_evaluation_reader = readers.LinkEvaluationReader(
             network_name)
-        self.data_collections_reader = readers.DataCollectionReader(
+        self._data_collections_reader = readers.DataCollectionReader(
             network_name)
+        self._vehicle_record_reader = readers.VehicleRecordReader(
+            network_name)
+        self._ssm_data_reader = readers.SSMDataReader(network_name)
+        self._writer = SSMDataWriter(network_name)
 
-    def plot_fundamental_diagram(self):
+    # Not sure about the title here yet: maybe move this to post processor?
+    def vehicle_record_to_ssm_summary(self, autonomous_percentage: int = 0):
+        """Reads multiple vehicle record data files, postprocesses them,
+        computes SSMs, averages the SSMs within a time period, and produces a
+        single dataframe that can be merged to results from link evaluation
+        and data collection measurements.
+
+        :param autonomous_percentage: Percentage of autonomous vehicles
+         present in the simulation.
+        :return: Dataframe with columns simulation_number, time_interval and
+         one for each SSM"""
+
+        final_file_number = (self._vehicle_record_reader.
+                             find_highest_file_number(autonomous_percentage))
+        if self._check_if_ssm_file_exists(final_file_number,
+                                          autonomous_percentage):
+            print('SSM file already exists. Returning the loaded file.\n'
+                  'If you want to create a new file, delete the old one first.')
+            return self._ssm_data_reader.load_data(final_file_number,
+                                                   autonomous_percentage)
+
+        column_titles = ['simulation_number', 'time_interval', 'low_TTC',
+                         'high_DRAC', 'exact_risk']
+        result_df = pd.DataFrame(columns=column_titles)
+        aggregation_period = 60  # [s] TODO: read from somewhere?
+        initial_file_number = 2  # mistake on code to run multiple scenarios
+        # discards the file number 1. Already corrected and won't cause a
+        # relevant impact.
+
+        for file_number in range(initial_file_number, final_file_number + 1):
+            print('Working on file number {} / {}'.format(
+                file_number, final_file_number + 1))
+
+            vehicle_records = (self._vehicle_record_reader.
+                               load_data(file_number, autonomous_percentage))
+            post_processor = VehicleRecordPostProcessor('vissim',
+                                                        vehicle_records)
+            post_processor.post_process_data()
+            post_processor.create_time_bins_and_labels(aggregation_period)
+
+            # Adding SSMs
+            ssm_estimator = SSMEstimator(vehicle_records)
+            ssm_estimator.include_ttc()
+            ssm_estimator.include_drac()
+            ssm_estimator.include_collision_free_gap()
+            ssm_estimator.include_exact_risk()
+
+            # Aggregate
+            aggregated_data = vehicle_records[column_titles[1:]].groupby(
+                'time_interval').sum()
+            aggregated_data.reset_index(inplace=True)
+            aggregated_data.insert(0, 'simulation_number', file_number)
+            result_df = result_df.append(aggregated_data)
+            print('-' * 79)
+
+        print('Dataframe built. Saving to file...')
+        self._writer.save_as_csv(result_df, autonomous_percentage)
+        return result_df
+
+    # Plots aggregating results from multiple simulations =====================#
+    def plot_fundamental_diagram(self, autonomous_percentage: Union[int, list]):
         """Loads all measures of flow and density of a network to plot the
-        fundamental diagram"""
+        fundamental diagram
+
+        :param autonomous_percentage: Percentage of autonomous vehicles
+         present in the simulation. If this is a list, a single plot with
+         different colors for each percentage is drawn."""
+
+        if not isinstance(autonomous_percentage, list):
+            autonomous_percentage = [autonomous_percentage]
+
+        fig, ax = plt.subplots()
+        for ap in autonomous_percentage:
+            full_data = self._get_fundamental_diagram_data(ap)
+            ax.scatter(full_data['density(ALL)'], full_data['flow'],
+                       label=str(ap) + "% autonomous")
+        ax.set_xlabel('density' + '(' + self.units_map['density'] + ')')
+        ax.set_ylabel('flow' + '(' + self.units_map['flow'] + ')')
+        ax.legend()
+        fig.tight_layout()
+        plt.show()
+
+    def plot_ssm_vs_density(self, ssm: Union[str, list],
+                            autonomous_percentage: Union[int, list]):
+        """Gets flow and ssm data and plots one against the other
+
+        :param ssm: Name of the surrogate safety measure. Available ones:
+         low_TTC, high_DRAC, exact_risk. If this is a list, we draw one plot
+         per ssm.
+        :param autonomous_percentage: Percentage of autonomous vehicles
+         present in the simulation. If this is a list, a single plot with
+         different colors for each percentage is drawn.
+        """
+
+        if not isinstance(ssm, list):
+            ssm = [ssm]
+        if not isinstance(autonomous_percentage, list):
+            autonomous_percentage = [autonomous_percentage]
+
+        for measure in ssm:
+            fig, ax = plt.subplots()
+            for ap in autonomous_percentage:
+                full_data = self._get_fundamental_diagram_data(ap)
+                ax.scatter(full_data['density(ALL)'], full_data[measure],
+                           label=str(ap) + "% autonomous")
+            ax.set_xlabel('density' + '(' + self.units_map['density'] + ')')
+            ax.set_ylabel(measure + '(' + self.units_map[measure] + ')')
+            ax.legend()
+            fig.tight_layout()
+            plt.show()
+
+    def plot_ssm_vs_flow(self, ssm: Union[str, list],
+                         autonomous_percentage: Union[int, list]):
+        """Gets density and ssm data and plots one against the other
+
+        :param ssm: Name of the surrogate safety measure. Available ones:
+         low_TTC, high_DRAC, exact_risk. If this is a list, we draw one plot
+         per ssm.
+        :param autonomous_percentage: Percentage of autonomous vehicles
+         present in the simulation. If this is a list, a single plot with
+         different colors for each percentage is drawn.
+        """
+
+        if not isinstance(ssm, list):
+            ssm = [ssm]
+        if not isinstance(autonomous_percentage, list):
+            autonomous_percentage = [autonomous_percentage]
+
+        for measure in ssm:
+            fig, ax = plt.subplots()
+            for ap in autonomous_percentage:
+                full_data = self._get_fundamental_diagram_data(ap)
+                ax.scatter(full_data['flow'], full_data[measure],
+                           label=str(ap) + "% autonomous")
+            ax.set_xlabel('flow' + '(' + self.units_map['flow'] + ')')
+            ax.set_ylabel(measure + '(' + self.units_map[measure] + ')')
+            ax.legend()
+            fig.tight_layout()
+            plt.show()
+
+    def plot_fundamental_diagram_with_ssm(self, ssm: str,
+                                          autonomous_percentage: int):
+        """Plots the chosen surrogate safety measure on top of the
+        fundamental diagram
+
+        :param ssm: Name of the surrogate safety measure. Available ones:
+         low_TTC, high_DRAC, exact_risk.
+        :param autonomous_percentage: Percentage of autonomous vehicles
+         present in the simulation.
+        """
+        full_data = self._get_fundamental_diagram_data(autonomous_percentage)
+        fig, ax1 = plt.subplots()
+        ax1.scatter(full_data['density(ALL)'], full_data['flow'])
+        ax1.set_xlabel('density' + '(' + self.units_map['density'] + ')')
+        ax1.set_ylabel('flow' + '(' + self.units_map['flow'] + ')')
+
+        ax2 = ax1.twinx()
+        ax2.scatter(full_data['density(ALL)'], full_data[ssm], c='r')
+        ax2.set_ylabel(ssm + '(' + self.units_map[ssm] + ')')
+
+        fig.tight_layout()
+        plt.show()
+
+    # Support methods ========================================================#
+
+    def _get_fundamental_diagram_data(self, autonomous_percentage):
+        """Loads the necessary data, merges it all under a single dataframe,
+        computes the flow and returns the dataframe
+
+        :return: Merged dataframe with link evaluation, data collection
+        results and surrogate safety measurement data"""
         seconds_in_hour = 3600
         link_evaluation_data = (
-            self.link_evaluation_reader.load_data_from_all_simulations())
+            self._link_evaluation_reader.load_data_from_all_simulations(
+                autonomous_percentage))
         data_collections_data = (
-            self.data_collections_reader.load_data_from_all_simulations())
+            self._data_collections_reader.load_data_from_all_simulations(
+                autonomous_percentage))
+        ssm_data = self._ssm_data_reader.load_data_from_all_simulations(
+            autonomous_percentage)
         # We merge to be sure we're properly matching data collection results
         # and link evaluation data (same simulation, same time interval)
         full_data = link_evaluation_data.merge(data_collections_data)
@@ -281,37 +489,120 @@ class FlowAnalyzer:
         measurement_period = int(interval_end) - int(interval_start)
         full_data['flow'] = (seconds_in_hour / measurement_period
                              * full_data['vehicle_count(ALL)'])
-        plt.scatter(full_data['density(ALL)'], full_data['flow'])
+        full_data = full_data.merge(ssm_data)
+        return full_data
+
+    def _check_if_ssm_file_exists(self, file_identifier: int,
+                                  autonomous_percentage: int = 0) -> bool:
+        """We use this function to avoid repeating computations or
+        overwriting files.
+
+        :param file_identifier: File number, usually equal to the number of
+         simulations run with a given autonomous percentage.
+        :param autonomous_percentage: Percentage of autonomous vehicles
+         present in the simulation.
+        :return: True if file already exists, False otherwise"""
+        try:
+            df = self._ssm_data_reader.load_data(file_identifier,
+                                                 autonomous_percentage)
+        except ValueError:  # couldn't load file
+            return False
+        return not df.empty()
+
+    # Plots for a single simulation - OUTDATED: might not work ================#
+    # These methods require post-processed data with SSMs already computed #
+    def plot_ssm(self, ssm_names, vehicle_record):
+        """Plots the sum of the surrogate safety measure over all vehicles
+        versus time
+        Plotting this way is not recommended as we get too much noise.
+        Better to use the moving average plot.
+
+        :param vehicle_record: dataframe with the vehicle record data
+        :param ssm_names: list of strings with the desired surrogate safety
+         measures"""
+
+        if isinstance(ssm_names, str):
+            ssm_names = [ssm_names]
+
+        fig, ax = plt.subplots()
+        aggregated_data = (vehicle_record[['time'].extend(ssm_names)].
+                           groupby('time').sum())
+        for ssm in ssm_names:
+            if ssm in self.ssm_pretty_name_map:
+                ssm_plot_name = self.ssm_pretty_name_map[ssm]
+            else:
+                ssm_plot_name = ssm
+            ax.plot(aggregated_data[ssm].index, aggregated_data[ssm][ssm],
+                    label=ssm_plot_name + ' (' + self.units_map[ssm] + ')')
+        ax.legend()
         plt.show()
 
-    def plot_capacity_vs_ssm(self):
-        """Gets the maximum capacity from the fundamental diagram and the
-        mean ssm value of simulations with the same parameters then plots one
-        against the other"""
+    def plot_ssm_moving_average(self, vehicle_record, ssm_name,
+                                window=100, save_path=None):
+        """
+        Plots the moving average of the surrogate safety measure over all
+        vehicles versus time
+        :param vehicle_record: dataframe with the vehicle record data
+        :param window: moving average window
+        :param ssm_name: string with the desired surrogate safety measure
+        :param save_path: path including folder and simulation name. The
+        function adds the ssm_name to the figure name.
+        """
+        label_font_size = 18
+
+        with sns.axes_style("darkgrid"):
+            fig, ax = plt.subplots()
+        aggregated_data = vehicle_record[['time', ssm_name]].groupby(
+            'time').sum()
+        # sns.set_theme()
+        aggregated_data['Mov. Avg. ' + ssm_name] = aggregated_data[
+            ssm_name].rolling(window=window, min_periods=10).mean()
+        sns.lineplot(x=aggregated_data.index,
+                     y=aggregated_data['Mov. Avg. ' + ssm_name],
+                     ax=ax)
+        ax.set_xlabel('time (s)', fontsize=label_font_size)
+        if ssm_name in self.ssm_pretty_name_map:
+            ssm_plot_name = self.ssm_pretty_name_map[ssm_name]
+        else:
+            ssm_plot_name = ssm_name
+        ax.set_ylabel(ssm_plot_name + ' (' + self.units_map[ssm_name] + ')',
+                      fontsize=label_font_size)
+        plt.show()
+
+        if save_path is not None:
+            fig.savefig(save_path + ssm_name)
+
+    def plot_risk_counter(self, ssm_name, vehicle_record_data):
+        """Temporary function to compare how the exact and estimated risks
+        vary over time"""
+        fig, ax = plt.subplots()
+        ssm_counter = ssm_name + '_counter'
+        vehicle_record_data[ssm_counter] = vehicle_record_data[ssm_name] > 0
+        aggregated_data = vehicle_record_data[['time', ssm_counter]].groupby(
+            np.floor(vehicle_record_data['time'])).sum()
+        ax.plot(aggregated_data.index, aggregated_data[ssm_counter],
+                label=ssm_counter)
+        ax.legend()
+        plt.show()
 
 
 class SSMEstimator:
     coded_ssms = {'TTC', 'DRAC', 'CPI', 'safe_gap', 'DTSG', 'vf_gap',
                   'exact_risk', 'estimated_risk'}
-    ssm_unit_map = {'TTC': 's', 'low_TTC': '# vehicles',
-                    'DRAC': 'm/s^2', 'high_DRAC': '# vehicles',
-                    'CPI': 'dimensionless', 'DTSG': 'm',
-                    'exact_risk': 'm/s', 'estimated_risk': 'm/s'}
-    ssm_pretty_name_map = {'low_TTC': 'Low TTC',
-                           'high_DRAC': 'High DRAC',
-                           'CPI': 'CPI',
-                           'exact_risk': 'CRI'}
+    ttc_threshold = 1.5  # [s]
+    drac_threshold = 3.5  # [m/s2]
 
     def __init__(self, veh_data):
         self.veh_data = veh_data
-        self.ttc_threshold = 1.5  # [s]
-        self.drac_threshold = 3.5  # [m/s2]
 
-    def include_ttc(self):
+    def include_ttc(self, safe_threshold: float = ttc_threshold):
         """
-        Includes Time To Collision (TTC) to the the dataframe
-
+        Includes Time To Collision (TTC) and a flag indicating if the TTC is
+        below a threshold to the the dataframe.
         TTC = deltaX/deltaV if follower is faster; otherwise infinity
+
+        :param safe_threshold: [Optional] Threshold against which TTC values
+         are compared.
         :return: None
         """
         veh_data = self.veh_data
@@ -320,12 +611,16 @@ class SSMEstimator:
         ttc = (veh_data['delta_x'].loc[valid_ttc_idx]
                / veh_data['delta_v'].loc[valid_ttc_idx])
         veh_data.loc[valid_ttc_idx, 'TTC'] = ttc
+        veh_data['low_TTC'] = veh_data['TTC'] < safe_threshold
 
-    def include_drac(self):
+    def include_drac(self, safe_threshold: float = drac_threshold):
         """
-        Includes Deceleration Rate to Avoid Collision (DRAC) to the dataframe
-
+        Includes Deceleration Rate to Avoid Collision (DRAC) and a flag
+        indicating if the DRAC is above a threshold to the dataframe.
         DRAC = deltaV^2/(2.deltaX), if follower is faster; otherwise zero
+
+        :param safe_threshold: [Optional] Threshold against which DRAC values
+         are compared.
         :return: None
         """
         veh_data = self.veh_data
@@ -334,6 +629,7 @@ class SSMEstimator:
         drac = (veh_data['delta_v'].loc[valid_drac_idx] ** 2
                 / 2 / veh_data['delta_x'].loc[valid_drac_idx])
         veh_data.loc[valid_drac_idx, 'DRAC'] = drac
+        veh_data['high_DRAC'] = veh_data['DRAC'] > safe_threshold
 
     def include_cpi(self, max_decel_data, is_default_vissim=True):
         """
@@ -394,15 +690,20 @@ class SSMEstimator:
 
     def include_collision_free_gap(self, same_type_gamma=1):
         """
-        Includes collision free gap and distance to this gap in the dataframe
+        Computes the collision free (safe) gap and adds it to the dataframe.
+        If the vehicle violates the safe gap, the absolute value of the
+        distance to the safe gap (DTSG) is also added to the dataframe. The
+        DTSG column is padded with zeros.
         :param same_type_gamma: factor multiplying standard value of maximum
-        braking of the leader when both leader and follower are of the same type
-        Values greater than 1 indicate more conservative assumptions
+         braking of the leader when both leader and follower are of the same
+         type. Values greater than 1 indicate more conservative assumptions
         """
         # TODO: check with NGSIM data
         self.include_distance_based_ssm('safe_gap', same_type_gamma)
-        self.veh_data['DTSG'] = (self.veh_data['delta_x']
-                                 - self.veh_data['safe_gap'])
+        veh_data = self.veh_data
+        veh_data['DTSG'] = veh_data['delta_x'] - veh_data['safe_gap']
+        veh_data.loc[veh_data['DTSG'] > 0, 'DTSG'] = 0
+        veh_data['DTSG'] = np.abs(veh_data['DTSG'])
 
     def include_vehicle_following_gap(self, same_type_gamma=1, rho=0.2,
                                       free_flow_velocity=None):
@@ -606,24 +907,24 @@ class SSMEstimator:
         is_gamma_above = gamma >= gamma_threshold
         # Gap thresholds
         # (note that delta_vel is follower_vel - leader_vel)
-        gap_thresholds = []
-        gap_thresholds.append(
-            follower.brake_delay
-            * (follower.brake_delay / 2 * (follower.accel_t0
-                                           + leader.max_brake)
-               + delta_vel))
-        gap_thresholds.append(
-            (follower.brake_delay + follower.tau_j)
-            * (follower.lambda1 + delta_vel
-               - (follower.brake_delay + follower.tau_j) / 2
-               * (follower.max_brake - leader.max_brake))
-            + follower.lambda0)
-        gap_thresholds.append(
-            leader_vel / leader.max_brake
-            * (follower.lambda1 + follower_vel
-               - (follower.max_brake / leader.max_brake + 1)
-               * leader_vel / 2)
-            + follower.lambda0)
+        gap_thresholds = [0] * 3
+        gap_thresholds[0] = (
+                follower.brake_delay
+                * (follower.brake_delay / 2 * (follower.accel_t0
+                                               + leader.max_brake)
+                   + delta_vel))
+        gap_thresholds[1] = (
+                (follower.brake_delay + follower.tau_j)
+                * (follower.lambda1 + delta_vel
+                   - (follower.brake_delay + follower.tau_j) / 2
+                   * (follower.max_brake - leader.max_brake))
+                + follower.lambda0)
+        gap_thresholds[2] = (
+                leader_vel / leader.max_brake
+                * (follower.lambda1 + follower_vel
+                   - (follower.max_brake / leader.max_brake + 1)
+                   * leader_vel / 2)
+                + follower.lambda0)
 
         idx_case_1 = gap <= gap_thresholds[0]
         idx_case_2 = ((gap > gap_thresholds[1])
@@ -705,99 +1006,3 @@ class SSMEstimator:
 
         estimated_risk_squared[estimated_risk_squared < 0] = 0
         return np.sqrt(estimated_risk_squared)
-
-    # PLOT FUNCTIONS #
-    def plot_ssm(self, ssm_names):
-        """Plots the sum of the surrogate safety measure over all vehicles
-        versus time
-        Plotting this way is not recommended as we get too much noise.
-        Better to use the moving average plot.
-        :param ssm_names: list of strings with the desired surrogate safety 
-        measures"""
-
-        if isinstance(ssm_names, str):
-            ssm_names = [ssm_names]
-
-        fig, ax = plt.subplots()
-        aggregated_data = self._aggregate_ssm(ssm_names)
-        for ssm in ssm_names:
-            if ssm == 'TTC':
-                ssm = 'low_TTC'
-            if ssm == 'DTSG':  # distance to safe gap
-                ssm = 'abs(min(0, DTSG))'
-            ax.plot(aggregated_data[ssm].index, aggregated_data[ssm][ssm],
-                    label=ssm)
-        ax.legend()
-        plt.show()
-
-    def plot_ssm_moving_average(self, ssm_name, window=100, save_path=None):
-        """
-        Plots the moving average of the surrogate safety measure over all
-        vehicles versus time
-        :param window: moving average window
-        :param ssm_name: string with the desired surrogate safety measure
-        :param save_path: path including folder and simulation name. The
-        function adds the ssm_name to the figure name.
-        """
-        label_font_size = 18
-
-        with sns.axes_style("darkgrid"):
-            fig, ax = plt.subplots()
-        aggregated_data = self._aggregate_ssm(ssm_name)
-        # sns.set_theme()
-        if ssm_name == 'TTC':
-            ssm_name = 'low_TTC'
-        elif ssm_name == 'DTSG':  # distance to safe gap
-            ssm_name = 'abs(min(0, DTSG))'
-        elif ssm_name == 'DRAC':
-            ssm_name = 'high_DRAC'
-        aggregated_data['Mov. Avg. ' + ssm_name] = aggregated_data[
-            ssm_name].rolling(window=window, min_periods=10).mean()
-        sns.lineplot(x=aggregated_data.index,
-                     y=aggregated_data['Mov. Avg. ' + ssm_name],
-                     ax=ax)
-        ax.set_xlabel('time (s)', fontsize=label_font_size)
-        if ssm_name in self.ssm_pretty_name_map:
-            ssm_plot_name = self.ssm_pretty_name_map[ssm_name]
-        else:
-            ssm_plot_name = ssm_name
-        ax.set_ylabel(ssm_plot_name + ' (' + self.ssm_unit_map[ssm_name] + ')',
-                      fontsize=label_font_size)
-        plt.show()
-
-        if save_path is not None:
-            fig.savefig(save_path + ssm_name)
-
-    def plot_risk_counter(self, ssm_name):
-        """Temporary function to compare how the exact and estimated risks
-        vary over time"""
-        fig, ax = plt.subplots()
-        ssm_counter = ssm_name + '_counter'
-        self.veh_data[ssm_counter] = self.veh_data[ssm_name] > 0
-        aggregated_data = self.veh_data[['time', ssm_counter]].groupby(
-            np.floor(self.veh_data['time'])).sum()
-        ax.plot(aggregated_data.index, aggregated_data[ssm_counter],
-                label=ssm_counter)
-        ax.legend()
-        plt.show()
-
-    def _aggregate_ssm(self, ssm_name):
-
-        if ssm_name == 'TTC':
-            ssm_name = 'low_TTC'
-            self.veh_data[ssm_name] = (self.veh_data['TTC']
-                                       < self.ttc_threshold)
-        elif ssm_name == 'DTSG':  # distance to safe gap
-            ssm_name = 'abs(min(0, DTSG))'
-            self.veh_data[ssm_name] = self.veh_data['DTSG']
-            self.veh_data.loc[self.veh_data[ssm_name] > 0, ssm_name] = 0
-            self.veh_data[ssm_name] = np.abs(self.veh_data[ssm_name])
-        elif ssm_name == 'DRAC':
-            ssm_name = 'high_DRAC'
-            self.veh_data[ssm_name] = (self.veh_data['DRAC']
-                                       > self.drac_threshold)
-        aggregated_data = self.veh_data[['time', ssm_name]].groupby(
-            'time').sum()
-        # aggregated_data[ssm] = self.veh_data[['time', ssm]].groupby(
-        #     np.floor(self.veh_data['time'])).sum()
-        return aggregated_data

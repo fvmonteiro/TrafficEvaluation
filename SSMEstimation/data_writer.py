@@ -4,6 +4,43 @@ import numpy as np
 import pandas as pd
 
 from Vehicle import Vehicle
+from vissim_interface import VissimInterface
+
+
+class SSMDataWriter:
+    """Helps saving aggregated SSM results to files"""
+    file_extension = '.csv'
+
+    def __init__(self, network_name):
+        # TODO: this should be a static method from VissimInterface
+        if network_name in VissimInterface.existing_networks:
+            network_name = VissimInterface.existing_networks[network_name]
+        elif network_name in VissimInterface.existing_networks.values():
+            pass
+        else:
+            raise ValueError('Network "{}" is not in the list of valid '
+                             'simulations\nCheck whether the network exists  '
+                             'and add it to the VissimInterface attribute '
+                             'existing_networks'.
+                             format(network_name))
+        self.file_base_name = network_name + '_SSM Results'
+        self.network_data_dir = os.path.join(VissimInterface.networks_folder,
+                                             network_name)
+
+    def save_as_csv(self, data: pd.DataFrame,
+                    autonomous_percentage: int = None):
+
+        if autonomous_percentage is None:
+            autonomous_percentage_folder = 'test'
+        else:
+            autonomous_percentage_folder = (str(autonomous_percentage)
+                                            + '_percent_autonomous')
+        max_sim_number = data['simulation_number'].iloc[-1]
+        num_str = '_' + str(max_sim_number).rjust(3, '0')
+        file_name = self.file_base_name + num_str + self.file_extension
+        full_address = os.path.join(self.network_data_dir,
+                                    autonomous_percentage_folder, file_name)
+        data.to_csv(full_address, index=False)
 
 
 class SyntheticDataWriter:
