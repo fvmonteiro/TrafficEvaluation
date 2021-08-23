@@ -275,13 +275,15 @@ def main():
     # run_i170_scenario(True)
     # run_toy_example()
     # generate_us_101_reduced_speed_table(1)
-    # vi = VissimInterface()
-    # vi.load_simulation('toy')
-    # vi.run_with_increasing_autonomous_penetration(
-    #     autonomous_percentage_increase=-20,
-    #     initial_autonomous_percentage=100,
-    #     final_autonomous_percentage=40)
-
+    vi = VissimInterface()
+    vi.load_simulation('toy')
+    vi.run_with_increasing_autonomous_penetration(
+        autonomous_percentage_increase=100,
+        initial_autonomous_percentage=0,
+        final_autonomous_percentage=100)
+    result_analyzer = result_analysis.ResultAnalyzer(network_file)
+    for autonomous_percentage in [0, 100]:
+        result_analyzer.vehicle_record_to_ssm_summary(autonomous_percentage)
     # Post processing #
     # post_process_and_save(data_source, network_file)
 
@@ -299,10 +301,15 @@ def main():
     # ssm_estimator.include_exact_risk()
 
     # Check results graphically #
-    result_analyzer = result_analysis.ResultAnalyzer(network_file)
-    for autonomous_percentage in [0]:
-        result_analyzer.vehicle_record_to_ssm_summary(autonomous_percentage)
-    # result_analyzer.plot_fundamental_diagram([0, 100])
+    # result_analyzer = result_analysis.ResultAnalyzer(network_file)
+    # for veh_input in range(2300, 2500, 600):
+    #     result_analyzer.plot_variable_vs_time('low_TTC', veh_input,
+    #                                           [0, 20, 40, 60, 80, 100],
+    #                                           start_time=5)
+    # result_analyzer.plot_double_y_axes(0, x='density', y=['flow',
+    #                                                       'exact_risk'])
+    # result_analyzer.plot_with_labels([0, 20, 100], x='average_speed',
+    #                                  y='exact_risk')
     # reader = readers.PostProcessedDataReader(data_source, network_file)
     # data = reader.load_data()
     # ssm_estimator = SSMEstimator(data)

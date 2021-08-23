@@ -279,7 +279,7 @@ class VissimInterface:
     # MULTIPLE SCENARIO RUN ---------------------------------------------------#
 
     def run_with_increasing_demand(self, input_increase_per_lane: int,
-                                   initial_input_per_lane: int = 100,
+                                   initial_input_per_lane: int = 500,
                                    max_input_per_lane: int = 2500,
                                    runs_per_input: int = 10,
                                    simulation_period: int = None):
@@ -341,8 +341,12 @@ class VissimInterface:
 
     def run_with_increasing_autonomous_penetration(
             self, autonomous_percentage_increase,
-            initial_autonomous_percentage=0,
-            final_autonomous_percentage=100,
+            initial_autonomous_percentage,
+            final_autonomous_percentage,
+            input_increase_per_lane=500,
+            initial_input_per_lane=500,
+            max_input_per_lane=2500,
+            runs_per_input=10,
             is_debugging=False):
         """Runs scenarios with increasing demand for varying penetration
         values of autonomous vehicles"""
@@ -351,6 +355,7 @@ class VissimInterface:
         #         initial_autonomous_percentage) > 20:
         #     print
 
+        self.set_evaluation_outputs(True, True, True, True, 60, 30)
         # Any values for initial random seed and increment are good, as long
         # as they are the same over each set of simulations.
         self.set_random_seed(7)
@@ -374,10 +379,11 @@ class VissimInterface:
                 self.use_debug_folder_for_results()
             # Finally, we set the percentage and run the simulation
             self.set_autonomous_percentage(autonomous_percentage)
-            self.run_with_increasing_demand(input_increase_per_lane=300,
-                                            initial_input_per_lane=200,
-                                            max_input_per_lane=2500,
-                                            runs_per_input=10)
+            self.run_with_increasing_demand(
+                input_increase_per_lane=input_increase_per_lane,
+                initial_input_per_lane=initial_input_per_lane,
+                max_input_per_lane=max_input_per_lane,
+                runs_per_input=runs_per_input)
 
     def run_us_101_with_different_speed_limits(self, possible_speeds=None):
         if (self.vissim.AttValue('InputFile')
@@ -407,7 +413,7 @@ class VissimInterface:
                                activate_data_collections: bool = False,
                                activate_link_evaluation: bool = False,
                                warm_up_time: int = 0,
-                               data_frequency: int = 60):
+                               data_frequency: int = 30):
         """ Sets evaluation output options for various possible VISSIM outputs
 
         :param save_vehicle_record: Defines if VISSIM should save a vehicle

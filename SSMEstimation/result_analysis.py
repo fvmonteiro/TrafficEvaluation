@@ -1,3 +1,4 @@
+from typing import List
 from typing import Union
 
 import matplotlib.pyplot as plt
@@ -266,7 +267,7 @@ class VehicleRecordPostProcessor:
         dataframe.
 
         :param period: time interval length
-        :return None; alters the data in place"""
+        :return: None; alters the data in place"""
         final_time = int(self.veh_records['time'].iloc[-1])
         interval_limits = []
         interval_labels = []
@@ -285,7 +286,8 @@ class ResultAnalyzer:
                  'DRAC': 'm/s^2', 'high_DRAC': '# vehicles',
                  'CPI': 'dimensionless', 'DTSG': 'm',
                  'exact_risk': 'm/s', 'estimated_risk': 'm/s',
-                 'flow': 'veh/h', 'density': 'veh/km'}
+                 'flow': 'veh/h', 'density': 'veh/km',
+                 'time': 'min', 'time_interval': 's'}
     ssm_pretty_name_map = {'low_TTC': 'Low TTC',
                            'high_DRAC': 'High DRAC',
                            'CPI': 'CPI',
@@ -325,7 +327,7 @@ class ResultAnalyzer:
         column_titles = ['simulation_number', 'time_interval', 'low_TTC',
                          'high_DRAC', 'exact_risk']
         result_df = pd.DataFrame(columns=column_titles)
-        aggregation_period = 60  # [s] TODO: read from somewhere?
+        aggregation_period = 30  # [s] TODO: read from somewhere?
         initial_file_number = 2  # mistake on code to run multiple scenarios
         # discards the file number 1. Already corrected and won't cause a
         # relevant impact.
@@ -361,6 +363,37 @@ class ResultAnalyzer:
         return result_df
 
     # Plots aggregating results from multiple simulations =====================#
+    def plot_variable_vs_time(self, y: str, input_per_lane: int,
+                              autonomous_percentage: Union[int, list],
+                              start_time: int = None):
+        """Plots averaged flow over several runs vs time."""
+
+        if not isinstance(autonomous_percentage, list):
+            autonomous_percentage = [autonomous_percentage]
+
+        # TODO: check if input_per_lane exists in
+        #  self._autonomous_percentage_simulated_inputs_map
+
+        all_data = self._load_all_data(autonomous_percentage)
+        # Create time in minutes for better display
+        seconds_in_minute = 60
+        all_data['time'] = all_data['time_interval'].apply(
+            lambda x: int(x.split('-')[0]) / seconds_in_minute)
+        relevant_data = all_data.loc[
+            all_data['input_per_lane'] == input_per_lane]
+        if start_time is not None:
+            relevant_data = relevant_data.loc[relevant_data['time']
+                                              >= start_time]
+        # Plot
+        sns.set_style('whitegrid')
+        n_lines = len(autonomous_percentage)
+        ax = sns.lineplot(data=relevant_data, x='time', y=y,
+                          hue='autonomous_percentage', ci='sd',
+                          palette=sns.color_palette('deep', n_colors=n_lines)
+                          )  # as_cmap = True
+        ax.set_title('Input: ' + str(input_per_lane) + ' vehs per lane')
+        plt.show()
+
     def plot_fundamental_diagram(self, autonomous_percentage: Union[int, list]):
         """Loads all measures of flow and density of a network to plot the
         fundamental diagram
@@ -368,105 +401,92 @@ class ResultAnalyzer:
         :param autonomous_percentage: Percentage of autonomous vehicles
          present in the simulation. If this is a list, a single plot with
          different colors for each percentage is drawn."""
+        self.plot_with_labels(autonomous_percentage, 'density', 'flow')
+
+    # TODO: find better name. scatter_plot_by_autonomous_percentage?
+    def plot_with_labels(self, autonomous_percentage: Union[int, list],
+                         x: str, y: str):
+        """Loads data from the simulation(s) with the indicated autonomous
+        percentage and plots y against x.
+
+        :param autonomous_percentage: Percentage of autonomous vehicles
+         present in the simulation. If this is a list, a single plot with
+         different colors for each percentage is drawn.
+        :param x: Options: flow, density, or any of the surrogate safety
+         measures, namely, exact_risk, low_TTC, high_DRAC
+        :param y: Options: flow, density, or any of
+         the surrogate safety measures, namely, exact_risk, low_TTC, high_DRAC
+         """
 
         if not isinstance(autonomous_percentage, list):
             autonomous_percentage = [autonomous_percentage]
 
-        fig, ax = plt.subplots()
-        for ap in autonomous_percentage:
-            full_data = self._get_fundamental_diagram_data(ap)
-            ax.scatter(full_data['density(ALL)'], full_data['flow'],
-                       label=str(ap) + "% autonomous")
-        ax.set_xlabel('density' + '(' + self.units_map['density'] + ')')
-        ax.set_ylabel('flow' + '(' + self.units_map['flow'] + ')')
-        ax.legend()
-        fig.tight_layout()
+        data = self._load_all_data(autonomous_percentage)
+        sns.scatterplot(data=data, x=x, y=y, hue='autonomous_percentage',
+                        palette=sns.color_palette(
+                            'deep', n_colors=len(autonomous_percentage)))
         plt.show()
 
-    def plot_ssm_vs_density(self, ssm: Union[str, list],
-                            autonomous_percentage: Union[int, list]):
-        """Gets flow and ssm data and plots one against the other
+    def plot_double_y_axes(self, autonomous_percentage: int, x: str,
+                           y: List[str]):
+        """Loads data from the simulation with the indicated autonomous
+        percentage and plots two variables against the same x axis
 
-        :param ssm: Name of the surrogate safety measure. Available ones:
-         low_TTC, high_DRAC, exact_risk. If this is a list, we draw one plot
-         per ssm.
-        :param autonomous_percentage: Percentage of autonomous vehicles
-         present in the simulation. If this is a list, a single plot with
-         different colors for each percentage is drawn.
-        """
-
-        if not isinstance(ssm, list):
-            ssm = [ssm]
-        if not isinstance(autonomous_percentage, list):
-            autonomous_percentage = [autonomous_percentage]
-
-        for measure in ssm:
-            fig, ax = plt.subplots()
-            for ap in autonomous_percentage:
-                full_data = self._get_fundamental_diagram_data(ap)
-                ax.scatter(full_data['density(ALL)'], full_data[measure],
-                           label=str(ap) + "% autonomous")
-            ax.set_xlabel('density' + '(' + self.units_map['density'] + ')')
-            ax.set_ylabel(measure + '(' + self.units_map[measure] + ')')
-            ax.legend()
-            fig.tight_layout()
-            plt.show()
-
-    def plot_ssm_vs_flow(self, ssm: Union[str, list],
-                         autonomous_percentage: Union[int, list]):
-        """Gets density and ssm data and plots one against the other
-
-        :param ssm: Name of the surrogate safety measure. Available ones:
-         low_TTC, high_DRAC, exact_risk. If this is a list, we draw one plot
-         per ssm.
-        :param autonomous_percentage: Percentage of autonomous vehicles
-         present in the simulation. If this is a list, a single plot with
-         different colors for each percentage is drawn.
-        """
-
-        if not isinstance(ssm, list):
-            ssm = [ssm]
-        if not isinstance(autonomous_percentage, list):
-            autonomous_percentage = [autonomous_percentage]
-
-        for measure in ssm:
-            fig, ax = plt.subplots()
-            for ap in autonomous_percentage:
-                full_data = self._get_fundamental_diagram_data(ap)
-                ax.scatter(full_data['flow'], full_data[measure],
-                           label=str(ap) + "% autonomous")
-            ax.set_xlabel('flow' + '(' + self.units_map['flow'] + ')')
-            ax.set_ylabel(measure + '(' + self.units_map[measure] + ')')
-            ax.legend()
-            fig.tight_layout()
-            plt.show()
-
-    def plot_fundamental_diagram_with_ssm(self, ssm: str,
-                                          autonomous_percentage: int):
-        """Plots the chosen surrogate safety measure on top of the
-        fundamental diagram
-
-        :param ssm: Name of the surrogate safety measure. Available ones:
-         low_TTC, high_DRAC, exact_risk.
         :param autonomous_percentage: Percentage of autonomous vehicles
          present in the simulation.
-        """
-        full_data = self._get_fundamental_diagram_data(autonomous_percentage)
+        :param x: Options: flow, density, or any of the surrogate safety
+         measures, namely, exact_risk, low_TTC, high_DRAC
+        :param y: Must be a two-element list. Options: flow, density, or any of
+         the surrogate safety measures, namely, exact_risk, low_TTC, high_DRAC
+         """
+
+        if len(y) != 2:
+            print('Parameter y should be a list with two strings.')
+            return
+
+        data = self._load_all_data(autonomous_percentage)
         fig, ax1 = plt.subplots()
-        ax1.scatter(full_data['density(ALL)'], full_data['flow'])
-        ax1.set_xlabel('density' + '(' + self.units_map['density'] + ')')
-        ax1.set_ylabel('flow' + '(' + self.units_map['flow'] + ')')
-
         ax2 = ax1.twinx()
-        ax2.scatter(full_data['density(ALL)'], full_data[ssm], c='r')
-        ax2.set_ylabel(ssm + '(' + self.units_map[ssm] + ')')
 
+        sns.scatterplot(data=data, ax=ax1, x=x, y=y[0], color='b')
+        ax1.yaxis.label.set_color('b')
+        sns.scatterplot(data=data, ax=ax2, x=x, y=y[1], color='r')
+        ax2.yaxis.label.set_color('r')
+
+        ax1.set_title(str(autonomous_percentage) + '% autonomous')
         fig.tight_layout()
         plt.show()
 
-    # Support methods ========================================================#
+        return ax1, ax2
 
-    def _get_fundamental_diagram_data(self, autonomous_percentage):
+    # Support methods =========================================================#
+
+    # def _plot_with_labels(self, data: pd.DataFrame, x: str, y: str,
+    #                       ax: plt.Axes = None, color: str = None) \
+    #         -> (plt.Figure, plt.Axes):
+    #     """Generates plots that aggregate results over several simulations
+    #     with varying inputs.
+    #
+    #     :param data: dataframe containing columns named as parameters x and y
+    #     :param x: Options: flow, density, or any of the surrogate safety
+    #      measures, namely, exact_risk, low_TTC, high_DRAC
+    #     :param y: Options: flow, density, or any of the surrogate safety
+    #      measures, namely, exact_risk, low_TTC, high_DRAC
+    #     :param ax: axes on which to plot the data
+    #     :param color: color of the plotted data
+    #     :return: figure and axes on which the plot was drawn """
+    #
+    #     if not ax:
+    #         fig, ax = plt.subplots()
+    #     else:
+    #         fig = ax.figure
+    #     ax.scatter(data[x], data[y], c=color)
+    #     ax.set_xlabel(x + '(' + self.units_map[x] + ')')
+    #     ax.set_ylabel(y + '(' + self.units_map[y] + ')')
+    #
+    #     return fig, ax
+
+    def _load_all_data(self, autonomous_percentage: Union[int, list]):
         """Loads the necessary data, merges it all under a single dataframe,
         computes the flow and returns the dataframe
 
@@ -474,12 +494,12 @@ class ResultAnalyzer:
         results and surrogate safety measurement data"""
         seconds_in_hour = 3600
         link_evaluation_data = (
-            self._link_evaluation_reader.load_data_from_all_simulations(
+            self._link_evaluation_reader.load_data_with_autonomous_percentage(
                 autonomous_percentage))
         data_collections_data = (
-            self._data_collections_reader.load_data_from_all_simulations(
+            self._data_collections_reader.load_data_with_autonomous_percentage(
                 autonomous_percentage))
-        ssm_data = self._ssm_data_reader.load_data_from_all_simulations(
+        ssm_data = self._ssm_data_reader.load_data_with_autonomous_percentage(
             autonomous_percentage)
         # We merge to be sure we're properly matching data collection results
         # and link evaluation data (same simulation, same time interval)
@@ -490,6 +510,11 @@ class ResultAnalyzer:
         full_data['flow'] = (seconds_in_hour / measurement_period
                              * full_data['vehicle_count(ALL)'])
         full_data = full_data.merge(ssm_data)
+
+        # Some column names contain (ALL). We can remove that information
+        column_names = [name.split('(')[0] for name in full_data.columns]
+        full_data.columns = column_names
+
         return full_data
 
     def _check_if_ssm_file_exists(self, file_identifier: int,
