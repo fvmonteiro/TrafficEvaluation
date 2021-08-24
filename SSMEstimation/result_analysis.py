@@ -212,10 +212,10 @@ class VehicleRecordPostProcessor:
             counter += current_data.shape[0]
 
             if counter >= percent * total_samples:
-                print('{:.0f}%'.format(counter / total_samples * 100))
+                print('{:.0f}%'.format(counter / total_samples * 100), end=',')
                 percent += 0.1
-
-        veh_data['my_delta_v'] = delta_v
+        print()  # skip a line
+        veh_data['delta_v'] = delta_v
         veh_data['leader_type'] = leader_type
         veh_data['delta_x'] = distance
 
@@ -364,9 +364,19 @@ class ResultAnalyzer:
 
     # Plots aggregating results from multiple simulations =====================#
     def plot_variable_vs_time(self, y: str, input_per_lane: int,
-                              autonomous_percentage: Union[int, list],
+                              autonomous_percentage:
+                              Union[int, List[int], str, List[str]],
                               start_time: int = None):
-        """Plots averaged flow over several runs vs time."""
+        """Plots averaged flow over several runs vs time.
+        
+        :param y: name of the variable being plotted.
+        :param input_per_lane: input per lane used to generate the data
+        :param autonomous_percentage: Percentage of autonomous vehicles
+         present in the simulation. If this is a list, a single plot with
+         different colors for each percentage is drawn. We expect an int, 
+         but, for debugging purposes, a string with the folder name is also 
+         accepted.
+        :param start_time: samples before start_time are ignored."""
 
         if not isinstance(autonomous_percentage, list):
             autonomous_percentage = [autonomous_percentage]
@@ -381,9 +391,11 @@ class ResultAnalyzer:
             lambda x: int(x.split('-')[0]) / seconds_in_minute)
         relevant_data = all_data.loc[
             all_data['input_per_lane'] == input_per_lane]
+        # Optional warm-up time
         if start_time is not None:
             relevant_data = relevant_data.loc[relevant_data['time']
                                               >= start_time]
+        self._remove_deadlock_simulations(relevant_data)
         # Plot
         sns.set_style('whitegrid')
         n_lines = len(autonomous_percentage)
@@ -422,6 +434,7 @@ class ResultAnalyzer:
             autonomous_percentage = [autonomous_percentage]
 
         data = self._load_all_data(autonomous_percentage)
+        self._remove_deadlock_simulations(data)
         sns.scatterplot(data=data, x=x, y=y, hue='autonomous_percentage',
                         palette=sns.color_palette(
                             'deep', n_colors=len(autonomous_percentage)))
@@ -461,35 +474,16 @@ class ResultAnalyzer:
 
     # Support methods =========================================================#
 
-    # def _plot_with_labels(self, data: pd.DataFrame, x: str, y: str,
-    #                       ax: plt.Axes = None, color: str = None) \
-    #         -> (plt.Figure, plt.Axes):
-    #     """Generates plots that aggregate results over several simulations
-    #     with varying inputs.
-    #
-    #     :param data: dataframe containing columns named as parameters x and y
-    #     :param x: Options: flow, density, or any of the surrogate safety
-    #      measures, namely, exact_risk, low_TTC, high_DRAC
-    #     :param y: Options: flow, density, or any of the surrogate safety
-    #      measures, namely, exact_risk, low_TTC, high_DRAC
-    #     :param ax: axes on which to plot the data
-    #     :param color: color of the plotted data
-    #     :return: figure and axes on which the plot was drawn """
-    #
-    #     if not ax:
-    #         fig, ax = plt.subplots()
-    #     else:
-    #         fig = ax.figure
-    #     ax.scatter(data[x], data[y], c=color)
-    #     ax.set_xlabel(x + '(' + self.units_map[x] + ')')
-    #     ax.set_ylabel(y + '(' + self.units_map[y] + ')')
-    #
-    #     return fig, ax
-
-    def _load_all_data(self, autonomous_percentage: Union[int, list]):
+    def _load_all_data(self, autonomous_percentage: Union[int, List[int],
+                                                          str, List[str]]):
         """Loads the necessary data, merges it all under a single dataframe,
         computes the flow and returns the dataframe
 
+        :param autonomous_percentage: Percentage of autonomous vehicles
+         in the simulation. If this is a list, a single plot with
+         different colors for each percentage is drawn. We expect an int,
+         but, for debugging purposes, a string with the folder name is also
+         accepted.
         :return: Merged dataframe with link evaluation, data collection
         results and surrogate safety measurement data"""
         seconds_in_hour = 3600
@@ -503,13 +497,19 @@ class ResultAnalyzer:
             autonomous_percentage)
         # We merge to be sure we're properly matching data collection results
         # and link evaluation data (same simulation, same time interval)
-        full_data = link_evaluation_data.merge(data_collections_data)
+        full_data = link_evaluation_data.merge(
+            right=data_collections_data, how='inner',
+            on=['autonomous_percentage', 'input_per_lane', 'time_interval',
+                'random_seed'])
         time_interval = full_data['time_interval'].iloc[0]
         interval_start, _, interval_end = time_interval.partition('-')
         measurement_period = int(interval_end) - int(interval_start)
         full_data['flow'] = (seconds_in_hour / measurement_period
                              * full_data['vehicle_count(ALL)'])
-        full_data = full_data.merge(ssm_data)
+        full_data = full_data.merge(
+            right=ssm_data, how='inner',
+            on=['autonomous_percentage', 'input_per_lane', 'time_interval',
+                'random_seed'])
 
         # Some column names contain (ALL). We can remove that information
         column_names = [name.split('(')[0] for name in full_data.columns]
@@ -532,7 +532,20 @@ class ResultAnalyzer:
                                                  autonomous_percentage)
         except ValueError:  # couldn't load file
             return False
-        return not df.empty()
+        return not df.empty
+
+    def _remove_deadlock_simulations(self, data):
+        deadlock_entries = (
+            data.loc[data['flow'] == 0, ['input_per_lane', 'random_seed']].
+            drop_duplicates().values
+        )
+        for element in deadlock_entries:
+            idx = data.loc[(data['input_per_lane'] == element[0]) & (data[
+                        'random_seed'] == element[1])].index
+            data.drop(idx, inplace=True)
+            print('Removed results from simulation with input {}, random '
+                  'seed {} due to deadlock'.
+                  format(element[0], element[1]))
 
     # Plots for a single simulation - OUTDATED: might not work ================#
     # These methods require post-processed data with SSMs already computed #
@@ -866,24 +879,35 @@ class SSMEstimator:
         leader_vel = follower_vel - delta_vel
         safe_gap = np.zeros(len(follower_vel))
 
-        gamma = leader.max_brake / follower.max_brake
-        threshold = leader_vel / (follower_vel + follower.lambda1)
-        is_above = gamma >= threshold
+        follower_effective_max_brake, follower_effective_lambda1 = (
+            self._get_braking_parameters_over_time(
+                self.veh_data.loc[veh_idx, 'y'], follower)
+        )
+
+        gamma = leader.max_brake / follower_effective_max_brake
+        gamma_threshold = leader_vel / (follower_vel
+                                        + follower_effective_lambda1)
+
+        is_above = gamma >= gamma_threshold
         safe_gap[is_above] = (
-            (follower_vel[is_above] ** 2 / 2 / follower.max_brake
-             - leader_vel[is_above] ** 2 / 2 / leader.max_brake
-             + (follower.lambda1 * follower_vel[is_above]
-                / follower.max_brake)
-             + follower.lambda1 ** 2 / 2 / follower.max_brake
+            (follower_vel[is_above] ** 2 /
+             (2 * follower_effective_max_brake[is_above])
+             - leader_vel[is_above] ** 2 / (2 * leader.max_brake)
+             + (follower_effective_lambda1[is_above] * follower_vel[is_above]
+                / follower_effective_max_brake[is_above])
+             + follower_effective_lambda1[is_above] ** 2 /
+             (2 * follower_effective_max_brake[is_above])
              + follower.lambda0))
-        if gamma < 1:
-            brake_difference = follower.max_brake - leader.max_brake
+        if any(gamma) < 1:
             is_below = ~is_above
+            brake_difference = (follower_effective_max_brake[is_below] -
+                                leader.max_brake)
             safe_gap[is_below] = (
                 (delta_vel[is_below] ** 2 / 2 / brake_difference
-                 + (follower.lambda1 * delta_vel[is_below]
+                 + (follower_effective_lambda1[is_below] * delta_vel[is_below]
                     / brake_difference)
-                 + follower.lambda1 ** 2 / 2 / brake_difference
+                 + follower_effective_lambda1[is_below] ** 2 /
+                 (2 * brake_difference)
                  + follower.lambda0))
         return safe_gap
 
@@ -926,10 +950,16 @@ class SSMEstimator:
         risk_squared = np.zeros(len(follower_vel))
         safe_gap = self.veh_data.loc[veh_idx, 'safe_gap'].values
 
-        gamma = leader.max_brake / follower.max_brake
-        gamma_threshold = (leader_vel
-                           / (follower_vel + follower.lambda1))
+        follower_effective_max_brake, follower_effective_lambda1 = (
+            self._get_braking_parameters_over_time(
+                self.veh_data.loc[veh_idx, 'y'], follower)
+        )
+
+        gamma = leader.max_brake / follower_effective_max_brake
+        gamma_threshold = leader_vel / (follower_vel +
+                                        follower_effective_lambda1)
         is_gamma_above = gamma >= gamma_threshold
+
         # Gap thresholds
         # (note that delta_vel is follower_vel - leader_vel)
         gap_thresholds = [0] * 3
@@ -999,12 +1029,13 @@ class SSMEstimator:
         under the following assumptions.
         . (1-rho)vE(t) <= vL(t) <= vE(t), for all t
         . vE(t) <= Vf, for all t.
+
         :param veh_idx: boolean array indicating which vehicles of the
-        dataset are being considered
+         dataset are being considered
         :param follower: following vehicle - object of the Vehicle class
         :param leader: leading vehicle - object of the Vehicle class
         :param rho: defines the lower bound on the leader velocity following
-        (1-rho)vE(t) <= vL(t). Must be in the interval [0, 1]
+         (1-rho)vE(t) <= vL(t). Must be in the interval [0, 1]
         :return: estimated risks
         """
         gamma = leader.max_brake / follower.max_brake
@@ -1031,3 +1062,53 @@ class SSMEstimator:
 
         estimated_risk_squared[estimated_risk_squared < 0] = 0
         return np.sqrt(estimated_risk_squared)
+
+    def _get_braking_parameters_over_time(self, lateral_position: pd.Series,
+                                          vehicle: Vehicle) -> (np.array,
+                                                                np.array):
+        """The vehicle maximum braking is reduced during lane change. This
+        function determines when the vehicle is lane changing and returns
+        arrays with values of maximum brake and lambda1 at each simulation
+        step.
+
+        :param lateral_position: relative position to the lane as provided by
+         VISSIM, where 0.5 indicates the center of the lane.
+        :param vehicle: object containing the vehicle's parameters
+        :return: Tuple of numpy arrays"""
+
+        lane_change_idx = np.abs(lateral_position.values - 0.5) > 0.1
+        vehicle_effective_max_brake = (np.ones(len(lane_change_idx))
+                                       * vehicle.max_brake)
+        vehicle_effective_lambda1 = (np.ones(len(lane_change_idx))
+                                     * vehicle.lambda1)
+        vehicle_effective_max_brake[lane_change_idx] = (
+            vehicle.max_brake_lane_change)
+        vehicle_effective_lambda1[lane_change_idx] = (
+            vehicle.lambda1_lane_change)
+
+        return vehicle_effective_max_brake, vehicle_effective_lambda1
+
+    # def _compute_gap_thresholds(self, follower: Vehicle, leader: Vehicle):
+    #     """The initial distance determines on which phase (acceleration,
+    #     negative jerk, maximum braking) of the worst case scenario a
+    #     collision would occur. We must determine the phases' thresholds.
+    #
+    #     """
+    #     gap_thresholds = [0] * 3
+    #     gap_thresholds[0] = (
+    #             follower.brake_delay
+    #             * (follower.brake_delay / 2 * (follower.accel_t0
+    #                                            + leader.max_brake)
+    #                + delta_vel))
+    #     gap_thresholds[1] = (
+    #             (follower.brake_delay + follower.tau_j)
+    #             * (follower.lambda1 + delta_vel
+    #                - (follower.brake_delay + follower.tau_j) / 2
+    #                * (follower.max_brake - leader.max_brake))
+    #             + follower.lambda0)
+    #     gap_thresholds[2] = (
+    #             leader_vel / leader.max_brake
+    #             * (follower.lambda1 + follower_vel
+    #                - (follower.max_brake / leader.max_brake + 1)
+    #                * leader_vel / 2)
+    #             + follower.lambda0)

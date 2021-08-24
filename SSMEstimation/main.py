@@ -275,15 +275,25 @@ def main():
     # run_i170_scenario(True)
     # run_toy_example()
     # generate_us_101_reduced_speed_table(1)
-    vi = VissimInterface()
-    vi.load_simulation('toy')
-    vi.run_with_increasing_autonomous_penetration(
-        autonomous_percentage_increase=100,
-        initial_autonomous_percentage=0,
-        final_autonomous_percentage=100)
-    result_analyzer = result_analysis.ResultAnalyzer(network_file)
-    for autonomous_percentage in [0, 100]:
-        result_analyzer.vehicle_record_to_ssm_summary(autonomous_percentage)
+    # vi = VissimInterface()
+    # vi.load_simulation('toy')
+    # vi.run_with_increasing_autonomous_penetration(
+    #     autonomous_percentage_increase=100,
+    #     initial_autonomous_percentage=0,
+    #     final_autonomous_percentage=100)
+    # result_analyzer = result_analysis.ResultAnalyzer(network_file)
+    # for autonomous_percentage in [0, 100]:
+    #     result_analyzer.vehicle_record_to_ssm_summary(autonomous_percentage)
+
+    # SSM computation check #
+    # veh_rec_reader = readers.VehicleRecordReader('toy')
+    # veh_rec = veh_rec_reader.load_data(51, 100)
+    # pp = result_analysis.VehicleRecordPostProcessor('vissim', veh_rec)
+    # pp.post_process_data()
+    #
+    # ssm_estimator = result_analysis.SSMEstimator(veh_rec)
+    # ssm_estimator.include_collision_free_gap()
+
     # Post processing #
     # post_process_and_save(data_source, network_file)
 
@@ -294,22 +304,23 @@ def main():
     # ssm_names = ['CPI']
     # create_ssm(data_source, network_file, ssm_names)
 
-    # SSM one by one #
-    # reader = readers.PostProcessedDataReader(data_source, network_file)
-    # data = reader.load_data()
-    # ssm_estimator = SSMEstimator(data)
-    # ssm_estimator.include_exact_risk()
-
     # Check results graphically #
-    # result_analyzer = result_analysis.ResultAnalyzer(network_file)
-    # for veh_input in range(2300, 2500, 600):
-    #     result_analyzer.plot_variable_vs_time('low_TTC', veh_input,
-    #                                           [0, 20, 40, 60, 80, 100],
-    #                                           start_time=5)
+    result_analyzer = result_analysis.ResultAnalyzer(network_file)
+    all_percentages = [i for i in range(0, 101, 25)]
+    # '100_percent_autonomous_only_longitudinal_control'
+    # for veh_input in range(2000, 2001, 500):
+    #     result_analyzer.plot_variable_vs_time(
+    #         'flow', veh_input,
+    #         all_percentages,
+    #         start_time=5)
+    #     result_analyzer.plot_variable_vs_time(
+    #         'exact_risk', veh_input,
+    #         all_percentages,
+    #         start_time=5)
     # result_analyzer.plot_double_y_axes(0, x='density', y=['flow',
     #                                                       'exact_risk'])
-    # result_analyzer.plot_with_labels([0, 20, 100], x='average_speed',
-    #                                  y='exact_risk')
+    result_analyzer.plot_with_labels([0, 100], x='density',
+                                     y='flow')
     # reader = readers.PostProcessedDataReader(data_source, network_file)
     # data = reader.load_data()
     # ssm_estimator = SSMEstimator(data)

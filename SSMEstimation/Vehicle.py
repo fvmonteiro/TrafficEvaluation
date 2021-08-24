@@ -24,8 +24,7 @@ class Vehicle:
                    VISSIM_BUS_ID: TYPE_BUS}
 
     # Typical parameters values
-    # TODO: Extract parameters from VISSIM?
-    _MAX_BRAKE_PER_TYPE = {TYPE_CAR: 6.5, TYPE_TRUCK: 5.5}
+    _MAX_BRAKE_PER_TYPE = {TYPE_CAR: 7.5, TYPE_TRUCK: 5.5}
     _MAX_JERK_PER_TYPE = {TYPE_CAR: 50, TYPE_TRUCK: 30}
     _FREE_FLOW_VELOCITY_PER_TYPE = {TYPE_CAR: 30, TYPE_TRUCK: 25}
 
@@ -51,6 +50,7 @@ class Vehicle:
         self.brake_delay = 0.2
         # Parameters dependent of vehicle type
         self.max_brake = self._MAX_BRAKE_PER_TYPE[self.type] * gamma
+        self.max_brake_lane_change = self.max_brake / 2
         self.max_jerk = self._MAX_JERK_PER_TYPE[self.type]
         self.free_flow_velocity = self._FREE_FLOW_VELOCITY_PER_TYPE[self.type]
         # Emergency braking parameters
@@ -60,6 +60,16 @@ class Vehicle:
         self.lambda0 = -(self.accel_t0 + self.max_brake) / 2 * (
                        self.brake_delay ** 2 + self.brake_delay * self.tau_j
                        + self.tau_j ** 2 / 3)
+
+        self.tau_j_lane_change = ((self.accel_t0 + self.max_brake_lane_change) /
+                                  self.max_jerk)
+        self.lambda1_lane_change = ((self.accel_t0 + self.max_brake_lane_change)
+                                    * (self.brake_delay
+                                       + self.tau_j_lane_change / 2))
+        self.lambda0_lane_change = -(
+                (self.accel_t0 + self.max_brake_lane_change) * (
+                 self.brake_delay ** 2 + self.brake_delay * self.tau_j
+                 + self.tau_j ** 2 / 3) / 2)
 
     def compute_vehicle_following_parameters(self, leader_max_brake: float,
                                              rho: float) -> (float, float):

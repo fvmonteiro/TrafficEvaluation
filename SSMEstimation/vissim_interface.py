@@ -66,7 +66,8 @@ class VissimInterface:
 
         self.network_file = VissimInterface.get_file_name_from_network_name(
             network_name)
-        self.layout_file = network_name if layout_file is None else layout_file
+        self.layout_file = self.network_file if layout_file is None else \
+            layout_file
         net_full_path = os.path.join(self.networks_folder,
                                      self.network_file + self.vissim_net_ext)
 

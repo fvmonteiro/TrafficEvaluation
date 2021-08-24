@@ -13,22 +13,14 @@ class SSMDataWriter:
 
     def __init__(self, network_name):
         # TODO: this should be a static method from VissimInterface
-        if network_name in VissimInterface.existing_networks:
-            network_name = VissimInterface.existing_networks[network_name]
-        elif network_name in VissimInterface.existing_networks.values():
-            pass
-        else:
-            raise ValueError('Network "{}" is not in the list of valid '
-                             'simulations\nCheck whether the network exists  '
-                             'and add it to the VissimInterface attribute '
-                             'existing_networks'.
-                             format(network_name))
+        network_name = VissimInterface.get_file_name_from_network_name(
+            network_name)
         self.file_base_name = network_name + '_SSM Results'
         self.network_data_dir = os.path.join(VissimInterface.networks_folder,
                                              network_name)
 
     def save_as_csv(self, data: pd.DataFrame,
-                    autonomous_percentage: int = None):
+                    autonomous_percentage: [int, str] = None):
 
         if autonomous_percentage is None:
             autonomous_percentage_folder = 'test'
@@ -40,7 +32,14 @@ class SSMDataWriter:
         file_name = self.file_base_name + num_str + self.file_extension
         full_address = os.path.join(self.network_data_dir,
                                     autonomous_percentage_folder, file_name)
-        data.to_csv(full_address, index=False)
+        try:
+            data.to_csv(full_address, index=False)
+        except FileNotFoundError:
+            print("Couldn't save at the desired location. Saving at: ",
+                  VissimInterface.networks_folder, " instead.")
+            data.to_csv(os.path.join(VissimInterface.networks_folder,
+                                     file_name), index=False)
+            raise FileNotFoundError
 
 
 class SyntheticDataWriter:
