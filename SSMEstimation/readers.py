@@ -55,8 +55,9 @@ class VissimDataReader(DataReader):
     _autonomous_percentage_vehicle_inputs_map = {
         0: _vehicle_inputs, 25: _vehicle_inputs[-2:], 50: _vehicle_inputs[-2:],
         75: _vehicle_inputs[-2:], 100: _vehicle_inputs,
-        '100_percent_autonomous_only_longitudinal_control': _vehicle_inputs[
-                                                            -2:-1]
+        '100_percent_autonomous_only_longitudinal_control':
+            _vehicle_inputs[-2:-1],
+        'test': ['test']
     }
     _first_simulation_number = 2
     _runs_per_input = 10
@@ -290,7 +291,8 @@ class VehicleRecordReader(VissimDataReader):
         'FOLLOWDIST': 'vissim_delta_x',
         'COORDFRONTX': 'front_x', 'COORDFRONTY': 'front_y',
         'COORDREARX': 'rear_x', 'COORDREARY': 'rear_y',
-        'SPEEDDIFF': 'vissim_delta_v', 'LENGTH': 'length'
+        'SPEEDDIFF': 'vissim_delta_v', 'LENGTH': 'length',
+        'LNCHG': 'lane_change'
     }
 
     # Note: we don't necessarily want all the variables listed in each of the

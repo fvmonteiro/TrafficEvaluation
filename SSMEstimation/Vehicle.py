@@ -10,23 +10,28 @@ class Vehicle:
     VISSIM_TRUCK_ID = 200
     VISSIM_BUS_ID = 300
     TYPE_CAR = 'car'
+    TYPE_AV = 'autonomous vehicle'
     TYPE_TRUCK = 'truck'
     TYPE_BUS = 'bus'
     TYPE_MOTORCYCLE = 'motorcycle'
 
-    RELEVANT_TYPES = {TYPE_CAR, TYPE_TRUCK}
+    RELEVANT_TYPES = {TYPE_CAR, TYPE_TRUCK, TYPE_AV}
 
     # VISSIM and NGSIM codes for different vehicle types
     INT_TO_NAME = {NGSIM_MOTORCYCLE_ID: TYPE_MOTORCYCLE,
                    NGSIM_CAR_ID: TYPE_CAR, NGSIM_TRUCK_ID: TYPE_TRUCK,
-                   VISSIM_CAR_ID: TYPE_CAR, VISSIM_AUTONOMOUS_CAR_ID: TYPE_CAR,
+                   VISSIM_CAR_ID: TYPE_CAR,
+                   VISSIM_AUTONOMOUS_CAR_ID: TYPE_AV,
                    VISSIM_TRUCK_ID: TYPE_TRUCK,
                    VISSIM_BUS_ID: TYPE_BUS}
 
     # Typical parameters values
-    _MAX_BRAKE_PER_TYPE = {TYPE_CAR: 7.5, TYPE_TRUCK: 5.5}
-    _MAX_JERK_PER_TYPE = {TYPE_CAR: 50, TYPE_TRUCK: 30}
-    _FREE_FLOW_VELOCITY_PER_TYPE = {TYPE_CAR: 30, TYPE_TRUCK: 25}
+    _MAX_BRAKE_PER_TYPE = {TYPE_CAR: 7.5, TYPE_AV: 7.5, TYPE_TRUCK: 5.5}
+    _MAX_JERK_PER_TYPE = {TYPE_CAR: 50, TYPE_AV: 50, TYPE_TRUCK: 30}
+    # TODO: TYPE_CAR should have a delay of 0.75 with the new results
+    _BRAKE_DELAY_PER_TYPE = {TYPE_CAR: 0.3, TYPE_AV: 0.2, TYPE_TRUCK: 0.5}
+    # 33 m/s ~= 120km/h ~= 75 mph
+    _FREE_FLOW_VELOCITY_PER_TYPE = {TYPE_CAR: 33, TYPE_AV: 33, TYPE_TRUCK: 25}
 
     def __init__(self, i_type: int, gamma: float = 1):
         """Assigns typical vehicle values based on the vehicle type
@@ -47,29 +52,19 @@ class Vehicle:
 
         # Parameters independent of vehicle type
         self.accel_t0 = 0.5
-        self.brake_delay = 0.2
         # Parameters dependent of vehicle type
         self.max_brake = self._MAX_BRAKE_PER_TYPE[self.type] * gamma
         self.max_brake_lane_change = self.max_brake / 2
         self.max_jerk = self._MAX_JERK_PER_TYPE[self.type]
+        self.brake_delay = self._BRAKE_DELAY_PER_TYPE[self.type]
         self.free_flow_velocity = self._FREE_FLOW_VELOCITY_PER_TYPE[self.type]
         # Emergency braking parameters
-        self.tau_j = (self.accel_t0 + self.max_brake) / self.max_jerk
-        self.lambda1 = ((self.accel_t0 + self.max_brake)
-                        * (self.brake_delay + self.tau_j/2))
-        self.lambda0 = -(self.accel_t0 + self.max_brake) / 2 * (
-                       self.brake_delay ** 2 + self.brake_delay * self.tau_j
-                       + self.tau_j ** 2 / 3)
-
-        self.tau_j_lane_change = ((self.accel_t0 + self.max_brake_lane_change) /
-                                  self.max_jerk)
-        self.lambda1_lane_change = ((self.accel_t0 + self.max_brake_lane_change)
-                                    * (self.brake_delay
-                                       + self.tau_j_lane_change / 2))
-        self.lambda0_lane_change = -(
-                (self.accel_t0 + self.max_brake_lane_change) * (
-                 self.brake_delay ** 2 + self.brake_delay * self.tau_j
-                 + self.tau_j ** 2 / 3) / 2)
+        self.tau_j, self.lambda0, self.lambda1 = (
+            self._compute_emergency_braking_parameters(self.max_brake))
+        (self.tau_j_lane_change, self.lambda0_lane_change,
+            self.lambda1_lane_change) = (
+            self._compute_emergency_braking_parameters(
+                self.max_brake_lane_change))
 
     def compute_vehicle_following_parameters(self, leader_max_brake: float,
                                              rho: float) -> (float, float):
@@ -103,6 +98,16 @@ class Vehicle:
             d = self.lambda1 ** 2 / 2 / self.max_brake + self.lambda0
 
         return h, d
+
+    def _compute_emergency_braking_parameters(self, max_brake):
+        tau_j = (self.accel_t0 + max_brake) / self.max_jerk
+        lambda1 = ((self.accel_t0 + max_brake)
+                   * (self.brake_delay + tau_j / 2))
+        lambda0 = -(self.accel_t0 + max_brake) / 2 * (
+                self.brake_delay ** 2 + self.brake_delay * tau_j
+                + tau_j ** 2 / 3)
+
+        return tau_j, lambda0, lambda1
 
     # def compute_gap_thresholds(self, ego_velocity, leader_velocity):
     #
