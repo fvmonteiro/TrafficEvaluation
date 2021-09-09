@@ -80,7 +80,7 @@ def run_toy_example():
         return
     vi.set_evaluation_outputs(False, False, False, False)
     vi.set_simulation_parameters(sim_params)
-    vi.run_toy_scenario()
+    vi.run_in_and_out_scenario()
     vi.close_vissim()
 
 
@@ -107,9 +107,9 @@ def run_i170_scenario(save_results=False):
         vi.run_i710_simulation(idx_scenario, demand)
 
 
-def post_process_and_save(data_source, network_name):
+def post_process_and_save(data_source, network_name, is_connected=False):
     if data_source.upper() == 'VISSIM':
-        data_reader = readers.VehicleRecordReader(network_name)
+        data_reader = readers.VehicleRecordReader(network_name, is_connected)
     elif data_source.upper() == 'NGSIM':
         data_reader = readers.NGSIMDataReader(network_name)
     elif data_source == 'synthetic_data':
@@ -126,7 +126,7 @@ def post_process_and_save(data_source, network_name):
     data_pp.post_process_data()
     print('Post processed data shape: ', data.shape)
     save_post_processed_data(data, data_source,
-                             data_reader.file_name)
+                             data_reader.network_name)
 
 
 def create_ssm(data_source, network_name, ssm_names):
@@ -211,8 +211,9 @@ def test_safe_gap_computation():
 
 def explore_issues():
     """Explore the source of difference between trj and veh record data"""
-    vissim_reader = readers.VehicleRecordReader('highway_in_and_out_lanes')
-    veh_record = vissim_reader.load_data()
+    vissim_reader = readers.VehicleRecordReader('highway_in_and_out_lanes',
+                                                is_connected=False)
+    veh_record = vissim_reader.load_data(2)
     pp = result_analysis.VehicleRecordPostProcessor('vissim', veh_record)
     pp.post_process_data()
     ssm_estimator = result_analysis.SSMEstimator(veh_record)
@@ -269,21 +270,30 @@ def main():
     # image_folder = "G:\\My Drive\\Safety in Mixed Traffic\\images"
 
     # Define data source #
-    network_file = 'toy'  # Options: i710, us-101, toy
-
+    # Options: i710, us-101, in_and_out, in_and_merge
+    network_file = VissimInterface.network_names_map['in_and_merge']
+    is_connected = True
     # Running #
     # run_i170_scenario(True)
     # run_toy_example()
     # generate_us_101_reduced_speed_table(1)
+    percentage_increase = 100
+    initial_percentage = 50
+    final_percentage = 50
     # vi = VissimInterface()
-    # vi.load_simulation('toy')
-    # vi.run_with_increasing_autonomous_penetration(
-    #     autonomous_percentage_increase=100,
-    #     initial_autonomous_percentage=100,
-    #     final_autonomous_percentage=100)
-    result_analyzer = result_analysis.ResultAnalyzer(network_file)
-    for autonomous_percentage in [0]:
-        result_analyzer.vehicle_record_to_ssm_summary(autonomous_percentage)
+    # vi.load_simulation(network_file)
+    # vi.run_with_increasing_controlled_vehicle_percentage(
+    #     is_connected=is_connected,
+    #     percentage_increase=percentage_increase,
+    #     initial_percentage=initial_percentage,
+    #     final_percentage=final_percentage)
+    # vi.close_vissim()
+    result_analyzer = result_analysis.ResultAnalyzer(network_file,
+                                                     is_connected)
+    result_analyzer.vehicle_record_to_ssm_summary('test')
+    # for percentage in range(initial_percentage, final_percentage+1,
+    #                         percentage_increase):
+    #     result_analyzer.vehicle_record_to_ssm_summary(percentage)
 
     # SSM computation check #
     # veh_rec_reader = readers.VehicleRecordReader('toy')
@@ -305,18 +315,22 @@ def main():
     # create_ssm(data_source, network_file, ssm_names)
 
     # Check results graphically #
-    # result_analyzer = result_analysis.ResultAnalyzer(network_file)
+    # result_analyzer = result_analysis.ResultAnalyzer(network_file, is_connected)
     # all_percentages = [i for i in range(0, 101, 25)]
     # veh_inputs_per_lane = [i for i in range(1000, 2501, 1000)]
-    # '100_percent_autonomous_only_longitudinal_control'
-    # for veh_input in veh_inputs_per_lane:
+    # # '100_percent_autonomous_only_longitudinal_control'
+    # for veh_input in [1000]:
     #     result_analyzer.plot_y_vs_time(
     #         'flow', veh_input,
-    #         [0, 100],
+    #         ['test'],
     #         start_time=5)
+    #     # result_analyzer.plot_y_vs_time(
+    #     #     'exact_risk_no_lane_change', veh_input,
+    #     #     [0, 100],
+    #     #     start_time=5)
     #     result_analyzer.plot_y_vs_time(
     #         'exact_risk', veh_input,
-    #         [0, 100],
+    #         ['test'],
     #         start_time=5)
     # result_analyzer.plot_y_vs_autonomous_percentage(
     #     'flow', 2000,

@@ -564,12 +564,12 @@ class SSMEstimator:
         safe_gap = np.zeros(len(follower_vel))
 
         (follower_effective_max_brake,
-         follower_effective_lambda1,
-         _) = (
+         follower_effective_lambda1, _) = (
             self._get_braking_parameters_over_time(
-                self.veh_data.loc[veh_idx, 'y'],
+                self.veh_data.loc[veh_idx, 'lane_change'],
                 follower,
-                consider_lane_change))
+                consider_lane_change)
+        )
 
         gamma = leader.max_brake / follower_effective_max_brake
         gamma_threshold = leader_vel / (follower_vel
@@ -649,7 +649,7 @@ class SSMEstimator:
          follower_effective_lambda1,
          follower_effective_tau_j) = (
             self._get_braking_parameters_over_time(
-                self.veh_data.loc[veh_idx, 'y'],
+                self.veh_data.loc[veh_idx, 'lane_change'],
                 follower,
                 consider_lane_change))
 
@@ -767,7 +767,7 @@ class SSMEstimator:
         estimated_risk_squared[estimated_risk_squared < 0] = 0
         return np.sqrt(estimated_risk_squared)
 
-    def _get_braking_parameters_over_time(self, lateral_position: pd.Series,
+    def _get_braking_parameters_over_time(self, lane_change_indicator: pd.Series,
                                           vehicle: Vehicle,
                                           consider_lane_change: bool = True) \
             -> (np.array, np.array, np.array):
@@ -776,8 +776,9 @@ class SSMEstimator:
         arrays with values of maximum brake and lambda1 at each simulation
         step.
 
-        :param lateral_position: relative position to the lane as provided by
-         VISSIM, where 0.5 indicates the center of the lane.
+        :param lane_change_indicator: series with VISSIM's indication of lane
+         change direction. Elements are strings, where 'None' means no lane
+         change.
         :param vehicle: object containing the vehicle's parameters
         :param consider_lane_change: if set to false, we don't consider the
          effects of lane change, i.e., we treat all situations as simple
@@ -785,14 +786,14 @@ class SSMEstimator:
          assuming a reduced max brake during lane changes.
         :return: Tuple of numpy arrays"""
 
-        vehicle_effective_max_brake = (np.ones(len(lateral_position))
+        vehicle_effective_max_brake = (np.ones(len(lane_change_indicator))
                                        * vehicle.max_brake)
-        vehicle_effective_lambda1 = (np.ones(len(lateral_position))
+        vehicle_effective_lambda1 = (np.ones(len(lane_change_indicator))
                                      * vehicle.lambda1)
-        vehicle_effective_tau_j = (np.ones(len(lateral_position))
+        vehicle_effective_tau_j = (np.ones(len(lane_change_indicator))
                                    * vehicle.tau_j)
         if consider_lane_change:
-            lane_change_idx = np.abs(lateral_position.values - 0.5) > 0.1
+            lane_change_idx = (lane_change_indicator != 'None').values
             vehicle_effective_max_brake[lane_change_idx] = (
                 vehicle.max_brake_lane_change)
             vehicle_effective_lambda1[lane_change_idx] = (

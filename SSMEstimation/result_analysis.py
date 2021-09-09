@@ -23,36 +23,43 @@ class ResultAnalyzer:
                            'CPI': 'CPI',
                            'exact_risk': 'CRI'}
 
-    def __init__(self, network_name):
+    def __init__(self, network_name, is_connected):
+        if is_connected:
+            self.vehicle_type = 'connected'
+        else:
+            self.vehicle_type = 'autonomous'
         self._link_evaluation_reader = readers.LinkEvaluationReader(
-            network_name)
+            network_name, is_connected)
         self._data_collections_reader = readers.DataCollectionReader(
-            network_name)
+            network_name, is_connected)
         self._vehicle_record_reader = readers.VehicleRecordReader(
-            network_name)
-        self._ssm_data_reader = readers.SSMDataReader(network_name)
-        self._writer = SSMDataWriter(network_name)
+            network_name, is_connected)
+        self._ssm_data_reader = readers.SSMDataReader(
+            network_name, is_connected)
+        self._writer = SSMDataWriter(network_name, is_connected)
 
     # Not sure about the title here yet: maybe move this to post processor?
-    def vehicle_record_to_ssm_summary(self, autonomous_percentage: int = 0):
+    def vehicle_record_to_ssm_summary(
+            self, controlled_vehicle_percentage: Union[int, str] = 0):
         """Reads multiple vehicle record data files, postprocesses them,
         computes SSMs, averages the SSMs within a time period, and produces a
         single dataframe that can be merged to results from link evaluation
         and data collection measurements.
 
-        :param autonomous_percentage: Percentage of autonomous vehicles
+        :param controlled_vehicle_percentage: Percentage of controlled vehicles
          present in the simulation.
         :return: Dataframe with columns simulation_number, time_interval and
          one for each SSM"""
 
-        final_file_number = (self._vehicle_record_reader.
-                             find_highest_file_number(autonomous_percentage))
+        final_file_number = (
+            self._vehicle_record_reader.find_highest_file_number(
+                controlled_vehicle_percentage))
         if self._check_if_ssm_file_exists(final_file_number,
-                                          autonomous_percentage):
+                                          controlled_vehicle_percentage):
             print('SSM file already exists. Returning the loaded file.\n'
                   'If you want to create a new file, delete the old one first.')
-            return self._ssm_data_reader.load_data(final_file_number,
-                                                   autonomous_percentage)
+            return self._ssm_data_reader.load_data(
+                final_file_number, controlled_vehicle_percentage)
 
         column_titles = ['simulation_number', 'time_interval', 'low_TTC',
                          'high_DRAC', 'exact_risk', 'exact_risk_no_lane_change']
@@ -65,8 +72,9 @@ class ResultAnalyzer:
             print('Working on file number {} / {}'.format(
                 file_number, final_file_number + 1))
 
-            vehicle_records = (self._vehicle_record_reader.
-                               load_data(file_number, autonomous_percentage))
+            vehicle_records = (
+                self._vehicle_record_reader.load_data(
+                    file_number, controlled_vehicle_percentage))
             post_processor = VehicleRecordPostProcessor('vissim',
                                                         vehicle_records)
             post_processor.post_process_data()
@@ -90,12 +98,13 @@ class ResultAnalyzer:
             print('-' * 79)
 
         print('Dataframe built. Saving to file...')
-        self._writer.save_as_csv(result_df, autonomous_percentage)
+        self._writer.save_as_csv(result_df, controlled_vehicle_percentage)
+        print('Successfully saved.')
         return result_df
 
     # Plots aggregating results from multiple simulations =====================#
     def plot_y_vs_time(self, y: str, input_per_lane: int,
-                       autonomous_percentage:
+                       controlled_vehicles_percentage:
                        Union[int, List[int], str, List[str]],
                        start_time: int = None):
         """Plots averaged y over several runs with the same vehicle input 
@@ -103,7 +112,7 @@ class ResultAnalyzer:
         
         :param y: name of the variable being plotted.
         :param input_per_lane: input per lane used to generate the data
-        :param autonomous_percentage: Percentage of autonomous vehicles
+        :param controlled_vehicles_percentage: Percentage of controlled vehicles
          present in the simulation. If this is a list, a single plot with
          different colors for each percentage is drawn. We expect an int, 
          but, for debugging purposes, a string with the folder name is also 
@@ -111,13 +120,13 @@ class ResultAnalyzer:
         :param start_time: must be given in minutes. Samples before start_time 
         are ignored."""
 
-        if not isinstance(autonomous_percentage, list):
-            autonomous_percentage = [autonomous_percentage]
+        if not isinstance(controlled_vehicles_percentage, list):
+            controlled_vehicles_percentage = [controlled_vehicles_percentage]
 
         # TODO: check if input_per_lane exists in
-        #  self._autonomous_percentage_simulated_inputs_map
+        #  self._[]_percentage_simulated_inputs_map
 
-        all_data = self._load_all_data(autonomous_percentage)
+        all_data = self._load_all_data(controlled_vehicles_percentage)
         # Create time in minutes for better display
         seconds_in_minute = 60
         all_data['time'] = all_data['time_interval'].apply(
@@ -131,24 +140,24 @@ class ResultAnalyzer:
         self.remove_deadlock_simulations(relevant_data)
         # Plot
         sns.set_style('whitegrid')
-        n_lines = len(autonomous_percentage)
+        n_lines = len(controlled_vehicles_percentage)
         ax = sns.lineplot(data=relevant_data, x='time', y=y,
-                          hue='autonomous_percentage', ci='sd',
+                          hue=self.vehicle_type + '_percentage', ci='sd',
                           palette=sns.color_palette('deep', n_colors=n_lines)
                           )  # as_cmap = True
         ax.set_title('Input: ' + str(input_per_lane) + ' vehs per lane')
         plt.show()
 
-    def plot_y_vs_autonomous_percentage(
+    def plot_y_vs_controlled_percentage(
             self, y: str, input_per_lane: Union[int, List[int]],
-            autonomous_percentage: Union[int, List[int], str, List[str]],
+            controlled_percentage: Union[int, List[int], str, List[str]],
             start_time: int = None):
         """Plots averaged y over several runs with the same vehicle input
-        versus autonomous percentage as a box plot.
+        versus controlled vehicles percentage as a box plot.
 
         :param y: name of the variable being plotted.
         :param input_per_lane: input per lane used to generate the data
-        :param autonomous_percentage: Percentage of autonomous vehicles
+        :param controlled_percentage: Percentage of controlled vehicles
          present in the simulation. If this is a list, a single plot with
          different colors for each percentage is drawn. We expect an int,
          but, for debugging purposes, a string with the folder name is also
@@ -156,15 +165,15 @@ class ResultAnalyzer:
         :param start_time: must be given in minutes. Samples before
          start_time are ignored."""
 
-        if not isinstance(autonomous_percentage, list):
-            autonomous_percentage = [autonomous_percentage]
+        if not isinstance(controlled_percentage, list):
+            controlled_percentage = [controlled_percentage]
         if not isinstance(input_per_lane, list):
             input_per_lane = [input_per_lane]
 
         # TODO: check if input_per_lane exists in
-        #  self._autonomous_percentage_simulated_inputs_map
+        #  self._[]_percentage_simulated_inputs_map
 
-        all_data = self._load_all_data(autonomous_percentage)
+        all_data = self._load_all_data(controlled_percentage)
         # Create time in minutes for better display
         seconds_in_minute = 60
         all_data['time'] = all_data['time_interval'].apply(
@@ -179,27 +188,28 @@ class ResultAnalyzer:
         # Plot
         sns.set_style('whitegrid')
         n_lines = len(input_per_lane)
-        ax = sns.boxplot(data=relevant_data, x='autonomous_percentage', y=y,
+        ax = sns.boxplot(data=relevant_data,
+                         x=self.vehicle_type + '_percentage', y=y,
                          hue='input_per_lane',
                          palette=sns.color_palette('deep', n_colors=n_lines))
         plt.show()
 
-    def plot_fundamental_diagram(self, autonomous_percentage: Union[int, list]):
+    def plot_fundamental_diagram(self, controlled_percentage: Union[int, list]):
         """Loads all measures of flow and density of a network to plot the
         fundamental diagram
 
-        :param autonomous_percentage: Percentage of autonomous vehicles
+        :param controlled_percentage: Percentage of controlled vehicles
          present in the simulation. If this is a list, a single plot with
          different colors for each percentage is drawn."""
-        self.plot_with_labels(autonomous_percentage, 'density', 'flow')
+        self.plot_with_labels(controlled_percentage, 'density', 'flow')
 
-    # TODO: find better name. scatter_plot_by_autonomous_percentage?
-    def plot_with_labels(self, autonomous_percentage: Union[int, list],
+    # TODO: find better name. scatter_plot_by_controlled_percentage?
+    def plot_with_labels(self, controlled_percentage: Union[int, list],
                          x: str, y: str):
-        """Loads data from the simulation(s) with the indicated autonomous
-        percentage and plots y against x.
+        """Loads data from the simulation(s) with the indicated controlled
+        vehicles percentage and plots y against x.
 
-        :param autonomous_percentage: Percentage of autonomous vehicles
+        :param controlled_percentage: Percentage of controlled vehicles
          present in the simulation. If this is a list, a single plot with
          different colors for each percentage is drawn.
         :param x: Options: flow, density, or any of the surrogate safety
@@ -208,22 +218,23 @@ class ResultAnalyzer:
          the surrogate safety measures, namely, exact_risk, low_TTC, high_DRAC
          """
 
-        if not isinstance(autonomous_percentage, list):
-            autonomous_percentage = [autonomous_percentage]
+        if not isinstance(controlled_percentage, list):
+            controlled_percentage = [controlled_percentage]
 
-        data = self._load_all_data(autonomous_percentage)
+        data = self._load_all_data(controlled_percentage)
         self.remove_deadlock_simulations(data)
-        sns.scatterplot(data=data, x=x, y=y, hue='autonomous_percentage',
+        sns.scatterplot(data=data, x=x, y=y,
+                        hue=self.vehicle_type + '_percentage',
                         palette=sns.color_palette(
-                            'deep', n_colors=len(autonomous_percentage)))
+                            'deep', n_colors=len(controlled_percentage)))
         plt.show()
 
-    def plot_double_y_axes(self, autonomous_percentage: int, x: str,
+    def plot_double_y_axes(self, controlled_percentage: int, x: str,
                            y: List[str]):
-        """Loads data from the simulation with the indicated autonomous
+        """Loads data from the simulation with the indicated controlled vehicles
         percentage and plots two variables against the same x axis
 
-        :param autonomous_percentage: Percentage of autonomous vehicles
+        :param controlled_percentage: Percentage of controlled vehicles
          present in the simulation.
         :param x: Options: flow, density, or any of the surrogate safety
          measures, namely, exact_risk, low_TTC, high_DRAC
@@ -235,7 +246,7 @@ class ResultAnalyzer:
             print('Parameter y should be a list with two strings.')
             return
 
-        data = self._load_all_data(autonomous_percentage)
+        data = self._load_all_data(controlled_percentage)
         fig, ax1 = plt.subplots()
         ax2 = ax1.twinx()
 
@@ -244,7 +255,7 @@ class ResultAnalyzer:
         sns.scatterplot(data=data, ax=ax2, x=x, y=y[1], color='r')
         ax2.yaxis.label.set_color('r')
 
-        ax1.set_title(str(autonomous_percentage) + '% autonomous')
+        ax1.set_title(str(controlled_percentage) + '% ' + self.vehicle_type)
         fig.tight_layout()
         plt.show()
 
@@ -252,33 +263,35 @@ class ResultAnalyzer:
 
     # Support methods =========================================================#
 
-    def _load_all_data(self, autonomous_percentage: Union[int, List[int],
-                                                          str, List[str]]):
+    def _load_all_data(self,
+                       controlled_vehicles_percentage: Union[int, List[int],
+                                                             str, List[str]]):
         """Loads the necessary data, merges it all under a single dataframe,
         computes the flow and returns the dataframe
 
-        :param autonomous_percentage: Percentage of autonomous vehicles
-         in the simulation. If this is a list, a single plot with
+        :param controlled_vehicles_percentage: Percentage of controlled
+         vehicles in the simulation. If this is a list, a single plot with
          different colors for each percentage is drawn. We expect an int,
          but, for debugging purposes, a string with the folder name is also
          accepted.
         :return: Merged dataframe with link evaluation, data collection
         results and surrogate safety measurement data"""
         seconds_in_hour = 3600
-        link_evaluation_data = (
-            self._link_evaluation_reader.load_data_with_autonomous_percentage(
-                autonomous_percentage))
-        data_collections_data = (
-            self._data_collections_reader.load_data_with_autonomous_percentage(
-                autonomous_percentage))
-        ssm_data = self._ssm_data_reader.load_data_with_autonomous_percentage(
-            autonomous_percentage)
+        link_evaluation_data = (self._link_evaluation_reader.
+                                load_data_with_controlled_vehicles_percentage(
+                                    controlled_vehicles_percentage))
+        data_collections_data = (self._data_collections_reader.
+                                 load_data_with_controlled_vehicles_percentage(
+                                    controlled_vehicles_percentage))
+        ssm_data = (self._ssm_data_reader.
+                    load_data_with_controlled_vehicles_percentage(
+                        controlled_vehicles_percentage))
         # We merge to be sure we're properly matching data collection results
         # and link evaluation data (same simulation, same time interval)
         full_data = link_evaluation_data.merge(
             right=data_collections_data, how='inner',
-            on=['autonomous_percentage', 'input_per_lane', 'time_interval',
-                'random_seed'])
+            on=[self.vehicle_type +  '_percentage', 'input_per_lane',
+                'time_interval', 'random_seed'])
         time_interval = full_data['time_interval'].iloc[0]
         interval_start, _, interval_end = time_interval.partition('-')
         measurement_period = int(interval_end) - int(interval_start)
@@ -286,8 +299,8 @@ class ResultAnalyzer:
                              * full_data['vehicle_count(ALL)'])
         full_data = full_data.merge(
             right=ssm_data, how='inner',
-            on=['autonomous_percentage', 'input_per_lane', 'time_interval',
-                'random_seed'])
+            on=[self.vehicle_type + '_percentage', 'input_per_lane',
+                'time_interval', 'random_seed'])
 
         # Some column names contain (ALL). We can remove that information
         column_names = [name.split('(')[0] for name in full_data.columns]
@@ -296,18 +309,18 @@ class ResultAnalyzer:
         return full_data
 
     def _check_if_ssm_file_exists(self, file_identifier: int,
-                                  autonomous_percentage: int = 0) -> bool:
+                                  controlled_percentage: int = 0) -> bool:
         """We use this function to avoid repeating computations or
         overwriting files.
 
         :param file_identifier: File number, usually equal to the number of
-         simulations run with a given autonomous percentage.
-        :param autonomous_percentage: Percentage of autonomous vehicles
+         simulations run with a given controlled vehicles percentage.
+        :param controlled_percentage: Percentage of controlled vehicles
          present in the simulation.
         :return: True if file already exists, False otherwise"""
         try:
             df = self._ssm_data_reader.load_data(file_identifier,
-                                                 autonomous_percentage)
+                                                 controlled_percentage)
         except ValueError:  # couldn't load file
             return False
         return not df.empty

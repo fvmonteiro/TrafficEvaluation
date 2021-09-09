@@ -7,31 +7,37 @@ class Vehicle:
     NGSIM_TRUCK_ID = 3
     VISSIM_CAR_ID = 100
     VISSIM_AUTONOMOUS_CAR_ID = 110
+    VISSIM_CONNECTED_CAR_ID = 120
     VISSIM_TRUCK_ID = 200
     VISSIM_BUS_ID = 300
     TYPE_CAR = 'car'
     TYPE_AV = 'autonomous vehicle'
+    TYPE_CAV = 'connected vehicle'
     TYPE_TRUCK = 'truck'
     TYPE_BUS = 'bus'
     TYPE_MOTORCYCLE = 'motorcycle'
 
-    RELEVANT_TYPES = {TYPE_CAR, TYPE_TRUCK, TYPE_AV}
+    RELEVANT_TYPES = {TYPE_CAR, TYPE_TRUCK, TYPE_AV, TYPE_CAV}
 
     # VISSIM and NGSIM codes for different vehicle types
     INT_TO_NAME = {NGSIM_MOTORCYCLE_ID: TYPE_MOTORCYCLE,
                    NGSIM_CAR_ID: TYPE_CAR, NGSIM_TRUCK_ID: TYPE_TRUCK,
                    VISSIM_CAR_ID: TYPE_CAR,
                    VISSIM_AUTONOMOUS_CAR_ID: TYPE_AV,
+                   VISSIM_CONNECTED_CAR_ID: TYPE_CAV,
                    VISSIM_TRUCK_ID: TYPE_TRUCK,
                    VISSIM_BUS_ID: TYPE_BUS}
 
     # Typical parameters values
-    _MAX_BRAKE_PER_TYPE = {TYPE_CAR: 7.5, TYPE_AV: 7.5, TYPE_TRUCK: 5.5}
-    _MAX_JERK_PER_TYPE = {TYPE_CAR: 50, TYPE_AV: 50, TYPE_TRUCK: 30}
-    # TODO: TYPE_CAR should have a delay of 0.75 with the new results
-    _BRAKE_DELAY_PER_TYPE = {TYPE_CAR: 0.3, TYPE_AV: 0.2, TYPE_TRUCK: 0.5}
+    _MAX_BRAKE_PER_TYPE = {TYPE_CAR: 7.5, TYPE_AV: 7.5,
+                           TYPE_CAV: 7.5, TYPE_TRUCK: 5.5}
+    _MAX_JERK_PER_TYPE = {TYPE_CAR: 50, TYPE_AV: 50,
+                          TYPE_CAV: 50, TYPE_TRUCK: 30}
+    _BRAKE_DELAY_PER_TYPE = {TYPE_CAR: 0.75, TYPE_AV: 0.2,
+                             TYPE_CAV: 0.1, TYPE_TRUCK: 0.5}
     # 33 m/s ~= 120km/h ~= 75 mph
-    _FREE_FLOW_VELOCITY_PER_TYPE = {TYPE_CAR: 33, TYPE_AV: 33, TYPE_TRUCK: 25}
+    _FREE_FLOW_VELOCITY_PER_TYPE = {TYPE_CAR: 33, TYPE_AV: 33,
+                                    TYPE_CAV: 33, TYPE_TRUCK: 25}
 
     def __init__(self, i_type: int, gamma: float = 1):
         """Assigns typical vehicle values based on the vehicle type

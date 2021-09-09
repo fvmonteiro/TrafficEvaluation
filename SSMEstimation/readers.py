@@ -3,21 +3,17 @@ from typing import Union
 from typing import List
 import warnings
 
-# import numpy as np
 import pandas as pd
 # from sodapy import Socrata
 
 from vissim_interface import VissimInterface
 
 
-# from Vehicle import Vehicle
-
-
 class DataReader:
     relevant_columns = {'time', 'veh_id', 'veh_type', 'link', 'lane',
                         'x', 'vx', 'y', 'leader_id', 'delta_x', 'leader_type',
                         'front_x', 'front_y', 'rear_x', 'rear_y', 'length',
-                        'delta_v'}
+                        'delta_v', 'lane_change'}
 
     def __init__(self, data_dir=None, network_name=None):
         self.data_dir = data_dir
@@ -26,7 +22,7 @@ class DataReader:
         # Necessary to include in parent if they will always be irrelevant?
         # self.data_source = None
 
-    def load_data(self) -> pd.DataFrame:
+    def load_data(self, file_identifier) -> pd.DataFrame:
         pass
 
     def select_relevant_columns(self, data):
@@ -59,13 +55,18 @@ class VissimDataReader(DataReader):
             _vehicle_inputs[-2:-1],
         'test': ['test']
     }
+    _connected_percentage_vehicle_inputs_map = {
+        0: _vehicle_inputs,  # TODO: updated once simulations are run
+        'test': [1000]
+    }
     _first_simulation_number = 2
     _runs_per_input = 10
     _initial_random_seed = 7
     _random_seed_increment = 1
 
-    def __init__(self, network_name, file_format, data_identifier,
-                 header_identifier, header_map):
+    def __init__(self, network_name: str, is_connected: bool, file_format: str,
+                 data_identifier: str, header_identifier: str,
+                 header_map: dict):
 
         network_file = VissimInterface.get_file_name_from_network_name(
             network_name)
@@ -73,6 +74,11 @@ class VissimDataReader(DataReader):
                                         network_file)
         DataReader.__init__(self, network_data_dir,
                             network_file)
+        self.is_connected = is_connected
+        if is_connected:
+            self._vehicle_type = 'connected'
+        else:
+            self._vehicle_type = 'autonomous'
         self.file_format = file_format
         self.data_identifier = data_identifier
         self.header_identifier = header_identifier
@@ -93,17 +99,18 @@ class VissimDataReader(DataReader):
         max_deceleration_data.set_index(['veh_type', 'vel'], inplace=True)
         return max_deceleration_data
 
-    def load_data(self, file_identifier: Union[int, str] = 1,
-                  autonomous_percentage: [int, str] = 0):
+    def load_data(self, file_identifier: Union[int, str],
+                  controlled_vehicles_percentage: [int, str] = 0):
         """ Loads data from simulations of a chosen network
 
         :param file_identifier: This can be either a integer indicating
          the simulation number or the file name directly
-        :param autonomous_percentage: Percentage of autonomous vehicles
+        :param controlled_vehicles_percentage: Percentage of autonomous vehicles
          in the simulation. We expect an int, but, for debugging purposes,
          a string with the folder name is also accepted.
         :return: pandas dataframe with the data
         """
+
         if isinstance(file_identifier, str):
             file_name = file_identifier
         else:
@@ -113,14 +120,14 @@ class VissimDataReader(DataReader):
             file_name = (self.network_name + self.data_identifier
                          + num_str + self.file_format)
 
-        if isinstance(autonomous_percentage, str):
-            autonomous_percent_str = autonomous_percentage
+        if isinstance(controlled_vehicles_percentage, str):
+            percent_str = controlled_vehicles_percentage
         else:
-            autonomous_percent_str = (str(autonomous_percentage)
-                                      + '_percent_autonomous')
+            percent_str = (str(controlled_vehicles_percentage)
+                           + '_percent_' + self._vehicle_type)
 
         full_address = os.path.join(self.data_dir,
-                                    autonomous_percent_str, file_name)
+                                    percent_str, file_name)
         try:
             with open(full_address, 'r') as file:
                 # Skip header lines
@@ -150,78 +157,86 @@ class VissimDataReader(DataReader):
             raise ValueError('No VISSIM file with name {}'.format(file_name))
 
         sim_output.dropna(axis='columns', how='all', inplace=True)
-        sim_output['autonomous_percentage'] = autonomous_percentage
+        sim_output[self._vehicle_type + '_percentage'] = (
+            controlled_vehicles_percentage)
         self._match_sim_number_to_vehicle_input(sim_output)
         return sim_output
 
-    def load_data_with_autonomous_percentage(
-            self, autonomous_percentage:
-            Union[int, List[int], str, List[str]]) -> pd.DataFrame:
+    def load_data_with_controlled_vehicles_percentage(
+            self, percentage: Union[int, List[int], str, List[str]]) \
+            -> pd.DataFrame:
         """Loads data from all simulations with the given autonomous percentages
 
-        :param autonomous_percentage: Percentage of autonomous vehicles
+        :param percentage: Percentage of controlled vehicles
          in the simulation. If this is a list, all the data is appended to a 
          single data frame. We expect an int, but, for debugging purposes, a 
          string with the folder name is also accepted.
         :return: pandas dataframe with the data
         """
-        if not isinstance(autonomous_percentage, list):
-            autonomous_percentage = [autonomous_percentage]
+        if not isinstance(percentage, list):
+            percentage = [percentage]
 
         data = self.load_data(self.find_highest_file_number(
-            autonomous_percentage[0]), autonomous_percentage[0])
+            percentage[0]), percentage[0])
         # data['autonomous_percentage'] = autonomous_percentage[0]
         # self._match_sim_number_to_vehicle_input(data)
-        for i in range(1, len(autonomous_percentage)):
-            new_data = self.load_data(self.find_highest_file_number(
-                autonomous_percentage[i]), autonomous_percentage[i])
+        for i in range(1, len(percentage)):
+            new_data = self.load_data(
+                self.find_highest_file_number(percentage[i]),
+                percentage[i])
             # new_data['autonomous_percentage'] = autonomous_percentage[i]
             # self._match_sim_number_to_vehicle_input(new_data)
             data = data.append(new_data)
 
         return data
 
-    def load_data_from_several_files(self, first_file_number,
+    def load_data_from_several_files(self, controlled_vehicles_percentage,
+                                     first_file_number,
                                      last_file_number) -> pd.DataFrame:
-        """Reads and aggregates data from several files
+        """Reads and aggregates data from several simulations with a given
+        percentage of controlled vehicles.
 
+        :param controlled_vehicles_percentage: Percentage of controlled vehicles
+         in the simulation
         :param first_file_number: simulation run number of the first file
         :param last_file_number: simulation run number of the last file
         :return: single aggregated pandas dataframe """
+
         sim_output = pd.DataFrame()
         for i in range(first_file_number, last_file_number + 1):
             try:
                 if sim_output.empty:
-                    sim_output = self.load_data(autonomous_percentage=i)
+                    sim_output = self.load_data(
+                        i, controlled_vehicles_percentage)
                 else:
                     sim_output = sim_output.append(
-                        self.load_data(autonomous_percentage=i))
+                        self.load_data(i, controlled_vehicles_percentage))
             except ValueError:
-                warnings.warn('Tried to simulations from {} to {}, but stopped '
-                              'at {}'.format(first_file_number,
-                                             last_file_number, i))
+                warnings.warn('Tried to load simulations from {} to {}, '
+                              'but stopped at {}'.
+                              format(first_file_number, last_file_number, i))
                 break
             print(i - first_file_number + 1, ' files read')
         return sim_output
 
-    def find_highest_file_number(self, autonomous_percentage: [int, str]) -> \
+    def find_highest_file_number(self, percentage: [int, str]) -> \
             int:
         """"Looks for the file with the highest simulation number. This is
         usually the file containing results from all simulations.
 
-        :param autonomous_percentage: Percentage of autonomous vehicles
+        :param percentage: Percentage of autonomous vehicles
          in the simulation. We expect an int, but, for debugging purposes,
          a string with the folder name is also accepted.
         :return: highest simulation number. """
         max_simulation_number = 0
-        if isinstance(autonomous_percentage, str):
-            autonomous_percentage_folder = os.path.join(
-                self.data_dir, autonomous_percentage)
+        if isinstance(percentage, str):
+            percentage_folder = os.path.join(
+                self.data_dir, percentage)
         else:
-            autonomous_percentage_folder = os.path.join(
-                self.data_dir, str(autonomous_percentage)
-                + '_percent_autonomous')
-        for file in os.listdir(autonomous_percentage_folder):
+            percentage_folder = os.path.join(
+                self.data_dir,
+                str(percentage) + '_percent_' + self._vehicle_type)
+        for file in os.listdir(percentage_folder):
             # print(file)
             if (file.startswith(self.network_name + self.data_identifier)
                     and file.endswith(self.file_format)):
@@ -232,29 +247,36 @@ class VissimDataReader(DataReader):
         return max_simulation_number
 
     def _match_sim_number_to_vehicle_input(self, data):
-        """Based on the number of simulations with each autonomous
-        percentage, and knowing the set of tested vehicle inputs, we can
-        figure out which vehicle input was used in each simulation"""
+        """Based on the number of simulations with each percentage of
+        controlled vehicles, and knowing the set of tested vehicle inputs,
+        we can figure out which vehicle input was used in each simulation"""
 
-        if len(data['autonomous_percentage'].unique()) > 1:
-            print('When matching simulation number to vehicle input, the data '
-                  'should be from simulations with equal autonomous '
-                  'percentages.')
+        if len(data[self._vehicle_type + '_percentage'].unique()) > 1:
+            print('The data provided when matching simulation number to '
+                  'vehicle input contains simulations with varying controlled '
+                  'vehicles percentage')
             raise ValueError
 
-        autonomous_percentage = data['autonomous_percentage'].iloc[0]
+        percentage = data[self._vehicle_type + '_percentage'].iloc[0]
         input_number = (
                 (data['simulation_number'] - self._first_simulation_number)
                 // self._runs_per_input)
-        inputs = [self._autonomous_percentage_vehicle_inputs_map[
-                      autonomous_percentage][i] for i in input_number]
+        if self.is_connected:
+            percentage_to_inputs_map = (
+                self._connected_percentage_vehicle_inputs_map)
+        else:
+            percentage_to_inputs_map = (
+                self._autonomous_percentage_vehicle_inputs_map)
+
+        inputs = [percentage_to_inputs_map[percentage][i] for i in input_number]
         data['input_per_lane'] = inputs
         data['simulation_number'] = self._initial_random_seed + (
-            (data['simulation_number'] - self._first_simulation_number)
-            % self._runs_per_input) * self._random_seed_increment
+                (data['simulation_number'] - self._first_simulation_number)
+                % self._runs_per_input) * self._random_seed_increment
         data.rename(columns={'simulation_number': 'random_seed'}, inplace=True)
 
-    def _load_data_from_all_files(self) -> pd.DataFrame:
+    def _load_data_from_all_files(self, controlled_vehicles_percentage) -> \
+            pd.DataFrame:
         """Reads and aggregates data from the all the files in the networks
         folder that match the type of data we're searching for. This is
         mostly useful for vehicle record data, since each file only contains
@@ -268,10 +290,11 @@ class VissimDataReader(DataReader):
         for file in os.listdir(self.data_dir):
             if file.startswith(self.network_name + self.data_identifier):
                 if sim_output.empty:
-                    sim_output = self.load_data(autonomous_percentage=file)
+                    sim_output = self.load_data(
+                        file, controlled_vehicles_percentage)
                 else:
                     sim_output = sim_output.append(
-                        self.load_data(autonomous_percentage=file))
+                        self.load_data(file, controlled_vehicles_percentage))
                 counter += 1
         print(counter, ' files read')
         return sim_output
@@ -287,7 +310,7 @@ class VehicleRecordReader(VissimDataReader):
         'SIMRUN': 'simulation_number', 'SIMSEC': 'time', 'NO': 'veh_id',
         'VEHTYPE': 'veh_type', 'LANE\\LINK\\NO': 'link',
         'LANE\\INDEX': 'lane', 'POS': 'x', 'SPEED': 'vx',
-        'POSLAT': 'y', 'LEADTARGNO': 'leader_id',
+        'ACCELERATION': 'ax', 'POSLAT': 'y', 'LEADTARGNO': 'leader_id',
         'FOLLOWDIST': 'vissim_delta_x',
         'COORDFRONTX': 'front_x', 'COORDFRONTY': 'front_y',
         'COORDREARX': 'rear_x', 'COORDREARY': 'rear_y',
@@ -298,28 +321,30 @@ class VehicleRecordReader(VissimDataReader):
     # Note: we don't necessarily want all the variables listed in each of the
     # map above
 
-    def __init__(self, network_name):
-        VissimDataReader.__init__(self, network_name, self._file_format,
+    def __init__(self, network_name, is_connected):
+        VissimDataReader.__init__(self, network_name, is_connected,
+                                  self._file_format,
                                   self._data_identifier,
                                   self._header_identifier, self._header_map)
 
-    def load_data(self, file_identifier=1, autonomous_percentage:
-    [int, str] = 0) -> pd.DataFrame:
+    def load_data(self, file_identifier,
+                  controlled_vehicles_percentage: [int, str] = 0) -> \
+            pd.DataFrame:
         """ Loads data from simulations of a chosen network and selects
         the relevant variables to keep.
 
         :param file_identifier: Number identifying the simulation run
-        :param autonomous_percentage: Percentage of autonomous vehicles
+        :param controlled_vehicles_percentage: Percentage of autonomous vehicles
          in the simulation. We expect an int, but, for debugging purposes,
          a string with the folder name is also accepted.
         :return: pandas dataframes
         """
         data = VissimDataReader.load_data(self, file_identifier,
-                                          autonomous_percentage)
+                                          controlled_vehicles_percentage)
         self.select_relevant_columns(data)
         return data
 
-    def load_data_with_autonomous_percentage(self, autonomous_percentage):
+    def load_data_with_controlled_vehicles_percentage(self, percentage):
         print('Not yet sure if it is a good idea to have such a function for '
               'vehicle record data.')
         return
@@ -337,12 +362,14 @@ class ReducedSpeedAreaReader(VissimDataReader):
         'DESSPEEDDISTR': 'speed_limit', 'DECEL': 'max_approach_deceleration'
     }
 
-    def __init__(self, network_name):
-        VissimDataReader.__init__(self, network_name, self._file_format,
+    def __init__(self, network_name, is_connected):
+        VissimDataReader.__init__(self, network_name, is_connected,
+                                  self._file_format,
                                   self._data_identifier,
                                   self._header_identifier, self._header_map)
 
-    def load_data_with_autonomous_percentage(self, autonomous_percentage):
+    def load_data_with_controlled_vehicles_percentage(self,
+                                                      percentage):
         print('Not yet coded.')
         return
 
@@ -360,8 +387,9 @@ class DataCollectionReader(VissimDataReader):
         'QUEUEDELAY': 'queue_delay', 'OCCUPRATE': 'occupancy_rate'
     }
 
-    def __init__(self, network_name):
-        VissimDataReader.__init__(self, network_name, self._file_format,
+    def __init__(self, network_name, is_connected):
+        VissimDataReader.__init__(self, network_name, is_connected,
+                                  self._file_format,
                                   self._data_identifier,
                                   self._header_identifier, self._header_map)
 
@@ -384,8 +412,9 @@ class LinkEvaluationReader(VissimDataReader):
         'VOLUME': 'volume'
     }
 
-    def __init__(self, network_name):
-        VissimDataReader.__init__(self, network_name, self._file_format,
+    def __init__(self, network_name, is_connected):
+        VissimDataReader.__init__(self, network_name, is_connected,
+                                  self._file_format,
                                   self._data_identifier,
                                   self._header_identifier, self._header_map)
 
@@ -402,16 +431,17 @@ class SSMDataReader(VissimDataReader):
     _file_format = '.csv'
     _data_identifier = '_SSM Results'
 
-    def __init__(self, network_name):
-        VissimDataReader.__init__(self, network_name, self._file_format,
-                                  self._data_identifier, None, None)
+    def __init__(self, network_name, is_connected):
+        VissimDataReader.__init__(self, network_name, is_connected,
+                                  self._file_format, self._data_identifier,
+                                  "", {})
 
     def load_data(self, file_identifier: int = None,
-                  autonomous_percentage: [int, str] = 0):
+                  controlled_vehicles_percentage: [int, str] = 0):
         """
 
         :param file_identifier:
-        :param autonomous_percentage: Percentage of autonomous vehicles
+        :param controlled_vehicles_percentage: Percentage of autonomous vehicles
          in the simulation. We expect an int, but, for debugging purposes,
          a string with the folder name is also accepted.
         :return:
@@ -421,15 +451,15 @@ class SSMDataReader(VissimDataReader):
         # highest number
         if file_identifier is None:
             file_identifier = self.find_highest_file_number(
-                autonomous_percentage)
+                controlled_vehicles_percentage)
 
         num_str = '_' + str(file_identifier).rjust(3, '0')
         file_name = (self.network_name + self.data_identifier
                      + num_str + self.file_format)
-        if isinstance(autonomous_percentage, str):
-            autonomous_percent_str = autonomous_percentage
+        if isinstance(controlled_vehicles_percentage, str):
+            autonomous_percent_str = controlled_vehicles_percentage
         else:
-            autonomous_percent_str = (str(autonomous_percentage)
+            autonomous_percent_str = (str(controlled_vehicles_percentage)
                                       + '_percent_autonomous')
         full_address = os.path.join(self.data_dir,
                                     autonomous_percent_str, file_name)
@@ -438,7 +468,8 @@ class SSMDataReader(VissimDataReader):
         except OSError:
             raise ValueError('No VISSIM file with name {}'.format(file_name))
 
-        sim_output['autonomous_percentage'] = autonomous_percentage
+        sim_output[self._vehicle_type + '_percentage'] = (
+            controlled_vehicles_percentage)
         self._match_sim_number_to_vehicle_input(sim_output)
         return sim_output
 
@@ -478,23 +509,23 @@ class NGSIMDataReader(DataReader):
         DataReader.__init__(self, data_dir, file_name)
         self.data_source = 'NGSIM'
 
-    def load_data(self, interval=1):
+    def load_data(self, file_identifier=1):
 
-        if interval not in self.interval_switch:
+        if file_identifier not in self.interval_switch:
             print('Requested interval not available')
             return pd.DataFrame()
 
         # self.interval = interval
-        self.file_name = self.network_name + self.interval_switch[interval]
+        file_name = self.network_name + self.interval_switch[file_identifier]
         full_address = os.path.join(self.data_dir,
-                                    self.file_name + self.file_extension)
+                                    file_name + self.file_extension)
         try:
             with open(full_address, 'r') as file:
                 data = pd.read_csv(file)
                 data.rename(columns=self.ngsim_to_reader_naming, inplace=True)
         except OSError:
             raise ValueError('No NGSIM file with name {}'.
-                             format(self.file_name))
+                             format(file_name))
 
         self.select_relevant_columns(data)
         return data
@@ -521,8 +552,8 @@ class PostProcessedDataReader(DataReader):
         #                      format(file_name))
         self.data_source = data_source
         if (data_source.lower() == 'vissim'
-                and file_name in VissimInterface.existing_networks):
-            file_name = VissimInterface.existing_networks[file_name]
+                and file_name in VissimInterface.network_names_map):
+            file_name = VissimInterface.network_names_map[file_name]
         elif data_source.lower() == 'ngsim':
             file_name = 'trajectories-'
         elif data_source.lower == 'synthetic':
@@ -531,17 +562,17 @@ class PostProcessedDataReader(DataReader):
         data_dir = os.path.join(self.post_processed_dir, self.data_source)
         DataReader.__init__(self, data_dir, file_name)
 
-    def load_data(self, simulation_identifier=1):
+    def load_data(self, file_identifier=1):
         """ Loads post processed vehicle data from VISSIM or NGSIM
         :return: pandas dataframe
         """
         if self.data_source.lower() == 'vissim':
-            simulation_identifier = str(simulation_identifier).rjust(3, '0')
-            self.network_name += '_' + simulation_identifier
+            file_identifier = str(file_identifier).rjust(3, '0')
+            self.network_name += '_' + file_identifier
         elif self.data_source.lower() == 'ngsim':
-            simulation_identifier = (
-                NGSIMDataReader.interval_switch[simulation_identifier])
-            self.network_name += simulation_identifier
+            file_identifier = (
+                NGSIMDataReader.interval_switch[file_identifier])
+            self.network_name += file_identifier
         elif self.data_source.lower() == 'synthetic_data':
             pass  # self.file_name is already the correct file name
         else:
@@ -599,10 +630,10 @@ class SyntheticDataReader(DataReader):
         DataReader.__init__(self, self.synthetic_dir, self.synthetic_sim_name)
         self.data_source = 'synthetic'
 
-    def load_data(self):
-        self.file_name = self.network_name
+    def load_data(self, file_identifier=None):
+        file_name = self.network_name
         full_address = os.path.join(self.data_dir,
-                                    self.file_name + self.file_extension)
+                                    file_name + self.file_extension)
         with open(full_address, 'r') as file:
             data = pd.read_csv(file)
         self.select_relevant_columns(data)

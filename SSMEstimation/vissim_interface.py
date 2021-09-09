@@ -16,9 +16,12 @@ class VissimInterface:
     # US_101 = 'US_101'
     networks_folder = ('C:\\Users\\fvall\\Documents\\Research'
                        '\\TrafficSimulation\\VISSIM_networks')
+
     vissim_net_ext = '.inpx'
     vissim_layout_ext = '.layx'
-    existing_networks = {'toy': 'highway_in_and_out_lanes',
+
+    network_names_map = {'in_and_out': 'highway_in_and_out_lanes',
+                         'in_and_merge': 'highway_in_and_merge',
                          'i710': 'I710-MultiSec-3mi',
                          'us101': 'US_101'}
     evaluation_periods = {'highway_in_and_out_lanes': 1800,
@@ -33,9 +36,10 @@ class VissimInterface:
 
     @staticmethod
     def get_file_name_from_network_name(network_name):
-        if network_name in VissimInterface.existing_networks:
-            network_name = VissimInterface.existing_networks[network_name]
-        elif network_name in VissimInterface.existing_networks.values():
+        if network_name in VissimInterface.network_names_map:
+            network_name = VissimInterface.network_names_map[
+                network_name]
+        elif network_name in VissimInterface.network_names_map.values():
             pass
         else:
             raise ValueError('Network "{}" is not in the list of valid '
@@ -93,23 +97,26 @@ class VissimInterface:
 
     # RUNNING NETWORKS --------------------------------------------------------#
 
-    def run_toy_scenario(self, in_flow_input: int = None,
+    def run_toy_scenario(self, scenario: str,
+                         in_flow_input: int = None,
                          main_flow_input: int = None):
         """
-        Runs a VISSIM scenario. Vehicle results are automatically saved.
+        Runs the one of the toy scenarios: highway_in_and_out_lanes or
+        highway_in_and_merge. Vehicle results are automatically saved.
 
+        :param scenario: in_and_out or in_and_merge
         :param in_flow_input: vehicle input (veh/h) of the in ramp (optional)
         :param main_flow_input: vehicle input (veh/h) of the main road
          (optional)
         :return: None
         """
-        # TODO: after initial tests, we should save results according to the
-        #  simulation parameters, that is, create folders for each vehicle
-        #  input volume and change file names to reflect the random seed used
 
         if (self.vissim.AttValue('InputFile')
-                != (self.existing_networks['toy'] + self.vissim_net_ext)):
-            print('You must load the toy scenario before running it')
+                != (self.network_names_map[
+                        scenario] + self.vissim_net_ext)):
+            print('You must load the scenario ',
+                  self.network_names_map[scenario],
+                  ' before running it')
             return
 
         veh_volumes = dict()
@@ -127,6 +134,32 @@ class VissimInterface:
         self.vissim.Simulation.RunContinuous()
         print('Client: Simulation done.')
 
+    def run_in_and_out_scenario(self, in_flow_input: int = None,
+                                main_flow_input: int = None):
+        """
+        Runs the highway_in_and_out_lanes VISSIM scenario. Vehicle results are
+        automatically saved.
+
+        :param in_flow_input: vehicle input (veh/h) of the in ramp (optional)
+        :param main_flow_input: vehicle input (veh/h) of the main road
+         (optional)
+        :return: None
+        """
+        self.run_toy_scenario('in_and_out', in_flow_input, main_flow_input)
+
+    def run_in_and_merge_scenario(self, in_flow_input: int = None,
+                                  main_flow_input: int = None):
+        """
+        Runs the highway_in_and_merge VISSIM scenario. Vehicle results are
+        automatically saved.
+
+        :param in_flow_input: vehicle input (veh/h) of the in ramp (optional)
+        :param main_flow_input: vehicle input (veh/h) of the main road
+         (optional)
+        :return: None
+        """
+        self.run_toy_scenario('in_and_merge', in_flow_input, main_flow_input)
+
     def run_us_101_simulation(self, highway_input: int = 8200,
                               ramp_input: int = 450,
                               speed_limit_per_lane: list = None):
@@ -140,7 +173,8 @@ class VissimInterface:
         """
 
         if (self.vissim.AttValue('InputFile')
-                != (self.existing_networks['us101'] + self.vissim_net_ext)):
+                != (self.network_names_map[
+                        'us101'] + self.vissim_net_ext)):
             print('You must load the us101 scenario before running it')
             return
 
@@ -170,7 +204,8 @@ class VissimInterface:
         """
 
         if (self.vissim.AttValue('InputFile')
-                != (self.existing_networks['i710'] + self.vissim_net_ext)):
+                != (self.network_names_map[
+                        'i710'] + self.vissim_net_ext)):
             print('You must load the i710 scenario before running it')
             return
 
@@ -325,7 +360,9 @@ class VissimInterface:
             self.set_uniform_vehicle_input_for_all_lanes(input_per_lane)
 
             if self.network_file == 'highway_in_and_out_lanes':
-                self.run_toy_scenario()
+                self.run_in_and_out_scenario()
+            elif self.network_file == 'highway_in_and_merge':
+                self.run_in_and_merge_scenario()
             elif self.network_file == 'I710-MultiSec-3mi':
                 self.run_i710_simulation(scenario_idx=2)
             elif self.network_file == 'US_101':
@@ -340,21 +377,30 @@ class VissimInterface:
                                       n_inputs * runs_per_input, n_inputs))
         self.vissim.ResumeUpdateGUI()
 
-    def run_with_increasing_autonomous_penetration(
-            self, autonomous_percentage_increase,
-            initial_autonomous_percentage,
-            final_autonomous_percentage,
-            input_increase_per_lane=500,
-            initial_input_per_lane=500,
-            max_input_per_lane=2500,
-            runs_per_input=10,
-            is_debugging=False):
-        """Runs scenarios with increasing demand for varying penetration
-        values of autonomous vehicles"""
+    def run_with_increasing_controlled_vehicle_percentage(
+            self, is_connected: bool, percentage_increase: int,
+            initial_percentage: int, final_percentage: int,
+            input_increase_per_lane: int = 500,
+            initial_input_per_lane: int = 500,
+            max_input_per_lane: int = 2500,
+            runs_per_input: int = 10,
+            is_debugging: bool = False):
+        """Runs scenarios with increasing demand for varying percentage
+        values of controlled vehicles
 
-        # if is_debugging and (final_autonomous_percentage -
-        #         initial_autonomous_percentage) > 20:
-        #     print
+        :param is_connected: if true, runs simulations with connected
+         vehicles. Otherwise, vehicles are autonomous but don't communicate.
+        :param percentage_increase: percentage increase between sets of runs
+        :param initial_percentage: initial controlled vehicle percentage
+        :param final_percentage: final controlled vehicle percentage (inclusive)
+        :param input_increase_per_lane: increased vehicle input per
+         lane per set of runs
+        :param initial_input_per_lane: first tested input per lane
+        :param max_input_per_lane: maximum value of input per lane
+        :param runs_per_input: how many runs with the same input and varying
+         seed
+        :param is_debugging: if true, results are saved to a test folder
+        """
 
         self.set_evaluation_outputs(True, True, True, True, 60, 30)
         # Any values for initial random seed and increment are good, as long
@@ -363,32 +409,48 @@ class VissimInterface:
         self.set_random_seed_increment(1)
         results_base_folder = os.path.join(self.networks_folder,
                                            self.network_file)
+        if is_connected:
+            vehicle_type = 'connected'
+        else:
+            vehicle_type = 'autonomous'
 
-        for autonomous_percentage in range(initial_autonomous_percentage,
-                                           final_autonomous_percentage + 1,
-                                           autonomous_percentage_increase):
-            if not is_debugging:  # save all results in different folders
-                # For each autonomous percentage, we reset VISSIM's simulation
-                # count
+        for percentage in range(initial_percentage,
+                                final_percentage + 1,
+                                percentage_increase):
+            if is_debugging:  # run 2 short simulations
+                print('Debug mode: running 2 short simulations with single '
+                      'input per lane value.')
+                self.use_debug_folder_for_results()
+                self.reset_saved_simulations(warning_active=False)
+                input_increase_per_lane = 100  # any value > 1
+                initial_input_per_lane = 1000
+                max_input_per_lane = initial_input_per_lane
+                runs_per_input = 2
+                simulation_period = 360
+            else:  # save all results in different folders
+                simulation_period = None  # run_with_increasing demand will
+                # set the proper value
+                # For each percentage, we reset VISSIM's simulation count
                 self.reset_saved_simulations(warning_active=False)
                 # Then we set the proper folder to save the results
                 results_folder = os.path.join(
                     results_base_folder,
-                    str(autonomous_percentage) + '_percent_autonomous')
+                    str(percentage) + '_percent_' + vehicle_type)
                 self.vissim.Evaluation.SetAttValue('EvalOutDir', results_folder)
-            else:
-                self.use_debug_folder_for_results()
+
             # Finally, we set the percentage and run the simulation
-            self.set_autonomous_percentage(autonomous_percentage)
+            self.set_controlled_vehicles_percentage(percentage, vehicle_type)
             self.run_with_increasing_demand(
                 input_increase_per_lane=input_increase_per_lane,
                 initial_input_per_lane=initial_input_per_lane,
                 max_input_per_lane=max_input_per_lane,
-                runs_per_input=runs_per_input)
+                runs_per_input=runs_per_input,
+                simulation_period=simulation_period)
 
     def run_us_101_with_different_speed_limits(self, possible_speeds=None):
         if (self.vissim.AttValue('InputFile')
-                != (self.existing_networks['us101'] + self.vissim_net_ext)):
+                != (self.network_names_map[
+                        'us101'] + self.vissim_net_ext)):
             print('You must load the us101 scenario before running it')
             return
 
@@ -502,22 +564,21 @@ class VissimInterface:
 
         print('WARNING: this function does''t do anything for now')
 
-        n_intervals = self.vissim.Simulation.AttValue(
-            'SimPeriod') // period + 1
-
-        # I still don't know how to find the TimeIntervalSet which contains
-        # the TimeIntervalContainer relative to the measurements
-        time_interval_set_container = self.vissim.Net.TimeIntervalSets
-        for ti_set in time_interval_set_container:
-            ti_container = ti_set.TimeInts
-            if True:  # create condition to find the proper TimeIntervalSet
-                continue
-            # print('initial number of time intervals: ', len(ti_container))
-            # for i in range(len(ti_container), n_intervals ):
-            #     ti_container.AddTimeInterval(i)
-            # print('final number of time intervals: ', len(ti_container))
-
-        # Save
+        # n_intervals = self.vissim.Simulation.AttValue(
+        #     'SimPeriod') // period + 1
+        #
+        # # I still don't know how to find the TimeIntervalSet which contains
+        # # the TimeIntervalContainer relative to the measurements
+        # time_interval_set_container = self.vissim.Net.TimeIntervalSets
+        # for ti_set in time_interval_set_container:
+        #     ti_container = ti_set.TimeInts
+        #     if True:  # create condition to find the proper TimeIntervalSet
+        #         print('initial number of time intervals: ', len(ti_container))
+        #         for i in range(len(ti_container), n_intervals):
+        #             ti_container.AddTimeInterval(i)
+        #         print('final number of time intervals: ', len(ti_container))
+        #
+        # # Save
         # self.vissim.SaveNet()
 
     def set_vehicle_inputs_by_name(self, new_veh_inputs: dict):
@@ -601,8 +662,8 @@ class VissimInterface:
             print('Client: Composition of vehicle input {} set to {}'.
                   format(veh_input.AttValue('Name'), composition_name))
 
-    def set_autonomous_percentage(self, autonomous_percentage: float,
-                                  composition_name: str = 'with_autonomous'):
+    def set_controlled_vehicles_percentage(
+            self, percentage: float, vehicle_type: str):
         """ Looks for the specified vehicle composition and sets the
         percentage of autonomous vehicles in it. The rest of the composition
         will be made of 'human' driven vehicles.
@@ -610,26 +671,28 @@ class VissimInterface:
         exists and it contains only two vehicle types: 100 (Car) and 110
         (Autonomous Car).
 
-        :param autonomous_percentage: This should be expressed either as
+        :param percentage: This should be expressed either as
          an integer between 0 and 100 or as a float in the range [0, 1) . If a
          percentage below 1 is desired, the user must pass it as a fraction
          (example 0.005).
-        :param composition_name: the composition to be altered. In the
-         current simulations it is called 'with_autonomous'
+        :param vehicle_type: the vehicle type that gives name to the
+        compositions being altered.
         """
         # Adjust from [0, 1) to [0, 100]
-        if autonomous_percentage < 1:
-            autonomous_percentage *= 100
+        if percentage < 1:
+            percentage *= 100
 
-        if autonomous_percentage <= 0:
+        if percentage <= 0:
             self.set_vehicle_inputs_composition('all_human')
-        elif autonomous_percentage >= 100:
-            self.set_vehicle_inputs_composition('all_autonomous')
+        elif percentage >= 100:
+            composition_name = 'all_' + vehicle_type
+            self.set_vehicle_inputs_composition(composition_name)
         else:
-            self.set_vehicle_inputs_composition('with_autonomous')
+            composition_name = 'with_' + vehicle_type
+            self.set_vehicle_inputs_composition(composition_name)
             desired_flows = {
-                Vehicle.VISSIM_CAR_ID: 100 - autonomous_percentage,
-                Vehicle.VISSIM_AUTONOMOUS_CAR_ID: autonomous_percentage}
+                Vehicle.VISSIM_CAR_ID: 100 - percentage,
+                Vehicle.VISSIM_AUTONOMOUS_CAR_ID: percentage}
 
             veh_compositions_container = self.vissim.Net.VehicleCompositions
             for veh_composition in veh_compositions_container:
@@ -642,8 +705,8 @@ class VissimInterface:
                         if flow_vehicle_type in desired_flows:
                             relative_flow.SetAttValue(
                                 'RelFlow', desired_flows[flow_vehicle_type])
-            print('Client: input flows are {}% autonomous.'.
-                  format(autonomous_percentage))
+        print('Client: input flows are {}% autonomous.'.
+              format(percentage))
 
     # HELPER FUNCTIONS --------------------------------------------------------#
     def is_some_network_loaded(self):

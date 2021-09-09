@@ -11,32 +11,37 @@ class SSMDataWriter:
     """Helps saving aggregated SSM results to files"""
     file_extension = '.csv'
 
-    def __init__(self, network_name):
-        # TODO: this should be a static method from VissimInterface
+    def __init__(self, network_name, is_connected):
         network_name = VissimInterface.get_file_name_from_network_name(
             network_name)
         self.file_base_name = network_name + '_SSM Results'
         self.network_data_dir = os.path.join(VissimInterface.networks_folder,
                                              network_name)
+        if is_connected:
+            self.vehicle_type = 'connected'
+        else:
+            self.vehicle_type = 'autonomous'
 
     def save_as_csv(self, data: pd.DataFrame,
-                    autonomous_percentage: [int, str] = None):
+                    controlled_vehicles_percentage: [int, str] = None):
 
-        if autonomous_percentage is None:
-            autonomous_percentage_folder = 'test'
+        if controlled_vehicles_percentage is None:
+            percentage_folder = 'test'
+        elif isinstance(controlled_vehicles_percentage, str):
+            percentage_folder = controlled_vehicles_percentage
         else:
-            autonomous_percentage_folder = (str(autonomous_percentage)
-                                            + '_percent_autonomous')
+            percentage_folder = (str(controlled_vehicles_percentage)
+                                 + '_percent_' + self.vehicle_type)
         max_sim_number = data['simulation_number'].iloc[-1]
         num_str = '_' + str(max_sim_number).rjust(3, '0')
         file_name = self.file_base_name + num_str + self.file_extension
         full_address = os.path.join(self.network_data_dir,
-                                    autonomous_percentage_folder, file_name)
+                                    percentage_folder, file_name)
         try:
             data.to_csv(full_address, index=False)
         except FileNotFoundError:
-            print("Couldn't save at the desired location. Saving at: ",
-                  VissimInterface.networks_folder, " instead.")
+            print('Couldn''t save at', full_address, '. Saving at: ',
+                  VissimInterface.networks_folder, 'instead.')
             data.to_csv(os.path.join(VissimInterface.networks_folder,
                                      file_name), index=False)
             raise FileNotFoundError
@@ -92,7 +97,7 @@ class SyntheticDataWriter:
         leader['veh_type'] = Vehicle.NGSIM_CAR_ID * np.ones(n_points,
                                                             dtype=int)
         follower['lane'] = np.ones(n_points, dtype=int)
-        leader['lane'] = follower['lane']
+        leader['lane'] = np.ones(n_points, dtype=int)
         follower['x'] = np.zeros(n_points)
         leader['x'] = np.round(np.linspace(0, max_gap, n_points), 2)
         follower['vx'] = vx * np.ones(n_points)
