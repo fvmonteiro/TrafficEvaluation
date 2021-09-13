@@ -277,20 +277,23 @@ class ResultAnalyzer:
         :return: Merged dataframe with link evaluation, data collection
         results and surrogate safety measurement data"""
         seconds_in_hour = 3600
-        link_evaluation_data = (self._link_evaluation_reader.
-                                load_data_with_controlled_vehicles_percentage(
-                                    controlled_vehicles_percentage))
-        data_collections_data = (self._data_collections_reader.
-                                 load_data_with_controlled_vehicles_percentage(
-                                    controlled_vehicles_percentage))
-        ssm_data = (self._ssm_data_reader.
-                    load_data_with_controlled_vehicles_percentage(
-                        controlled_vehicles_percentage))
+        link_evaluation_data = (
+            self._link_evaluation_reader.
+            load_data_with_controlled_vehicles_percentage(
+                controlled_vehicles_percentage))
+        data_collections_data = (
+            self._data_collections_reader.
+            load_data_with_controlled_vehicles_percentage(
+                controlled_vehicles_percentage))
+        ssm_data = (
+            self._ssm_data_reader.
+            load_data_with_controlled_vehicles_percentage(
+                controlled_vehicles_percentage))
         # We merge to be sure we're properly matching data collection results
         # and link evaluation data (same simulation, same time interval)
         full_data = link_evaluation_data.merge(
             right=data_collections_data, how='inner',
-            on=[self.vehicle_type +  '_percentage', 'input_per_lane',
+            on=[self.vehicle_type + '_percentage', 'input_per_lane',
                 'time_interval', 'random_seed'])
         time_interval = full_data['time_interval'].iloc[0]
         interval_start, _, interval_end = time_interval.partition('-')
@@ -329,13 +332,10 @@ class ResultAnalyzer:
     def remove_deadlock_simulations(data):
         deadlock_entries = (
             data.loc[data['flow'] == 0, ['input_per_lane', 'random_seed']].
-                drop_duplicates().values
-        )
+                drop_duplicates().values)
         for element in deadlock_entries:
-            idx = data.loc[(data['input_per_lane'] == element[0]) & (data[
-                                                                         'random_seed'] ==
-                                                                     element[
-                                                                         1])].index
+            idx = data.loc[(data['input_per_lane'] == element[0])
+                           & (data['random_seed'] == element[1])].index
             data.drop(idx, inplace=True)
             print('Removed results from simulation with input {}, random '
                   'seed {} due to deadlock'.

@@ -1,5 +1,6 @@
 import os
 import time
+from typing import Union
 import warnings
 
 import pandas as pd
@@ -25,6 +26,7 @@ class VissimInterface:
                          'i710': 'I710-MultiSec-3mi',
                          'us101': 'US_101'}
     evaluation_periods = {'highway_in_and_out_lanes': 1800,
+                          'highway_in_and_merge': 1800,
                           'I710-MultiSec-3mi': 3600,
                           'US_101': 1800}
 
@@ -433,9 +435,8 @@ class VissimInterface:
                 # For each percentage, we reset VISSIM's simulation count
                 self.reset_saved_simulations(warning_active=False)
                 # Then we set the proper folder to save the results
-                results_folder = os.path.join(
-                    results_base_folder,
-                    str(percentage) + '_percent_' + vehicle_type)
+                results_folder = VissimInterface.create_percent_folder_name(
+                    percentage, vehicle_type)
                 self.vissim.Evaluation.SetAttValue('EvalOutDir', results_folder)
 
             # Finally, we set the percentage and run the simulation
@@ -709,6 +710,19 @@ class VissimInterface:
               format(percentage))
 
     # HELPER FUNCTIONS --------------------------------------------------------#
+    @staticmethod
+    def create_percent_folder_name(percentage: Union[int, str],
+                                   vehicle_type: str) -> str:
+        """Creates the name of the results folder (not the full path)"""
+
+        if isinstance(percentage, str):
+            percentage_folder = percentage
+        else:
+            percentage_folder = str(percentage) + '_percent_'
+            percentage_folder += vehicle_type if percentage > 0 else ''
+
+        return percentage_folder
+
     def is_some_network_loaded(self):
         if self.vissim.AttValue('InputFile') != '':
             # In case we loaded the simulation through VISSIM's interface:

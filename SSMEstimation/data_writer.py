@@ -23,15 +23,10 @@ class SSMDataWriter:
             self.vehicle_type = 'autonomous'
 
     def save_as_csv(self, data: pd.DataFrame,
-                    controlled_vehicles_percentage: [int, str] = None):
+                    controlled_vehicles_percentage: [int, str]):
 
-        if controlled_vehicles_percentage is None:
-            percentage_folder = 'test'
-        elif isinstance(controlled_vehicles_percentage, str):
-            percentage_folder = controlled_vehicles_percentage
-        else:
-            percentage_folder = (str(controlled_vehicles_percentage)
-                                 + '_percent_' + self.vehicle_type)
+        percentage_folder = VissimInterface.create_percent_folder_name(
+            controlled_vehicles_percentage, self.vehicle_type)
         max_sim_number = data['simulation_number'].iloc[-1]
         num_str = '_' + str(max_sim_number).rjust(3, '0')
         file_name = self.file_base_name + num_str + self.file_extension

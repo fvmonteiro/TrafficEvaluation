@@ -40,25 +40,20 @@ class VissimDataReader(DataReader):
     # These variables are needed because we only save the simulation number,
     # which doesn't mean much unless all autonomous percentages had the
     # exact same number of simulations.
-    # TODO: save this in some permanent file
-    # _vehicle_inputs_only_mandatory = [i for i in range(200, 2500, 300)]
+    # _vehicle_inputs = [i for i in range(500, 2501, 500)]
     # _autonomous_percentage_vehicle_inputs_map = {
-    #     0: _vehicle_inputs, 10: _vehicle_inputs, 20: _vehicle_inputs,
-    #     40: _vehicle_inputs, 60: _vehicle_inputs,
-    #     80: _vehicle_inputs, 100: _vehicle_inputs
+    #     0: _vehicle_inputs, 25: _vehicle_inputs[-2:], 50: _vehicle_inputs[-2:],
+    #     75: _vehicle_inputs[-2:], 100: _vehicle_inputs,
+    #     '100_percent_autonomous_only_longitudinal_control':
+    #         _vehicle_inputs[-2:-1],
+    #     'test': ['test']
     # }
-    _vehicle_inputs = [i for i in range(500, 2501, 500)]
-    _autonomous_percentage_vehicle_inputs_map = {
-        0: _vehicle_inputs, 25: _vehicle_inputs[-2:], 50: _vehicle_inputs[-2:],
-        75: _vehicle_inputs[-2:], 100: _vehicle_inputs,
-        '100_percent_autonomous_only_longitudinal_control':
-            _vehicle_inputs[-2:-1],
-        'test': ['test']
-    }
-    _connected_percentage_vehicle_inputs_map = {
-        0: _vehicle_inputs,  # TODO: updated once simulations are run
-        'test': [1000]
-    }
+    # _connected_percentage_vehicle_inputs_map = {
+    #     0: _vehicle_inputs, 25: [2000], 50: [2000], 75: [2000],
+    #     100: [1000, 1500, 2000],  # TODO: updated once simulations are run
+    #     'test': [1000]
+    # }
+    _vehicle_inputs = pd.DataFrame()
     _first_simulation_number = 2
     _runs_per_input = 10
     _initial_random_seed = 7
@@ -99,8 +94,15 @@ class VissimDataReader(DataReader):
         max_deceleration_data.set_index(['veh_type', 'vel'], inplace=True)
         return max_deceleration_data
 
+    @staticmethod
+    def load_simulation_vehicle_inputs():
+        if VissimDataReader._vehicle_inputs.empty:
+            VissimDataReader._vehicle_inputs = pd.read_csv(os.path.join(
+                VissimDataReader.vissim_networks_folder,
+                'simulated_vehicle_inputs.csv'))
+
     def load_data(self, file_identifier: Union[int, str],
-                  controlled_vehicles_percentage: [int, str] = 0):
+                  controlled_vehicles_percentage: Union[int, str] = 0):
         """ Loads data from simulations of a chosen network
 
         :param file_identifier: This can be either a integer indicating
@@ -120,14 +122,11 @@ class VissimDataReader(DataReader):
             file_name = (self.network_name + self.data_identifier
                          + num_str + self.file_format)
 
-        if isinstance(controlled_vehicles_percentage, str):
-            percent_str = controlled_vehicles_percentage
-        else:
-            percent_str = (str(controlled_vehicles_percentage)
-                           + '_percent_' + self._vehicle_type)
+        percent_folder = VissimInterface.create_percent_folder_name(
+            controlled_vehicles_percentage, self._vehicle_type)
 
         full_address = os.path.join(self.data_dir,
-                                    percent_str, file_name)
+                                    percent_folder, file_name)
         try:
             with open(full_address, 'r') as file:
                 # Skip header lines
@@ -229,15 +228,12 @@ class VissimDataReader(DataReader):
          a string with the folder name is also accepted.
         :return: highest simulation number. """
         max_simulation_number = 0
-        if isinstance(percentage, str):
-            percentage_folder = os.path.join(
-                self.data_dir, percentage)
-        else:
-            percentage_folder = os.path.join(
-                self.data_dir,
-                str(percentage) + '_percent_' + self._vehicle_type)
-        for file in os.listdir(percentage_folder):
-            # print(file)
+        percentage_folder = VissimInterface.create_percent_folder_name(
+            percentage, self._vehicle_type)
+
+        results_full_path = os.path.join(
+            self.data_dir, percentage_folder)
+        for file in os.listdir(results_full_path):
             if (file.startswith(self.network_name + self.data_identifier)
                     and file.endswith(self.file_format)):
                 file_no_extension = file.split('.')[0]
@@ -261,14 +257,15 @@ class VissimDataReader(DataReader):
         input_number = (
                 (data['simulation_number'] - self._first_simulation_number)
                 // self._runs_per_input)
-        if self.is_connected:
-            percentage_to_inputs_map = (
-                self._connected_percentage_vehicle_inputs_map)
-        else:
-            percentage_to_inputs_map = (
-                self._autonomous_percentage_vehicle_inputs_map)
+        VissimDataReader.load_simulation_vehicle_inputs()
+        veh_inputs = VissimDataReader._vehicle_inputs
 
-        inputs = [percentage_to_inputs_map[percentage][i] for i in input_number]
+        input_per_lane = veh_inputs.loc[
+            (veh_inputs['scenario'] == self.network_name)
+            & (veh_inputs[self._vehicle_type + '_percentage'] == percentage),
+            'input_per_lane'
+        ]
+        inputs = [input_per_lane.iloc[i] for i in input_number]
         data['input_per_lane'] = inputs
         data['simulation_number'] = self._initial_random_seed + (
                 (data['simulation_number'] - self._first_simulation_number)
@@ -456,13 +453,11 @@ class SSMDataReader(VissimDataReader):
         num_str = '_' + str(file_identifier).rjust(3, '0')
         file_name = (self.network_name + self.data_identifier
                      + num_str + self.file_format)
-        if isinstance(controlled_vehicles_percentage, str):
-            autonomous_percent_str = controlled_vehicles_percentage
-        else:
-            autonomous_percent_str = (str(controlled_vehicles_percentage)
-                                      + '_percent_autonomous')
+
+        percentage_folder = VissimInterface.create_percent_folder_name(
+            controlled_vehicles_percentage, self._vehicle_type)
         full_address = os.path.join(self.data_dir,
-                                    autonomous_percent_str, file_name)
+                                    percentage_folder, file_name)
         try:
             sim_output = pd.read_csv(full_address, index_col=False)
         except OSError:
