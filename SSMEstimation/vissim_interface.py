@@ -6,7 +6,7 @@ import warnings
 import pandas as pd
 import win32com.client as com
 
-from Vehicle import Vehicle
+from Vehicle import Vehicle, VehicleType
 
 
 class VissimInterface:
@@ -65,7 +65,8 @@ class VissimInterface:
         records and ssam files.
 
         :param network_name: Network name. Either the actual file name or the
-         network nickname. Currently available: toy, i710, us101
+         network nickname. Currently available: in_and_out, in_and_merge, i710,
+         us101
         :param layout_file: Optionally defines the layout file for the network
         :return: boolean indicating if simulation was properly loaded
         """
@@ -380,7 +381,7 @@ class VissimInterface:
         self.vissim.ResumeUpdateGUI()
 
     def run_with_increasing_controlled_vehicle_percentage(
-            self, is_connected: bool, percentage_increase: int,
+            self, vehicle_type: VehicleType, percentage_increase: int,
             initial_percentage: int, final_percentage: int,
             input_increase_per_lane: int = 500,
             initial_input_per_lane: int = 500,
@@ -390,8 +391,7 @@ class VissimInterface:
         """Runs scenarios with increasing demand for varying percentage
         values of controlled vehicles
 
-        :param is_connected: if true, runs simulations with connected
-         vehicles. Otherwise, vehicles are autonomous but don't communicate.
+        :param vehicle_type: enum to indicate the vehicle (controller) type
         :param percentage_increase: percentage increase between sets of runs
         :param initial_percentage: initial controlled vehicle percentage
         :param final_percentage: final controlled vehicle percentage (inclusive)
@@ -409,12 +409,9 @@ class VissimInterface:
         # as they are the same over each set of simulations.
         self.set_random_seed(7)
         self.set_random_seed_increment(1)
+        vehicle_type_name = vehicle_type.name.lower()
         results_base_folder = os.path.join(self.networks_folder,
                                            self.network_file)
-        if is_connected:
-            vehicle_type = 'connected'
-        else:
-            vehicle_type = 'autonomous'
 
         for percentage in range(initial_percentage,
                                 final_percentage + 1,
@@ -435,12 +432,15 @@ class VissimInterface:
                 # For each percentage, we reset VISSIM's simulation count
                 self.reset_saved_simulations(warning_active=False)
                 # Then we set the proper folder to save the results
-                results_folder = VissimInterface.create_percent_folder_name(
-                    percentage, vehicle_type)
+                results_folder = os.path.join(
+                    results_base_folder,
+                    VissimInterface.create_percent_folder_name(
+                        percentage, vehicle_type_name))
                 self.vissim.Evaluation.SetAttValue('EvalOutDir', results_folder)
 
             # Finally, we set the percentage and run the simulation
-            self.set_controlled_vehicles_percentage(percentage, vehicle_type)
+            self.set_controlled_vehicles_percentage(percentage,
+                                                    vehicle_type_name)
             self.run_with_increasing_demand(
                 input_increase_per_lane=input_increase_per_lane,
                 initial_input_per_lane=initial_input_per_lane,

@@ -4,9 +4,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+import post_processing
 import result_analysis
 from data_writer import SyntheticDataWriter
 import readers
+from Vehicle import VehicleType
 from vissim_interface import VissimInterface
 
 
@@ -107,9 +109,9 @@ def run_i170_scenario(save_results=False):
         vi.run_i710_simulation(idx_scenario, demand)
 
 
-def post_process_and_save(data_source, network_name, is_connected=False):
+def post_process_and_save(data_source, network_name, vehicle_type):
     if data_source.upper() == 'VISSIM':
-        data_reader = readers.VehicleRecordReader(network_name, is_connected)
+        data_reader = readers.VehicleRecordReader(network_name, vehicle_type)
     elif data_source.upper() == 'NGSIM':
         data_reader = readers.NGSIMDataReader(network_name)
     elif data_source == 'synthetic_data':
@@ -122,8 +124,8 @@ def post_process_and_save(data_source, network_name, is_connected=False):
           format(data_source, network_name))
     data = data_reader.load_data()
     print('Raw data shape: ', data.shape)
-    data_pp = result_analysis.VehicleRecordPostProcessor(data_source, data)
-    data_pp.post_process_data()
+    data_pp = post_processing.VehicleRecordPostProcessor(data_source)
+    data_pp.post_process_data(data)
     print('Post processed data shape: ', data.shape)
     save_post_processed_data(data, data_source,
                              data_reader.network_name)
@@ -135,7 +137,7 @@ def create_ssm(data_source, network_name, ssm_names):
 
     data_reader = readers.PostProcessedDataReader(data_source, network_name)
     data = data_reader.load_data()
-    ssm_estimator = result_analysis.SSMEstimator(data)
+    ssm_estimator = post_processing.SSMEstimator(data)
 
     for ssm in ssm_names:
         try:
@@ -189,8 +191,8 @@ def test_safe_gap_computation():
 
     gamma = 1 / 0.8
     rho = 0.2
-    ssm_estimator = result_analysis.SSMEstimator(data)
-    ssm_estimator.include_exact_risk(same_type_gamma=gamma)
+    ssm_estimator = post_processing.SSMEstimator(data)
+    ssm_estimator.include_risk(same_type_gamma=gamma)
     ssm_estimator.include_estimated_risk(rho=rho, same_type_gamma=gamma)
     risk_gap = data.loc[data['delta_x'] <= (data['safe_gap'] + 0.02),
                         'delta_x']
@@ -212,11 +214,12 @@ def test_safe_gap_computation():
 def explore_issues():
     """Explore the source of difference between trj and veh record data"""
     vissim_reader = readers.VehicleRecordReader('highway_in_and_out_lanes',
-                                                is_connected=False)
+                                                vehicle_type=
+                                                VehicleType.CONNECTED)
     veh_record = vissim_reader.load_data(2)
-    pp = result_analysis.VehicleRecordPostProcessor('vissim', veh_record)
-    pp.post_process_data()
-    ssm_estimator = result_analysis.SSMEstimator(veh_record)
+    pp = post_processing.VehicleRecordPostProcessor('vissim')
+    pp.post_process_data(veh_record)
+    ssm_estimator = post_processing.SSMEstimator(veh_record)
     ssm_estimator.include_ttc()
 
     conflicts = pd.read_csv(VissimInterface.networks_folder
@@ -269,31 +272,28 @@ def explore_issues():
 def main():
     # image_folder = "G:\\My Drive\\Safety in Mixed Traffic\\images"
 
-    # Define data source #
+    # =============== Define data source =============== #
     # Options: i710, us-101, in_and_out, in_and_merge
-    network_file = VissimInterface.network_names_map['in_and_merge']
-    is_connected = True
+    network_file = VissimInterface.network_names_map['in_and_out']
+    vehicle_type = VehicleType.CONNECTED
 
     # =============== Running =============== #
 
-    # run_i170_scenario(True)
-    # run_toy_example()
-    # generate_us_101_reduced_speed_table(1)
     # percentage_increase = 50
     # initial_percentage = 100
     # final_percentage = 100
     # vi = VissimInterface()
     # vi.load_simulation(network_file)
     # vi.run_with_increasing_controlled_vehicle_percentage(
-    #     is_connected=is_connected,
+    #     vehicle_type,
     #     percentage_increase=100,
     #     initial_percentage=100,
     #     final_percentage=100,
     #     input_increase_per_lane=500,
-    #     initial_input_per_lane=1000,
+    #     initial_input_per_lane=2000,
     #     max_input_per_lane=2000)
     # vi.run_with_increasing_controlled_vehicle_percentage(
-    #     is_connected=is_connected,
+    #     vehicle_type,
     #     percentage_increase=25,
     #     initial_percentage=25,
     #     final_percentage=75,
@@ -304,44 +304,37 @@ def main():
 
     # =============== Post processing =============== #
 
-    # result_analyzer = result_analysis.ResultAnalyzer(network_file,
-    #                                                  is_connected)
-    # for percentage in range(25, 100+1, 25):
-    #     result_analyzer.vehicle_record_to_ssm_summary(percentage)
+    # post_processor = post_processing.VehicleRecordPostProcessor('vissim')
+    # for percentage in range(100, 100+1, 100):
+    #     post_processor.create_ssm_summary(network_file, vehicle_type,
+    #                                       percentage)
 
     # =============== Check results graphically =============== #
 
-    result_analyzer = result_analysis.ResultAnalyzer('in_and_merge',
-                                                     is_connected=False)
-    # all_percentages = [i for i in range(0, 101, 25)]
+    vehicle_types = [VehicleType.LONGITUDINAL_CONTROL,
+                     VehicleType.AUTONOMOUS,
+                     VehicleType.CONNECTED]
+    result_analyzer = result_analysis.ResultAnalyzer('in_and_out',
+                                                     vehicle_types)
     # veh_inputs_per_lane = [i for i in range(1000, 2501, 1000)]
-    # # '100_percent_autonomous_only_longitudinal_control'
-    for veh_input in [2000]:
-        result_analyzer.plot_y_vs_time(
-            'flow', veh_input,
-            [100],
-            start_time=5)
-        # result_analyzer.plot_y_vs_time(
-        #     'exact_risk_no_lane_change', veh_input,
-        #     [0, 100],
-        #     start_time=5)
-        result_analyzer.plot_y_vs_time(
-            'exact_risk', veh_input,
-            [100],
-            start_time=5)
-    # result_analyzer.plot_y_vs_autonomous_percentage(
-    #     'flow', 2000,
-    #     ['100_percent_autonomous_only_longitudinal_control', 100],
-    #     start_time=5)
-    # result_analyzer.plot_y_vs_autonomous_percentage(
-    #     'exact_risk', 2000,
-    #     ['100_percent_autonomous_only_longitudinal_control', 100],
-    #     start_time=5)
+    percentages = [0, 100]
+    # for veh_input in [2000]:
+    #     result_analyzer.plot_y_vs_time('flow', veh_input, percentages,
+    #                                    warmup_time=5)
+    #     result_analyzer.plot_y_vs_time('risk_no_lane_change', veh_input,
+    #                                    percentages, warmup_time=5)
+    #     result_analyzer.plot_y_vs_time('risk', veh_input, percentages,
+    #                                    warmup_time=5)
+    # result_analyzer.plot_y_vs_controlled_percentage('flow', 2000, percentages,
+    #                                                 warmup_time=5)
+    # result_analyzer.plot_y_vs_controlled_percentage('risk_no_lane_change', 2000,
+    #                                                 percentages, warmup_time=5)
+    # result_analyzer.plot_y_vs_controlled_percentage('risk', 2000, percentages,
+    #                                                 warmup_time=5)
     # result_analyzer.plot_double_y_axes(0, x='density', y=['flow',
     #                                                       'exact_risk'])
-    # result_analyzer.plot_with_labels([
-    #     0, '100_percent_autonomous_only_longitudinal_control', 100],
-    #     x='average_speed', y='exact_risk')
+    result_analyzer.plot_with_labels(percentages,
+                                     x='average_speed', y='risk')
 
     # =============== SSM computation check =============== #
     # veh_rec_reader = readers.VehicleRecordReader('toy')

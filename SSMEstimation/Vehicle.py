@@ -1,43 +1,67 @@
+from enum import Enum
+
+
+class VehicleType (Enum):
+    HUMAN = 0
+    LONGITUDINAL_CONTROL = 1
+    AUTONOMOUS = 2
+    CONNECTED = 3
+    TRUCK = 4
+    BUS = 5
+    MOTORCYCLE = 6
+
+
 class Vehicle:
     """Class containing vehicle parameters"""
 
-    # TODO: create some form of enum
     NGSIM_MOTORCYCLE_ID = 1
     NGSIM_CAR_ID = 2
     NGSIM_TRUCK_ID = 3
     VISSIM_CAR_ID = 100
+    # VISSIM_LONGITUDINAL_CONTROLLED_CAR_ID = 105
     VISSIM_AUTONOMOUS_CAR_ID = 110
     VISSIM_CONNECTED_CAR_ID = 120
     VISSIM_TRUCK_ID = 200
     VISSIM_BUS_ID = 300
-    TYPE_CAR = 'car'
-    TYPE_AV = 'autonomous vehicle'
-    TYPE_CAV = 'connected vehicle'
-    TYPE_TRUCK = 'truck'
-    TYPE_BUS = 'bus'
-    TYPE_MOTORCYCLE = 'motorcycle'
+    # TYPE_CAR = 'car'
+    # TYPE_AV = 'autonomous vehicle'
+    # TYPE_CAV = 'connected vehicle'
+    # TYPE_TRUCK = 'truck'
+    # TYPE_BUS = 'bus'
+    # TYPE_MOTORCYCLE = 'motorcycle'
 
-    RELEVANT_TYPES = {TYPE_CAR, TYPE_TRUCK, TYPE_AV, TYPE_CAV}
+    RELEVANT_TYPES = {VehicleType.HUMAN, VehicleType.TRUCK,
+                      VehicleType.LONGITUDINAL_CONTROL,
+                      VehicleType.AUTONOMOUS, VehicleType.CONNECTED}
 
     # VISSIM and NGSIM codes for different vehicle types
-    INT_TO_NAME = {NGSIM_MOTORCYCLE_ID: TYPE_MOTORCYCLE,
-                   NGSIM_CAR_ID: TYPE_CAR, NGSIM_TRUCK_ID: TYPE_TRUCK,
-                   VISSIM_CAR_ID: TYPE_CAR,
-                   VISSIM_AUTONOMOUS_CAR_ID: TYPE_AV,
-                   VISSIM_CONNECTED_CAR_ID: TYPE_CAV,
-                   VISSIM_TRUCK_ID: TYPE_TRUCK,
-                   VISSIM_BUS_ID: TYPE_BUS}
+    INT_TO_ENUM = {NGSIM_MOTORCYCLE_ID: VehicleType.MOTORCYCLE,
+                   NGSIM_CAR_ID: VehicleType.HUMAN,
+                   NGSIM_TRUCK_ID: VehicleType.TRUCK,
+                   VISSIM_CAR_ID: VehicleType.HUMAN,
+                   VISSIM_AUTONOMOUS_CAR_ID: VehicleType.AUTONOMOUS,
+                   VISSIM_CONNECTED_CAR_ID: VehicleType.CONNECTED,
+                   VISSIM_TRUCK_ID: VehicleType.TRUCK,
+                   VISSIM_BUS_ID: VehicleType.CONNECTED}
 
     # Typical parameters values
-    _MAX_BRAKE_PER_TYPE = {TYPE_CAR: 7.5, TYPE_AV: 7.5,
-                           TYPE_CAV: 7.5, TYPE_TRUCK: 5.5}
-    _MAX_JERK_PER_TYPE = {TYPE_CAR: 50, TYPE_AV: 50,
-                          TYPE_CAV: 50, TYPE_TRUCK: 30}
-    _BRAKE_DELAY_PER_TYPE = {TYPE_CAR: 0.75, TYPE_AV: 0.2,
-                             TYPE_CAV: 0.1, TYPE_TRUCK: 0.5}
+    _MAX_BRAKE_PER_TYPE = {VehicleType.HUMAN: 7.5,
+                           VehicleType.AUTONOMOUS: 7.5,
+                           VehicleType.CONNECTED: 7.5,
+                           VehicleType.TRUCK: 5.5}
+    _MAX_JERK_PER_TYPE = {VehicleType.HUMAN: 50,
+                          VehicleType.AUTONOMOUS: 50,
+                          VehicleType.CONNECTED: 50,
+                          VehicleType.TRUCK: 30}
+    _BRAKE_DELAY_PER_TYPE = {VehicleType.HUMAN: 0.75,
+                             VehicleType.AUTONOMOUS: 0.2,
+                             VehicleType.CONNECTED: 0.1,
+                             VehicleType.TRUCK: 0.5}
     # 33 m/s ~= 120km/h ~= 75 mph
-    _FREE_FLOW_VELOCITY_PER_TYPE = {TYPE_CAR: 33, TYPE_AV: 33,
-                                    TYPE_CAV: 33, TYPE_TRUCK: 25}
+    _FREE_FLOW_VELOCITY_PER_TYPE = {VehicleType.HUMAN: 33,
+                                    VehicleType.AUTONOMOUS: 33,
+                                    VehicleType.CONNECTED: 33,
+                                    VehicleType.TRUCK: 25}
 
     def __init__(self, i_type: int, gamma: float = 1):
         """Assigns typical vehicle values based on the vehicle type
@@ -46,7 +70,7 @@ class Vehicle:
         """
 
         try:
-            self.type = self.INT_TO_NAME[i_type]
+            self.type = self.INT_TO_ENUM[i_type]
         except KeyError:
             print('{}: KeyError: vehicle type {} not defined'.
                   format(self.__class__.__name__, i_type))
