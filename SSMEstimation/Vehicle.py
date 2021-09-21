@@ -3,7 +3,7 @@ from enum import Enum
 
 class VehicleType (Enum):
     HUMAN = 0
-    LONGITUDINAL_CONTROL = 1
+    ACC = 1
     AUTONOMOUS = 2
     CONNECTED = 3
     TRUCK = 4
@@ -31,7 +31,7 @@ class Vehicle:
     # TYPE_MOTORCYCLE = 'motorcycle'
 
     RELEVANT_TYPES = {VehicleType.HUMAN, VehicleType.TRUCK,
-                      VehicleType.LONGITUDINAL_CONTROL,
+                      VehicleType.ACC,
                       VehicleType.AUTONOMOUS, VehicleType.CONNECTED}
 
     # VISSIM and NGSIM codes for different vehicle types

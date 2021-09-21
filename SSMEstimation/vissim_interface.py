@@ -649,7 +649,7 @@ class VissimInterface:
         veh_compositions_container = self.vissim.Net.VehicleCompositions
         for veh_composition in veh_compositions_container:
             # Find the right vehicle composition object
-            if veh_composition.AttValue('Name') == composition_name:
+            if veh_composition.AttValue('Name').lower() == composition_name:
                 vehicle_composition_number = veh_composition.AttValue('No')
                 break
         else:  # no break
