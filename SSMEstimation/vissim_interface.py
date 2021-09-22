@@ -115,11 +115,9 @@ class VissimInterface:
         """
 
         if (self.vissim.AttValue('InputFile')
-                != (self.network_names_map[
-                        scenario] + self.vissim_net_ext)):
+                != (self.network_names_map[scenario] + self.vissim_net_ext)):
             print('You must load the scenario ',
-                  self.network_names_map[scenario],
-                  ' before running it')
+                  self.network_names_map[scenario], ' before running it')
             return
 
         veh_volumes = dict()
@@ -197,7 +195,7 @@ class VissimInterface:
         self.vissim.Simulation.RunContinuous()
         print('Simulation done.')
 
-    def run_i710_simulation(self, scenario_idx: int, demand=5500):
+    def run_i710_simulation(self, scenario_idx: int, demand=None):
         """
         Run PTV VISSIM simulation using given arguments
 
@@ -207,33 +205,29 @@ class VissimInterface:
         """
 
         if (self.vissim.AttValue('InputFile')
-                != (self.network_names_map[
-                        'i710'] + self.vissim_net_ext)):
+                != (self.network_names_map['i710'] + self.vissim_net_ext)):
             print('You must load the i710 scenario before running it')
             return
 
         # Definition of scenarios
-        scenarios = [{'link': 9, 'lane': 2, 'coordinate': 10,
+        scenarios = [{'link': 5, 'lane': 2, 'coordinate': 10,
                       'incident_start_time': 30, 'incident_end_time': 30},
-                     {'link': 9, 'lane': 2, 'coordinate': 10,
+                     {'link': 5, 'lane': 2, 'coordinate': 10,
                       'incident_start_time': 30, 'incident_end_time': 10000},
-                     {'link': 9, 'lane': 2, 'coordinate': 10,
+                     {'link': 5, 'lane': 2, 'coordinate': 10,
                       'incident_start_time': 780, 'incident_end_time': 1980}]
 
         # Incident time period
         incident_start_time = scenarios[scenario_idx]['incident_start_time']
         incident_end_time = scenarios[scenario_idx]['incident_end_time']
 
-        # COM lines
-        self.vissim.SuspendUpdateGUI()
-
-        # Set vehicle input
-        net = self.vissim.Net
-        veh_inputs = net.VehicleInputs
-        veh_input = veh_inputs.ItemByKey(1)
-        veh_input.SetAttValue('Volume(1)', demand)
+        if demand is not None:
+            print('NOT YET TESTED')
+            veh_inputs = {'main': demand}
+            self.set_vehicle_inputs_by_name(veh_inputs)
 
         # Get link and vehicle objects
+        net = self.vissim.Net
         links = net.Links
         vehicles = net.Vehicles
 
@@ -264,8 +258,7 @@ class VissimInterface:
                 bus_array.append(vehicles.AddVehicleAtLinkPosition(
                     300, scenarios[scenario_idx]['link'],
                     scenarios[scenario_idx]['lane'],
-                    scenarios[scenario_idx]['coordinate']
-                    + 20 * i, 0, 0))
+                    scenarios[scenario_idx]['coordinate'] + 20 * i, 0, 0))
             self.vissim.Simulation.SetAttValue("SimBreakAt",
                                                incident_end_time)
             print('Client: Running again')
@@ -361,6 +354,17 @@ class VissimInterface:
                                     max_input_per_lane + 1,
                                     input_increase_per_lane):
             self.set_uniform_vehicle_input_for_all_lanes(input_per_lane)
+
+            # For each input, we reset VISSIM's simulation count
+            self.reset_saved_simulations(warning_active=False)
+            # Then we set the proper folder to save the results
+            current_folder = self.vissim.Evaluation.AttValue('EvalOutDir')
+            head, tail = os.path.split(current_folder)
+            if 'percent' in tail:
+                head = os.path.join(head, tail)
+            veh_input_folder = str(input_per_lane) + '_vehs_per_lane'
+            results_folder = os.path.join(head, veh_input_folder)
+            self.vissim.Evaluation.SetAttValue('EvalOutDir', results_folder)
 
             if self.network_file == 'highway_in_and_out_lanes':
                 self.run_in_and_out_scenario()
@@ -706,14 +710,15 @@ class VissimInterface:
                         if flow_vehicle_type in desired_flows:
                             relative_flow.SetAttValue(
                                 'RelFlow', desired_flows[flow_vehicle_type])
-        print('Client: input flows are {}% autonomous.'.
-              format(percentage))
+        print('Client: input flows are {}% {}.'.
+              format(percentage, vehicle_type))
 
     # HELPER FUNCTIONS --------------------------------------------------------#
     @staticmethod
     def create_percent_folder_name(percentage: Union[int, str],
                                    vehicle_type: str) -> str:
-        """Creates the name of the results folder (not the full path)"""
+        """Creates the name of the folder which contains results for the
+        given percentage of controlled vehicles (not the full path)"""
 
         if isinstance(percentage, str):
             percentage_folder = percentage
@@ -722,6 +727,16 @@ class VissimInterface:
             percentage_folder += vehicle_type if percentage > 0 else ''
 
         return percentage_folder
+
+    @staticmethod
+    def create_vehs_per_lane_folder_name(vehs_per_lane: int):
+        """Creates the name of the folder which contains results for the
+        given vehicle per lane input (not the full path)"""
+        if isinstance(vehs_per_lane, str):
+            vehs_per_lane_folder = vehs_per_lane
+        else:
+            vehs_per_lane_folder = str(vehs_per_lane) + '_vehs_per_lane'
+        return vehs_per_lane_folder
 
     def is_some_network_loaded(self):
         if self.vissim.AttValue('InputFile') != '':
