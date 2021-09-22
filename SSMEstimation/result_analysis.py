@@ -41,7 +41,7 @@ class ResultAnalyzer:
         ]
 
     # Plots aggregating results from multiple simulations =====================#
-    def plot_y_vs_time(self, y: str, input_per_lane: int,
+    def plot_y_vs_time(self, y: str, vehicles_per_lane: int,
                        controlled_vehicles_percentage:
                        Union[int, List[int]],
                        warmup_time: int = 0):
@@ -49,7 +49,7 @@ class ResultAnalyzer:
         versus time.
         
         :param y: name of the variable being plotted.
-        :param input_per_lane: input per lane used to generate the data
+        :param vehicles_per_lane: input per lane used to generate the data
         :param controlled_vehicles_percentage: Percentage of controlled vehicles
          present in the simulation. If this is a list, a single plot with
          different colors for each percentage is drawn. [No more] We expect an 
@@ -58,7 +58,7 @@ class ResultAnalyzer:
         :param warmup_time: must be given in minutes. Samples before start_time 
         are ignored."""
 
-        # TODO: check if input_per_lane exists in
+        # TODO: check if vehicles_per_lane exists in
         #  self._[]_percentage_simulated_inputs_map
 
         data = self._load_all_data(controlled_vehicles_percentage)
@@ -68,24 +68,24 @@ class ResultAnalyzer:
         # data['time'] = data['time_interval'].apply(
         #     lambda x: int(x.split('-')[0]) / seconds_in_minute)
         relevant_data = data.loc[
-            data['input_per_lane'] == input_per_lane]
+            data['vehicles_per_lane'] == vehicles_per_lane]
         # self.remove_deadlock_simulations(relevant_data)
         # Plot
         sns.set_style('whitegrid')
         ax = sns.lineplot(data=relevant_data, x='time', y=y,
                           hue='control_percentages', ci='sd')
-        ax.set_title('Input: ' + str(input_per_lane) + ' vehs per lane')
+        ax.set_title('Input: ' + str(vehicles_per_lane) + ' vehs per lane')
         plt.show()
 
     def plot_y_vs_controlled_percentage(
-            self, y: str, input_per_lane: Union[int, List[int]],
+            self, y: str, vehicles_per_lane: Union[int, List[int]],
             controlled_percentage: Union[int, List[int]],
             warmup_time: int = 0):
         """Plots averaged y over several runs with the same vehicle input
         versus controlled vehicles percentage as a box plot.
 
         :param y: name of the variable being plotted.
-        :param input_per_lane: input per lane used to generate the data
+        :param vehicles_per_lane: input per lane used to generate the data
         :param controlled_percentage: Percentage of controlled vehicles
          present in the simulation. If this is a list, a single plot with
          different colors for each percentage is drawn. [No more] We expect an
@@ -94,10 +94,10 @@ class ResultAnalyzer:
         :param warmup_time: must be given in minutes. Samples before
          start_time are ignored."""
 
-        if not isinstance(input_per_lane, list):
-            input_per_lane = [input_per_lane]
+        if not isinstance(vehicles_per_lane, list):
+            vehicles_per_lane = [vehicles_per_lane]
 
-        # TODO: check if input_per_lane exists in
+        # TODO: check if vehicles_per_lane exists in
         #  self._[]_percentage_simulated_inputs_map
 
         data = self._load_all_data(controlled_percentage)
@@ -106,15 +106,15 @@ class ResultAnalyzer:
         data['control_percentages'] = data[
             'control_percentages'].str.replace('% ', '%\n')
         relevant_data = data.loc[
-            data['input_per_lane'].isin(input_per_lane)]
+            data['vehicles_per_lane'].isin(vehicles_per_lane)]
         # self.remove_deadlock_simulations(relevant_data)
 
         # Plot
         sns.set_style('whitegrid')
-        if len(input_per_lane) > 1:
+        if len(vehicles_per_lane) > 1:
             sns.boxplot(data=relevant_data,  # orient='h',
                         x='control_percentages', y=y,
-                        hue='input_per_lane')
+                        hue='vehicles_per_lane')
         else:
             sns.boxplot(data=relevant_data,  # orient='h',
                         x='control_percentages', y=y)
@@ -218,23 +218,25 @@ class ResultAnalyzer:
         # Load all
         data = [None] * len(self._data_readers)
         for (j, reader) in enumerate(self._data_readers):
-            data[j] = reader[0].load_data_with_controlled_vehicles_percentage(
+            new_data = reader[0].load_data_with_controlled_vehicles_percentage(
                 controlled_vehicles_percentage)
+            # reader[0].match_sim_number_to_vehicle_input(new_data)
+            data[j] = new_data
 
         # We only need to load data without any controlled vehicles once
-        controlled_vehicles_percentage = [p for p in
+        controlled_vehicles_percentage = [percentage for percentage in
                                           controlled_vehicles_percentage if
-                                          p != 0]
-        # if 0 in controlled_vehicles_percentage:
-        #     controlled_vehicles_percentage.remove(0)
+                                          percentage != 0]
         for i in range(1, len(self._vehicle_types)):
             for (j, reader) in enumerate(self._data_readers):
-                data[j] = data[j].append(
-                    reader[i].load_data_with_controlled_vehicles_percentage(
-                        controlled_vehicles_percentage))
+                new_data = (reader[i].
+                            load_data_with_controlled_vehicles_percentage(
+                                controlled_vehicles_percentage))
+                data[j] = data[j].append(new_data)
 
         # Merge all data from all sources
-        shared_cols = ['input_per_lane', 'time_interval', 'random_seed']
+        shared_cols = ['vehicles_per_lane', 'time_interval',
+                       'random_seed']
         percentage_strings = [vt + '_percentage' for vt in self._vehicle_types]
         shared_cols.extend(percentage_strings)
         merged_data = data[0]
@@ -309,10 +311,10 @@ class ResultAnalyzer:
     def remove_deadlock_simulations(data):
         deadlock_entries = (data.loc[
                                 data['flow'] == 0,
-                                ['input_per_lane', 'random_seed']
+                                ['vehicles_per_lane', 'random_seed']
                             ].drop_duplicates())
         for element in deadlock_entries.values:
-            idx = data.loc[(data['input_per_lane'] == element[0])
+            idx = data.loc[(data['vehicles_per_lane'] == element[0])
                            & (data['random_seed'] == element[1])].index
             data.drop(idx, inplace=True)
             print('Removed results from simulation with input {}, random '
@@ -407,7 +409,7 @@ class ResultAnalyzer:
         2500) had no vehicles removed. """
         veh_rec_reader = readers.VehicleRecordReader(self.network_name,
                                                      vehicle_type)
-        max_file_number = veh_rec_reader.find_highest_file_number(
+        _, max_file_number = veh_rec_reader.find_min_max_file_number(
             controlled_vehicle_percentage)
         exit_links = [5, 6]
         for file_number in range(max_file_number - 10 + 1, max_file_number + 1):
@@ -442,13 +444,13 @@ class ResultAnalyzer:
             data = reader.load_data_with_controlled_vehicles_percentage(
                 percentage)
             all_random_seeds = data['random_seed'].unique()
-            all_inputs = data['input_per_lane'].unique()
+            all_inputs = data['vehicles_per_lane'].unique()
             for veh_input in all_inputs:
                 # print('veh input=', veh_input)
                 for random_seed in all_random_seeds:
                     # print('random seed=', random_seed)
                     sim_data = data.loc[(data['random_seed'] == random_seed)
-                                        & (data['input_per_lane'] == veh_input)]
+                                        & (data['vehicles_per_lane'] == veh_input)]
                     if sim_data.iloc[-1]['time_interval'] != end_time:
                         print('Simulation with random seed ', random_seed,
                               ' stopped at ',

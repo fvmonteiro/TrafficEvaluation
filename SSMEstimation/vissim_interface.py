@@ -723,7 +723,7 @@ class VissimInterface:
         if isinstance(percentage, str):
             percentage_folder = percentage
         else:
-            percentage_folder = str(percentage) + '_percent_'
+            percentage_folder = str(int(percentage)) + '_percent_'
             percentage_folder += vehicle_type if percentage > 0 else ''
 
         return percentage_folder
@@ -735,7 +735,7 @@ class VissimInterface:
         if isinstance(vehs_per_lane, str):
             vehs_per_lane_folder = vehs_per_lane
         else:
-            vehs_per_lane_folder = str(vehs_per_lane) + '_vehs_per_lane'
+            vehs_per_lane_folder = str(int(vehs_per_lane)) + '_vehs_per_lane'
         return vehs_per_lane_folder
 
     def is_some_network_loaded(self):

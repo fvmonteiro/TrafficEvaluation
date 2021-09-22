@@ -1,3 +1,4 @@
+import warnings
 from typing import List
 
 import numpy as np
@@ -270,7 +271,7 @@ class VehicleRecordPostProcessor:
     def create_ssm_summary(self, network_name: str, vehicle_type,
                            controlled_vehicle_percentage: int):
         """Reads multiple vehicle record data files, postprocesses them,
-        computes SSMs, averages the SSMs within a time period, and produces a
+        computes SSMs, averages the SSMs within a time period, and saves a
         single dataframe that can be merged to results from link evaluation
         and data collection measurements.
 
@@ -280,42 +281,36 @@ class VehicleRecordPostProcessor:
          :param vehicle_type: enum to indicate the vehicle (controller) type
         :param controlled_vehicle_percentage: Percentage of controlled vehicles
          present in the simulation.
-        :return: Dataframe with columns simulation_number, time_interval and
-         one for each SSM"""
+        :return: Nothing. SSM results are saved to as csv files"""
 
+        writer = SSMDataWriter(network_name, vehicle_type)
         vehicle_record_reader = readers.VehicleRecordReader(network_name,
                                                             vehicle_type)
-        final_file_number = (
-            vehicle_record_reader.find_highest_file_number(
-                controlled_vehicle_percentage))
-
-        # Quick check to avoid unnecessary recomputing
-        ssm_reader = readers.SSMDataReader(network_name, vehicle_type)
-        if (ssm_reader.find_highest_file_number(controlled_vehicle_percentage)
-                == final_file_number):
-            data = ssm_reader.load_data(final_file_number,
-                                        controlled_vehicle_percentage)
-            print('SSM file already exists. Returning the loaded file.\n'
-                  'If you want to create a new file, delete the old one first.')
-            return data
-
+        data_generator = (vehicle_record_reader.
+                          generate_data_with_controlled_vehicles_percentage(
+                              controlled_vehicle_percentage))
         column_titles = ['simulation_number', 'time_interval', 'low_TTC',
                          'high_DRAC', 'risk', 'risk_no_lane_change']
         result_df = pd.DataFrame(columns=column_titles)
         aggregation_period = 30  # [s] TODO: read from somewhere?
-        initial_file_number = 2  # the code to run multiple scenarios
-        # discards the file number 1
+        # TODO: missing a check to see whether data was already processed
+        temp = 0
+        # aggregated_data = pd.DataFrame()
+        for (vehicle_records, file_number) in data_generator:
+            vehicles_per_lane = vehicle_records.iloc[0]['vehicles_per_lane']
+            # We save once per vehicle_per_lane value
+            if 0 < temp != vehicles_per_lane:
+                print('Files with input ', temp, ' done. Saving to file...')
+                writer.save_as_csv(result_df,
+                                   controlled_vehicle_percentage,
+                                   temp)
+                print('Successfully saved.')
+                result_df = pd.DataFrame(columns=column_titles)
+            temp = vehicles_per_lane
 
-        for file_number in range(initial_file_number, final_file_number + 1):
-            print('Working on file number {} / {}'.format(
-                file_number, final_file_number + 1))
-
-            vehicle_records = (vehicle_record_reader.load_data(
-                file_number, controlled_vehicle_percentage))
             self.post_process_data(vehicle_records)
             self.create_time_bins_and_labels(aggregation_period,
                                              vehicle_records)
-
             # Adding SSMs
             ssm_estimator = SSMEstimator(vehicle_records)
             ssm_estimator.include_ttc()
@@ -324,20 +319,22 @@ class VehicleRecordPostProcessor:
                 ssm_estimator.include_collision_free_gap(
                     consider_lane_change=choice)
                 ssm_estimator.include_risk(consider_lane_change=choice)
-
             # Aggregate
             aggregated_data = vehicle_records[column_titles[1:]].groupby(
                 'time_interval').sum()
             aggregated_data.reset_index(inplace=True)
             aggregated_data.insert(0, 'simulation_number', file_number)
+            aggregated_data['vehicles_per_lane'] = int(vehicles_per_lane)
+
             result_df = result_df.append(aggregated_data)
+
             print('-' * 79)
 
-        print('Dataframe built. Saving to file...')
-        writer = SSMDataWriter(network_name, vehicle_type)
-        writer.save_as_csv(result_df, controlled_vehicle_percentage)
+        print('Files with input ', temp, ' done. Saving to file...')
+        writer.save_as_csv(result_df,
+                           controlled_vehicle_percentage,
+                           temp)
         print('Successfully saved.')
-        return result_df
 
     @staticmethod
     def create_time_bins_and_labels(period, vehicle_records):
@@ -359,6 +356,34 @@ class VehicleRecordPostProcessor:
         vehicle_records['time_interval'] = pd.cut(
             x=vehicle_records['time'], bins=interval_limits,
             labels=interval_labels[:-1])
+
+
+class AggregateDataPostProcessor:
+    """ UNFINISHED CLASS
+    Post processes VISSIM '.att' data from data collection measurements,
+     link evaluations and vehicle inputs"""
+
+    def __init__(self, network_name, vehicle_type):
+        self._vehicle_input_reader = readers.VehicleInputReader(network_name,
+                                                                vehicle_type)
+        self._data_readers = (
+            readers.LinkEvaluationReader(network_name, vehicle_type),
+            readers.DataCollectionReader(network_name, vehicle_type)
+        )
+        pass
+
+    def add_vehicle_input_data(self, percentage: int):
+        """TODO: write based on final version"""
+        veh_inputs = (self._vehicle_input_reader.
+                      load_data_with_controlled_vehicles_percentage(percentage))
+        for reader in self._data_readers:
+            data = reader.load_data_with_controlled_vehicles_percentage(
+                percentage)
+            veh_inputs = (veh_inputs[['vehicle_input', 'simulation_number']].
+                          groupby('simulation_number').sum())
+            data.merge(veh_inputs, how='inner',
+                       on='simulation_number')
+        # TODO: return data or save it to a csv?
 
 
 class SSMEstimator:
@@ -652,8 +677,8 @@ class SSMEstimator:
 
         (follower_effective_max_brake,
          follower_effective_lambda1, _) = (
-            self._get_braking_parameters_over_time(
-                self.veh_data.loc[veh_idx, 'lane_change'],
+            self.get_braking_parameters_over_time(
+                self.veh_data.loc[veh_idx],
                 follower,
                 consider_lane_change)
         )
@@ -738,8 +763,8 @@ class SSMEstimator:
         (follower_effective_max_brake,
          follower_effective_lambda1,
          follower_effective_tau_j) = (
-            self._get_braking_parameters_over_time(
-                self.veh_data.loc[veh_idx, 'lane_change'],
+            self.get_braking_parameters_over_time(
+                self.veh_data.loc[veh_idx],
                 follower,
                 consider_lane_change))
 
@@ -857,25 +882,39 @@ class SSMEstimator:
         estimated_risk_squared[estimated_risk_squared < 0] = 0
         return np.sqrt(estimated_risk_squared)
 
-    def _get_braking_parameters_over_time(self,
-                                          lane_change_indicator: pd.Series,
-                                          vehicle: Vehicle,
-                                          consider_lane_change: bool = True) \
+    @staticmethod
+    def get_braking_parameters_over_time(vehicle_data: pd.DataFrame,
+                                         vehicle: Vehicle,
+                                         consider_lane_change: bool = True) \
             -> (np.array, np.array, np.array):
         """The vehicle maximum braking is reduced during lane change. This
         function determines when the vehicle is lane changing and returns
         arrays with values of maximum brake and lambda1 at each simulation
         step.
 
-        :param lane_change_indicator: series with VISSIM's indication of lane
-         change direction. Elements are strings, where 'None' means no lane
-         change.
+        :param vehicle_data: Must contain either a column 'lane_change' or a
+         column 'y'. If only column 'y' exists, sends a warning.
         :param vehicle: object containing the vehicle's parameters
         :param consider_lane_change: if set to false, we don't consider the
          effects of lane change, i.e., we treat all situations as simple
          vehicle following. If set to true, we overestimate the risk by
          assuming a reduced max brake during lane changes.
         :return: Tuple of numpy arrays"""
+
+        # In VISSIM's indication of lane change direction, elements are
+        # strings, where 'None' means no lane change.
+        # We mimic this by checking the lateral coordinates if the lane
+        # change columns is not present.
+        if 'lane_change' in vehicle_data.columns:
+            lane_change_indicator = vehicle_data['lane_change']
+        else:
+            warnings.warn('This vehicle record does not contain lane change '
+                          'data. It will be estimated by lateral position.\n'
+                          'Consider rerunning simulations.')
+            lane_change_indicator = (np.abs(
+                vehicle_data['y'] - 0.5) < 0.1)
+            lane_change_indicator[lane_change_indicator.index[
+                lane_change_indicator]] = 'None'
 
         vehicle_effective_max_brake = (np.ones(len(lane_change_indicator))
                                        * vehicle.max_brake)
