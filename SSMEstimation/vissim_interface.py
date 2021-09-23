@@ -6,7 +6,7 @@ import warnings
 import pandas as pd
 import win32com.client as com
 
-from Vehicle import Vehicle, VehicleType
+from vehicle import Vehicle, VehicleType
 
 
 class VissimInterface:
@@ -556,35 +556,36 @@ class VissimInterface:
         sim_params = {'NumRuns': number_of_runs}
         self.set_simulation_parameters(sim_params)
 
-    def create_time_intervals(self, period):
-        """Programmatically creates time intervals in VISSIM so that
-        measurements can be taken periodically. This avoids having to stop
-        the simulation to save the results as they come.
-        It seems like VISSIM already provides an easy way to do this, so this
-        function is no longer necessary
-
-        :param period: time intervals will be created with equal 'period'
-         duration
-         """
-
-        print('WARNING: this function does''t do anything for now')
-
-        # n_intervals = self.vissim.Simulation.AttValue(
-        #     'SimPeriod') // period + 1
-        #
-        # # I still don't know how to find the TimeIntervalSet which contains
-        # # the TimeIntervalContainer relative to the measurements
-        # time_interval_set_container = self.vissim.Net.TimeIntervalSets
-        # for ti_set in time_interval_set_container:
-        #     ti_container = ti_set.TimeInts
-        #     if True:  # create condition to find the proper TimeIntervalSet
-        #         print('initial number of time intervals: ', len(ti_container))
-        #         for i in range(len(ti_container), n_intervals):
-        #             ti_container.AddTimeInterval(i)
-        #         print('final number of time intervals: ', len(ti_container))
-        #
-        # # Save
-        # self.vissim.SaveNet()
+    # def create_time_intervals(self, period):
+    #     """Programmatically creates time intervals in VISSIM so that
+    #     measurements can be taken periodically. This avoids having to stop
+    #     the simulation to save the results as they come.
+    #     It seems like VISSIM already provides an easy way to do this, so this
+    #     function is no longer necessary
+    #
+    #     :param period: time intervals will be created with equal 'period'
+    #      duration
+    #      """
+    #
+    #     print('WARNING: this function does''t do anything for now')
+    #
+    #     # n_intervals = self.vissim.Simulation.AttValue(
+    #     #     'SimPeriod') // period + 1
+    #     #
+    #     # # I still don't know how to find the TimeIntervalSet which contains
+    #     # # the TimeIntervalContainer relative to the measurements
+    #     # time_interval_set_container = self.vissim.Net.TimeIntervalSets
+    #     # for ti_set in time_interval_set_container:
+    #     #     ti_container = ti_set.TimeInts
+    #     #     if True:  # create condition to find the proper TimeIntervalSet
+    #     #         print('initial number of time intervals: ',
+    #     #             len(ti_container))
+    #     #         for i in range(len(ti_container), n_intervals):
+    #     #             ti_container.AddTimeInterval(i)
+    #     #         print('final number of time intervals: ', len(ti_container))
+    #     #
+    #     # # Save
+    #     # self.vissim.SaveNet()
 
     def set_vehicle_inputs_by_name(self, new_veh_inputs: dict):
         """

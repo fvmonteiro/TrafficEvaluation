@@ -3,41 +3,28 @@ import os
 import numpy as np
 import pandas as pd
 
-from Vehicle import Vehicle, VehicleType
+from vehicle import Vehicle, VehicleType
 from vissim_interface import VissimInterface
 
 
-class SSMDataWriter:
-    """Helps saving aggregated SSM results to files"""
+class DataWriter:
+
     file_extension = '.csv'
 
-    def __init__(self, network_name: str, vehicle_type: VehicleType):
+    def __init__(self, data_type_identifier: str, network_name: str,
+                 vehicle_type: VehicleType):
         network_name = VissimInterface.get_file_name_from_network_name(
             network_name)
-        self.file_base_name = network_name + '_SSM Results'
+        self.file_base_name = network_name + '_' + data_type_identifier
         self.network_data_dir = os.path.join(VissimInterface.networks_folder,
                                              network_name)
         self.vehicle_type = vehicle_type.name.lower()
 
-    def save_as_csv(self, data: pd.DataFrame,
-                    controlled_vehicles_percentage: int,
-                    vehicles_per_lane: int = None):
+    @staticmethod
+    def _save_as_csv(data: pd.DataFrame, folder_path: str,
+                     file_name: str):
 
-        max_sim_number = data['simulation_number'].iloc[-1]
-        num_str = '_' + str(max_sim_number).rjust(3, '0')
-        file_name = self.file_base_name + num_str + self.file_extension
-        percentage_folder = VissimInterface.create_percent_folder_name(
-            controlled_vehicles_percentage, self.vehicle_type)
-        if vehicles_per_lane:
-            vehicles_per_lane_folder = (
-                VissimInterface.create_vehs_per_lane_folder_name(
-                    vehicles_per_lane))
-            full_address = os.path.join(self.network_data_dir,
-                                        percentage_folder,
-                                        vehicles_per_lane_folder, file_name)
-        else:
-            full_address = os.path.join(self.network_data_dir,
-                                        percentage_folder, file_name)
+        full_address = os.path.join(folder_path, file_name)
         try:
             data.to_csv(full_address, index=False)
         except FileNotFoundError:
@@ -45,7 +32,49 @@ class SSMDataWriter:
                   VissimInterface.networks_folder, 'instead.')
             data.to_csv(os.path.join(VissimInterface.networks_folder,
                                      file_name), index=False)
-            raise FileNotFoundError
+
+
+class SSMDataWriter(DataWriter):
+    """Helps saving aggregated SSM results to files"""
+    _data_type_identifier = 'SSM Results'
+
+    def __init__(self, network_name: str, vehicle_type: VehicleType):
+        DataWriter.__init__(self, self._data_type_identifier, network_name,
+                            vehicle_type)
+
+    def save_as_csv(self, data: pd.DataFrame,
+                    controlled_vehicles_percentage: int,
+                    vehicles_per_lane: int):
+
+        max_sim_number = data['simulation_number'].iloc[-1]
+        num_str = '_' + str(max_sim_number).rjust(3, '0')
+        file_name = self.file_base_name + num_str + self.file_extension
+
+        percentage_folder = VissimInterface.create_percent_folder_name(
+            controlled_vehicles_percentage, self.vehicle_type)
+        vehicles_per_lane_folder = (
+            VissimInterface.create_vehs_per_lane_folder_name(
+                vehicles_per_lane))
+        folder_path = os.path.join(self.network_data_dir, percentage_folder,
+                                   vehicles_per_lane_folder)
+        self._save_as_csv(data, folder_path, file_name)
+
+
+class MergedDataWriter(DataWriter):
+    _data_type_identifier = 'Merged Data'
+
+    def __init__(self, network_name: str, vehicle_type: VehicleType):
+        DataWriter.__init__(self, self._data_type_identifier, network_name,
+                            vehicle_type)
+
+    def save_as_csv(self, data: pd.DataFrame,
+                    controlled_vehicles_percentage: int):
+
+        file_name = self.file_base_name + self.file_extension
+        percentage_folder = VissimInterface.create_percent_folder_name(
+            controlled_vehicles_percentage, self.vehicle_type)
+        folder_path = os.path.join(self.network_data_dir, percentage_folder)
+        self._save_as_csv(data, folder_path, file_name)
 
 
 class SyntheticDataWriter:

@@ -7,7 +7,7 @@ import pandas as pd
 import seaborn as sns
 
 import readers
-from Vehicle import VehicleType
+from vehicle import VehicleType
 
 
 class ResultAnalyzer:
@@ -27,18 +27,18 @@ class ResultAnalyzer:
         if not isinstance(vehicle_types, list):
             vehicle_types = [vehicle_types]
         self.network_name = network_name
-        self._vehicle_types = [vt.name.lower() for vt in vehicle_types]
-        link_evaluation_reader = [readers.LinkEvaluationReader(
-            network_name, vt) for vt in vehicle_types]
-        data_collections_reader = [readers.DataCollectionReader(
-            network_name, vt) for vt in vehicle_types]
-        ssm_data_reader = [readers.SSMDataReader(
-            network_name, vt) for vt in vehicle_types]
-        self._data_readers = [
-            link_evaluation_reader,
-            data_collections_reader,
-            ssm_data_reader
-        ]
+        self._vehicle_types = vehicle_types
+        # link_evaluation_reader = [readers.LinkEvaluationReader(
+        #     network_name, vt) for vt in vehicle_types]
+        # data_collections_reader = [readers.DataCollectionReader(
+        #     network_name, vt) for vt in vehicle_types]
+        # ssm_data_reader = [readers.SSMDataReader(
+        #     network_name, vt) for vt in vehicle_types]
+        # self._data_readers = [
+        #     link_evaluation_reader,
+        #     data_collections_reader,
+        #     ssm_data_reader
+        # ]
 
     # Plots aggregating results from multiple simulations =====================#
     def plot_y_vs_time(self, y: str, vehicles_per_lane: int,
@@ -58,18 +58,12 @@ class ResultAnalyzer:
         :param warmup_time: must be given in minutes. Samples before start_time 
         are ignored."""
 
-        # TODO: check if vehicles_per_lane exists in
-        #  self._[]_percentage_simulated_inputs_map
-
         data = self._load_all_data(controlled_vehicles_percentage)
         self._prepare_data_for_plotting(data, warmup_time)
-        # # Create time in minutes for better display
-        # seconds_in_minute = 60
-        # data['time'] = data['time_interval'].apply(
-        #     lambda x: int(x.split('-')[0]) / seconds_in_minute)
         relevant_data = data.loc[
             data['vehicles_per_lane'] == vehicles_per_lane]
         # self.remove_deadlock_simulations(relevant_data)
+
         # Plot
         sns.set_style('whitegrid')
         ax = sns.lineplot(data=relevant_data, x='time', y=y,
@@ -96,9 +90,6 @@ class ResultAnalyzer:
 
         if not isinstance(vehicles_per_lane, list):
             vehicles_per_lane = [vehicles_per_lane]
-
-        # TODO: check if vehicles_per_lane exists in
-        #  self._[]_percentage_simulated_inputs_map
 
         data = self._load_all_data(controlled_percentage)
         self._prepare_data_for_plotting(data, warmup_time)
@@ -194,7 +185,8 @@ class ResultAnalyzer:
         ax2.yaxis.label.set_color('r')
 
         ax1.set_title(
-            str(controlled_percentage) + '% ' + self._vehicle_types[0])
+            str(controlled_percentage) + '% '
+            + self._vehicle_types[0].name.lower())
         fig.tight_layout()
         plt.show()
 
@@ -215,49 +207,27 @@ class ResultAnalyzer:
         :return: Merged dataframe with link evaluation, data collection
         results and surrogate safety measurement data"""
 
-        # Load all
-        data = [None] * len(self._data_readers)
-        for (j, reader) in enumerate(self._data_readers):
-            new_data = reader[0].load_data_with_controlled_vehicles_percentage(
+        data = pd.DataFrame()
+        for vt in self._vehicle_types:
+            data_reader = readers.MergedDataReader(self.network_name, vt)
+            new_data = data_reader.load_multiple_data(
                 controlled_vehicles_percentage)
-            # reader[0].match_sim_number_to_vehicle_input(new_data)
-            data[j] = new_data
-
-        # We only need to load data without any controlled vehicles once
-        controlled_vehicles_percentage = [percentage for percentage in
-                                          controlled_vehicles_percentage if
-                                          percentage != 0]
-        for i in range(1, len(self._vehicle_types)):
-            for (j, reader) in enumerate(self._data_readers):
-                new_data = (reader[i].
-                            load_data_with_controlled_vehicles_percentage(
-                                controlled_vehicles_percentage))
-                data[j] = data[j].append(new_data)
-
-        # Merge all data from all sources
-        shared_cols = ['vehicles_per_lane', 'time_interval',
-                       'random_seed']
-        percentage_strings = [vt + '_percentage' for vt in self._vehicle_types]
-        shared_cols.extend(percentage_strings)
-        merged_data = data[0]
-        for i in range(1, len(data)):
-            merged_data = merged_data.merge(right=data[i], how='inner',
-                                            on=shared_cols)
-
-        return merged_data
+            data = new_data if data.empty else data.append(new_data)
+            # We only need to load data without any controlled vehicles once
+            if 0 in controlled_vehicles_percentage:
+                controlled_vehicles_percentage.remove(0)
+        return data
 
     def _prepare_data_for_plotting(self, data: pd.DataFrame,
                                    warmup_time: float = 0,
                                    sensor_numbers: Union[int, List[int]] = 1):
         """Performs several operations to make the data proper for plotting:
-        1. Deletes '(ALL)' from some columns names
-        2. Computes flow
-        3. Fill NaN entries in columns describing controlled vehicle
+        1. Fill NaN entries in columns describing controlled vehicle
         percentage
-        4. Aggregates data from all columns describing controlled vehicle
+        2. Aggregates data from all columns describing controlled vehicle
         percentage into a single 'control_percentages' column
-        5. Creates a 'time' column in minutes
-        6. [Optional] Removes samples before warm-up time
+        3. [Optional] Removes samples before warm-up time
+        4. [Optional] Filter out certain sensor groups
 
         :param data: Dataframe with data from all sources (link evaluation,
          data collection, and ssm)
@@ -265,24 +235,12 @@ class ResultAnalyzer:
         :param sensor_numbers: We only keep data collection measurements from
          the listed sensor numbers"""
 
-        # Some column names contain (ALL). We can remove that information
-        column_names = [name.split('(')[0] for name in data.columns]
-        data.columns = column_names
-
         if sensor_numbers:
             if not isinstance(sensor_numbers, list):
                 sensor_numbers = [sensor_numbers]
             data.drop(index=data[~data['sensor_number'].isin(
                 sensor_numbers)].index,
                       inplace=True)
-
-        # Compute flow
-        time_interval = data['time_interval'].iloc[0]
-        interval_start, _, interval_end = time_interval.partition('-')
-        measurement_period = int(interval_end) - int(interval_start)
-        seconds_in_hour = 3600
-        data['flow'] = (seconds_in_hour / measurement_period
-                        * data['vehicle_count'])
 
         # Fill NaNs in cols of *_percentage with zero
         percentage_strings = [col for col in data.columns
@@ -292,20 +250,16 @@ class ResultAnalyzer:
         # Create single columns with all controlled vehicles' percentages info
         data['control_percentages'] = ''
         for vt in self._vehicle_types:
-            idx = data[vt + '_percentage'] > 0
+            vt_str = vt.name.lower()
+            idx = data[vt_str + '_percentage'] > 0
             data.loc[idx, 'control_percentages'] += (
-                    data.loc[idx, vt + '_percentage'].apply(str) + '% ' +
-                    vt)
+                    data.loc[idx, vt_str + '_percentage'].apply(str) + '% ' +
+                    vt_str)
         data.loc[data['control_percentages'] == '',
                  'control_percentages'] = 'no control'
 
-        # Create time in minutes for better display
-        seconds_in_minute = 60
-        data['time'] = data['time_interval'].apply(
-            lambda x: int(x.split('-')[0]) / seconds_in_minute)
         # Optional warm-up time.
         data.drop(index=data[data['time'] < warmup_time].index, inplace=True)
-        # return data
 
     @staticmethod
     def remove_deadlock_simulations(data):
@@ -419,7 +373,8 @@ class ResultAnalyzer:
             all_ids = vehicle_record['veh_id'].unique()
             removed_vehs = []
             for veh_id in all_ids:
-                veh_data = vehicle_record.loc[vehicle_record['veh_id'] == veh_id]
+                veh_data = vehicle_record.loc[vehicle_record['veh_id']
+                                              == veh_id]
                 veh_last_link = veh_data['link'].iloc[-1]
                 veh_last_time = veh_data['time'].iloc[-1]
                 if veh_last_link not in exit_links and veh_last_time < max_time:
@@ -436,10 +391,12 @@ class ResultAnalyzer:
 
         # We can do this by checking either data collection or link evaluation
         # results
-        data_no_control = self._data_readers[0][0].\
-            load_data_with_controlled_vehicles_percentage(0)
+        data_collection_readers = [readers.DataCollectionReader(
+            self.network_name, vt) for vt in self._vehicle_types]
+        data_no_control = (data_collection_readers[0].
+                           load_data_with_controlled_vehicles_percentage(0))
         end_time = data_no_control.iloc[-1]['time_interval']
-        for reader in self._data_readers[0]:
+        for reader in data_collection_readers:
             print(reader.vehicle_type)
             data = reader.load_data_with_controlled_vehicles_percentage(
                 percentage)
@@ -449,10 +406,10 @@ class ResultAnalyzer:
                 # print('veh input=', veh_input)
                 for random_seed in all_random_seeds:
                     # print('random seed=', random_seed)
-                    sim_data = data.loc[(data['random_seed'] == random_seed)
-                                        & (data['vehicles_per_lane'] == veh_input)]
+                    sim_data = data.loc[
+                        (data['random_seed'] == random_seed)
+                        & (data['vehicles_per_lane'] == veh_input)]
                     if sim_data.iloc[-1]['time_interval'] != end_time:
                         print('Simulation with random seed ', random_seed,
                               ' stopped at ',
                               sim_data.iloc[-1]['time_interval'])
-
