@@ -18,7 +18,7 @@ class Vehicle:
     NGSIM_CAR_ID = 2
     NGSIM_TRUCK_ID = 3
     VISSIM_CAR_ID = 100
-    # VISSIM_LONGITUDINAL_CONTROLLED_CAR_ID = 105
+    VISSIM_ACC_CAR_ID = 105
     VISSIM_AUTONOMOUS_CAR_ID = 110
     VISSIM_CONNECTED_CAR_ID = 120
     VISSIM_TRUCK_ID = 200
@@ -39,6 +39,7 @@ class Vehicle:
                    NGSIM_CAR_ID: VehicleType.HUMAN,
                    NGSIM_TRUCK_ID: VehicleType.TRUCK,
                    VISSIM_CAR_ID: VehicleType.HUMAN,
+                   VISSIM_ACC_CAR_ID: VehicleType.ACC,
                    VISSIM_AUTONOMOUS_CAR_ID: VehicleType.AUTONOMOUS,
                    VISSIM_CONNECTED_CAR_ID: VehicleType.CONNECTED,
                    VISSIM_TRUCK_ID: VehicleType.TRUCK,
@@ -46,19 +47,23 @@ class Vehicle:
 
     # Typical parameters values
     _MAX_BRAKE_PER_TYPE = {VehicleType.HUMAN: 7.5,
+                           VehicleType.ACC: 7.5,
                            VehicleType.AUTONOMOUS: 7.5,
                            VehicleType.CONNECTED: 7.5,
                            VehicleType.TRUCK: 5.5}
     _MAX_JERK_PER_TYPE = {VehicleType.HUMAN: 50,
+                          VehicleType.ACC: 50,
                           VehicleType.AUTONOMOUS: 50,
                           VehicleType.CONNECTED: 50,
                           VehicleType.TRUCK: 30}
     _BRAKE_DELAY_PER_TYPE = {VehicleType.HUMAN: 0.75,
+                             VehicleType.ACC: 0.2,
                              VehicleType.AUTONOMOUS: 0.2,
                              VehicleType.CONNECTED: 0.1,
                              VehicleType.TRUCK: 0.5}
     # 33 m/s ~= 120km/h ~= 75 mph
     _FREE_FLOW_VELOCITY_PER_TYPE = {VehicleType.HUMAN: 33,
+                                    VehicleType.ACC: 33,
                                     VehicleType.AUTONOMOUS: 33,
                                     VehicleType.CONNECTED: 33,
                                     VehicleType.TRUCK: 25}
