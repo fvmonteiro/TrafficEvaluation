@@ -392,6 +392,8 @@ class DataPostProcessor:
         """Loads data collections, link evaluation and SSM data, merges them
         and saves the merged dataframe to a file"""
 
+        print('Started merging data')
+
         data_readers = (
             readers.LinkEvaluationReader(network_name, vehicle_type),
             readers.DataCollectionReader(network_name, vehicle_type),
@@ -414,6 +416,8 @@ class DataPostProcessor:
         DataPostProcessor.create_time_in_minutes(merged_data)
         writer = MergedDataWriter(network_name, vehicle_type)
         writer.save_as_csv(merged_data, controlled_vehicle_percentage)
+
+        print('Merged data saved')
 
 
 class SSMEstimator:

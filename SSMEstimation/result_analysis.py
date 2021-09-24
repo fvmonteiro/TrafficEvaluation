@@ -41,6 +41,21 @@ class ResultAnalyzer:
         # ]
 
     # Plots aggregating results from multiple simulations =====================#
+    def plot_xy(self, x: str, y: str,
+                controlled_vehicles_percentage: Union[int, List[int]],
+                warmup_time: int = 0):
+        if not isinstance(controlled_vehicles_percentage, list):
+            controlled_vehicles_percentage = [controlled_vehicles_percentage]
+        data = self._load_all_data(controlled_vehicles_percentage)
+        self._prepare_data_for_plotting(data, warmup_time)
+        # self.remove_deadlock_simulations(relevant_data)
+
+        # Plot
+        sns.set_style('whitegrid')
+        ax = sns.lineplot(data=data, x=x, y=y,
+                          hue='control_percentages', ci='sd')
+        plt.show()
+
     def plot_y_vs_time(self, y: str, vehicles_per_lane: int,
                        controlled_vehicles_percentage:
                        Union[int, List[int]],
@@ -71,7 +86,7 @@ class ResultAnalyzer:
         ax.set_title('Input: ' + str(vehicles_per_lane) + ' vehs per lane')
         plt.show()
 
-    def plot_y_vs_controlled_percentage(
+    def box_plot_y_vs_controlled_percentage(
             self, y: str, vehicles_per_lane: Union[int, List[int]],
             controlled_percentage: Union[int, List[int]],
             warmup_time: int = 0):
@@ -94,8 +109,8 @@ class ResultAnalyzer:
         data = self._load_all_data(controlled_percentage)
         self._prepare_data_for_plotting(data, warmup_time)
         # Adjust names for nicer looking plot
-        data['control_percentages'] = data[
-            'control_percentages'].str.replace('% ', '%\n')
+        # data['control_percentages'] = data[
+        #     'control_percentages'].str.replace('% ', '%\n')
         relevant_data = data.loc[
             data['vehicles_per_lane'].isin(vehicles_per_lane)]
         # self.remove_deadlock_simulations(relevant_data)
@@ -123,22 +138,22 @@ class ResultAnalyzer:
          different colors for each percentage is drawn.
         :param warmup_time: must be given in minutes. Samples before start_time
          are ignored."""
-        self.plot_with_labels(controlled_percentage, 'density', 'flow',
-                              warmup_time)
+        self.scatter_plot('density', 'flow', controlled_percentage,
+                          warmup_time)
 
     # TODO: find better name. scatter_plot_by_controlled_percentage?
-    def plot_with_labels(self, controlled_percentage: Union[int, list],
-                         x: str, y: str, warmup_time=0):
+    def scatter_plot(self, x: str, y: str,
+                     controlled_percentage: Union[int, list], warmup_time=0):
         """Loads data from the simulation(s) with the indicated controlled
         vehicles percentage and plots y against x.
 
-        :param controlled_percentage: Percentage of controlled vehicles
-         present in the simulation. If this is a list, a single plot with
-         different colors for each percentage is drawn.
         :param x: Options: flow, density, or any of the surrogate safety
          measures, namely, risk, low_TTC, high_DRAC
         :param y: Options: flow, density, or any of
          the surrogate safety measures, namely, risk, low_TTC, high_DRAC
+        :param controlled_percentage: Percentage of controlled vehicles
+         present in the simulation. If this is a list, a single plot with
+         different colors for each percentage is drawn.
         :param warmup_time: must be given in minutes. Samples before start_time
          are ignored.
          """
@@ -147,10 +162,7 @@ class ResultAnalyzer:
         self._prepare_data_for_plotting(data, warmup_time)
         self.remove_deadlock_simulations(data)
         sns.scatterplot(data=data, x=x, y=y,
-                        hue='control_percentages'  # ,
-                        # palette=sns.color_palette(
-                        #     'deep', n_colors=len(controlled_percentage))
-                        )
+                        hue='control_percentages')
         plt.show()
 
     def plot_double_y_axes(self, controlled_percentage: int, x: str,
@@ -208,14 +220,15 @@ class ResultAnalyzer:
         results and surrogate safety measurement data"""
 
         data = pd.DataFrame()
+        percentage_copy = controlled_vehicles_percentage[:]
         for vt in self._vehicle_types:
             data_reader = readers.MergedDataReader(self.network_name, vt)
             new_data = data_reader.load_multiple_data(
-                controlled_vehicles_percentage)
+                percentage_copy)
             data = new_data if data.empty else data.append(new_data)
             # We only need to load data without any controlled vehicles once
-            if 0 in controlled_vehicles_percentage:
-                controlled_vehicles_percentage.remove(0)
+            if 0 in percentage_copy:
+                percentage_copy.remove(0)
         return data
 
     def _prepare_data_for_plotting(self, data: pd.DataFrame,
@@ -250,11 +263,11 @@ class ResultAnalyzer:
         # Create single columns with all controlled vehicles' percentages info
         data['control_percentages'] = ''
         for vt in self._vehicle_types:
-            vt_str = vt.name.lower()
-            idx = data[vt_str + '_percentage'] > 0
+            vt_str = vt.name.lower() + '_percentage'
+            idx = data[vt_str] > 0
             data.loc[idx, 'control_percentages'] += (
-                    data.loc[idx, vt_str + '_percentage'].apply(str) + '% ' +
-                    vt_str)
+                    data.loc[idx, vt_str].apply(int).apply(str) + '% ' +
+                    vt.name.lower())
         data.loc[data['control_percentages'] == '',
                  'control_percentages'] = 'no control'
 
@@ -389,9 +402,8 @@ class ResultAnalyzer:
         when doing multiple runs from the COM interface, VISSIM does not
         always indicate that a simulation crashed. """
 
-        # We can do this by checking either data collection or link evaluation
-        # results
-        data_collection_readers = [readers.DataCollectionReader(
+        # We must check either SSM or merged results
+        data_collection_readers = [readers.SSMDataReader(
             self.network_name, vt) for vt in self._vehicle_types]
         data_no_control = (data_collection_readers[0].
                            load_data_with_controlled_vehicles_percentage(0))
@@ -410,6 +422,7 @@ class ResultAnalyzer:
                         (data['random_seed'] == random_seed)
                         & (data['vehicles_per_lane'] == veh_input)]
                     if sim_data.iloc[-1]['time_interval'] != end_time:
-                        print('Simulation with random seed ', random_seed,
-                              ' stopped at ',
-                              sim_data.iloc[-1]['time_interval'])
+                        print('Simulation with input {} random seed {} '
+                              'stopped at {}'.format(
+                                   veh_input, random_seed,
+                                   sim_data.iloc[-1]['time_interval']))

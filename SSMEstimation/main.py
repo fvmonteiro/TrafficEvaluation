@@ -8,7 +8,7 @@ import post_processing
 import result_analysis
 from data_writer import SyntheticDataWriter
 import readers
-from Vehicle import VehicleType
+from vehicle import VehicleType
 from vissim_interface import VissimInterface
 
 
@@ -124,7 +124,7 @@ def post_process_and_save(data_source, network_name, vehicle_type):
           format(data_source, network_name))
     data = data_reader.load_data()
     print('Raw data shape: ', data.shape)
-    data_pp = post_processing.VehicleRecordPostProcessor(data_source)
+    data_pp = post_processing.DataPostProcessor(data_source)
     data_pp.post_process_data(data)
     print('Post processed data shape: ', data.shape)
     save_post_processed_data(data, data_source,
@@ -217,7 +217,7 @@ def explore_issues():
                                                 vehicle_type=
                                                 VehicleType.CONNECTED)
     veh_record = vissim_reader.load_data(2)
-    pp = post_processing.VehicleRecordPostProcessor('vissim')
+    pp = post_processing.DataPostProcessor('vissim')
     pp.post_process_data(veh_record)
     ssm_estimator = post_processing.SSMEstimator(veh_record)
     ssm_estimator.include_ttc()
@@ -275,12 +275,15 @@ def main():
     # =============== Define data source =============== #
     # Options: i710, us-101, in_and_out, in_and_merge
     network_file = VissimInterface.network_names_map['in_and_out']
-    vehicle_type = VehicleType.CONNECTED
+    vehicle_type = VehicleType.AUTONOMOUS
 
+    # =============== Temporary tests  =============== #
+    # ra = result_analysis.ResultAnalyzer(network_file, vehicle_type)
+    # ra.find_unfinished_simulations(100)
     # =============== Running =============== #
 
-    # percentage_increase = 50
-    # initial_percentage = 100
+    # percentage_increase = 150
+    # initial_percentage = 0
     # final_percentage = 100
     # vi = VissimInterface()
     # vi.load_simulation(network_file)
@@ -289,8 +292,8 @@ def main():
     #     percentage_increase=100,
     #     initial_percentage=100,
     #     final_percentage=100,
-    #     input_increase_per_lane=500,
-    #     initial_input_per_lane=2000,
+    #     input_increase_per_lane=1000,
+    #     initial_input_per_lane=1000,
     #     max_input_per_lane=2000)
     # vi.run_with_increasing_controlled_vehicle_percentage(
     #     vehicle_type,
@@ -304,37 +307,44 @@ def main():
 
     # =============== Post processing =============== #
 
-    # post_processor = post_processing.VehicleRecordPostProcessor('vissim')
+    # post_processor = post_processing.DataPostProcessor()
     # for percentage in range(100, 100+1, 100):
-    #     post_processor.create_ssm_summary(network_file, vehicle_type,
+    #     post_processor.create_ssm_summary(network_file,
+    #                                       vehicle_type,
     #                                       percentage)
+    #     post_processor.merge_data(network_file, vehicle_type, percentage)
 
     # =============== Check results graphically =============== #
 
-    vehicle_types = [VehicleType.LONGITUDINAL_CONTROL,
+    vehicle_types = [VehicleType.ACC,
                      VehicleType.AUTONOMOUS,
                      VehicleType.CONNECTED]
     result_analyzer = result_analysis.ResultAnalyzer('in_and_out',
                                                      vehicle_types)
-    # veh_inputs_per_lane = [i for i in range(1000, 2501, 1000)]
+
     percentages = [0, 100]
-    # for veh_input in [2000]:
-    #     result_analyzer.plot_y_vs_time('flow', veh_input, percentages,
-    #                                    warmup_time=5)
-    #     result_analyzer.plot_y_vs_time('risk_no_lane_change', veh_input,
-    #                                    percentages, warmup_time=5)
-    #     result_analyzer.plot_y_vs_time('risk', veh_input, percentages,
-    #                                    warmup_time=5)
-    # result_analyzer.plot_y_vs_controlled_percentage('flow', 2000, percentages,
-    #                                                 warmup_time=5)
-    # result_analyzer.plot_y_vs_controlled_percentage('risk_no_lane_change', 2000,
-    #                                                 percentages, warmup_time=5)
-    # result_analyzer.plot_y_vs_controlled_percentage('risk', 2000, percentages,
-    #                                                 warmup_time=5)
+    for veh_input in [2000]:
+        result_analyzer.plot_y_vs_time('flow', veh_input, percentages,
+                                       warmup_time=5)
+        result_analyzer.plot_y_vs_time('risk', veh_input, [100],
+                                       warmup_time=5)
+        # result_analyzer.plot_y_vs_time('risk_no_lane_change', veh_input,
+        #                                percentages, warmup_time=5)
+    veh_inputs = [i for i in range(1000, 2001, 1000)]
+    result_analyzer.box_plot_y_vs_controlled_percentage('flow', veh_inputs,
+                                                        percentages,
+                                                        warmup_time=10)
+    result_analyzer.box_plot_y_vs_controlled_percentage('risk', veh_inputs,
+                                                        [100],
+                                                        warmup_time=10)
+    # result_analyzer.plot_y_vs_controlled_percentage(
+    #     'risk_no_lane_change', 2000, percentages, warmup_time=10)
+
     # result_analyzer.plot_double_y_axes(0, x='density', y=['flow',
     #                                                       'exact_risk'])
-    result_analyzer.plot_with_labels(percentages,
-                                     x='average_speed', y='risk')
+    # result_analyzer.scatter_plot(x='average_speed', y='risk',
+    #                              controlled_percentage=100,
+    #                              warmup_time=10)
 
     # =============== SSM computation check =============== #
     # veh_rec_reader = readers.VehicleRecordReader('toy')

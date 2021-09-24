@@ -278,11 +278,10 @@ class VissimDataReader(DataReader):
         """Matches each simulation number to the used random seed. This is
         possible knowing the initial random seed, the random seed increment,
         and the number of runs per vehicle input."""
-        data['random_seed'] = self._initial_random_seed + (
-                (data['simulation_number'] - self._first_simulation_number)
-                % self._runs_per_input) * self._random_seed_increment
-        # data.rename(columns={'simulation_number': 'random_seed'},
-        # inplace=True)
+        if not data.empty:
+            data['random_seed'] = self._initial_random_seed + (
+                    (data['simulation_number'] - self._first_simulation_number)
+                    % self._runs_per_input) * self._random_seed_increment
 
 
 class VehicleRecordReader(VissimDataReader):
@@ -301,7 +300,7 @@ class VehicleRecordReader(VissimDataReader):
         'COORDFRONTX': 'front_x', 'COORDFRONTY': 'front_y',
         'COORDREARX': 'rear_x', 'COORDREARY': 'rear_y',
         'SPEEDDIFF': 'vissim_delta_v', 'LENGTH': 'length',
-        'LNCHG': 'lane_change'
+        'LNCHG': 'lane_change', 'GIVECONTROLTOVISSIM': 'vissim_control'
     }
 
     # Note: we don't necessarily want all the variables listed in each of the
@@ -350,7 +349,8 @@ class VehicleRecordReader(VissimDataReader):
             if (os.path.isdir(os.path.join(percentage_path, folder))
                     and folder.endswith('vehs_per_lane')):
                 veh_input = int(folder.split('_')[0])
-                if veh_input not in vehicle_inputs:
+                if (vehicle_inputs is not None
+                        and veh_input not in vehicle_inputs):
                     continue
                 min_file_number, max_file_number = (
                     self.find_min_max_file_number(
