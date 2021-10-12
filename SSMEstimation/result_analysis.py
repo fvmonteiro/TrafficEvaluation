@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
+import post_processing
 import readers
 from vehicle import VehicleType
 
@@ -204,6 +205,48 @@ class ResultAnalyzer:
 
         return ax1, ax2
 
+    def speed_color_map(self, vehicles_per_lane: int,
+                        controlled_percentage: Union[int, List[int]]):
+        """
+
+        :param vehicles_per_lane:
+        :param controlled_percentage:
+        :return:
+        """
+        if isinstance(controlled_percentage, list):
+            percentages = np.sort(controlled_percentage[:])
+        else:
+            percentages = np.sort(controlled_percentage)
+
+        for vehicle_type in self._vehicle_types:
+            for p in percentages:
+                veh_record_reader = readers.VehicleRecordReader(
+                    self.network_name, vehicle_type)
+                min_file, max_file = veh_record_reader.find_min_max_file_number(
+                    p, vehicles_per_lane)
+                # TODO: for now just one file. We'll see later if aggregating
+                #  makes sense
+                veh_record = veh_record_reader.load_data(max_file, p,
+                                                         vehicles_per_lane)
+                # Get only main segment. TODO: this must change for other scenarios
+                veh_record.drop(
+                    index=veh_record[(veh_record['link'] != 3)
+                                     | (veh_record['time'] < 300)].index,
+                    inplace=True)
+                veh_record['time [s]'] = veh_record['time'] // 10
+                space_bins = [i for i in range(0, int(veh_record['x'].max()), 25)]
+                veh_record['x [m]'] = pd.cut(veh_record['x'], bins=space_bins,
+                                                  labels=space_bins[:-1])
+                plotted_data = veh_record.groupby(['time [s]', 'x [m]'],
+                                                  as_index=False)['vx'].mean()
+                plotted_data = plotted_data.pivot('time [s]', 'x [m]', 'vx')
+                ax = sns.heatmap(plotted_data)
+                ax.invert_yaxis()
+                plt.show()
+            # We only plot 0 percentage once
+            if 0 in percentages:
+                percentages = np.delete(percentages, 0)
+
     # Support methods =========================================================#
 
     def _load_all_data(self,
@@ -219,8 +262,11 @@ class ResultAnalyzer:
         :return: Merged dataframe with link evaluation, data collection
         results and surrogate safety measurement data"""
 
+        if isinstance(controlled_vehicles_percentage, list):
+            percentage_copy = controlled_vehicles_percentage[:]
+        else:
+            percentage_copy = [controlled_vehicles_percentage]
         data = pd.DataFrame()
-        percentage_copy = controlled_vehicles_percentage[:]
         for vt in self._vehicle_types:
             data_reader = readers.MergedDataReader(self.network_name, vt)
             new_data = data_reader.load_multiple_data(
