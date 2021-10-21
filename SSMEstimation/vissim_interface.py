@@ -95,7 +95,7 @@ class VissimInterface:
             # sys.exit()  # better to use this?
             return False
 
-        self.create_results_directory()
+        self.create_network_results_directory()
         return True
 
     # RUNNING NETWORKS --------------------------------------------------------#
@@ -252,6 +252,7 @@ class VissimInterface:
         # SimBreakAt value)
         bus_no = 2  # No. of buses used to block the lane
         bus_array = []
+        # TODO: loop to create accident in all the runs
         if sim_time >= incident_start_time:
             print('Client: Creating incident')
             for i in range(bus_no):
@@ -277,7 +278,6 @@ class VissimInterface:
             self.vissim.Simulation.RunContinuous()
 
         print('Simulation done')
-        self.vissim.ResumeUpdateGUI()
 
     def test_lane_access(self):
         """Code to figure out how to read lane by lane information"""
@@ -346,7 +346,7 @@ class VissimInterface:
               format(self.vissim.Simulation.AttValue('RandSeed'),
                      self.vissim.Simulation.AttValue('RandSeedIncr')))
 
-        self.vissim.SuspendUpdateGUI()
+        # self.vissim.SuspendUpdateGUI()
         n_inputs = 0
         start_time = time.perf_counter()
         # 'highway_in_and_out_lanes', 'I710-MultiSec-3mi', 'US_101'
@@ -360,18 +360,18 @@ class VissimInterface:
             # Then we set the proper folder to save the results
             current_folder = self.vissim.Evaluation.AttValue('EvalOutDir')
             head, tail = os.path.split(current_folder)
-            if 'percent' in tail:
+            if 'percent' in tail or 'test' in tail:
                 head = os.path.join(head, tail)
             veh_input_folder = str(input_per_lane) + '_vehs_per_lane'
             results_folder = os.path.join(head, veh_input_folder)
-            self.vissim.Evaluation.SetAttValue('EvalOutDir', results_folder)
+            self.set_results_folder(results_folder)
 
             if self.network_file == 'highway_in_and_out_lanes':
                 self.run_in_and_out_scenario()
             elif self.network_file == 'highway_in_and_merge':
                 self.run_in_and_merge_scenario()
             elif self.network_file == 'I710-MultiSec-3mi':
-                self.run_i710_simulation(scenario_idx=2)
+                self.run_i710_simulation(scenario_idx=1)
             elif self.network_file == 'US_101':
                 self.run_us_101_simulation()
             else:
@@ -440,7 +440,7 @@ class VissimInterface:
                     results_base_folder,
                     VissimInterface.create_percent_folder_name(
                         percentage, vehicle_type_name))
-                self.vissim.Evaluation.SetAttValue('EvalOutDir', results_folder)
+                self.set_results_folder(results_folder)
 
             # Finally, we set the percentage and run the simulation
             self.set_controlled_vehicles_percentage(percentage,
@@ -555,6 +555,11 @@ class VissimInterface:
         """Sets the total number of runs performed in a row"""
         sim_params = {'NumRuns': number_of_runs}
         self.set_simulation_parameters(sim_params)
+
+    def set_results_folder(self, results_folder):
+        if not os.path.isdir(results_folder):
+            os.mkdir(results_folder)
+        self.vissim.Evaluation.SetAttValue('EvalOutDir', results_folder)
 
     # def create_time_intervals(self, period):
     #     """Programmatically creates time intervals in VISSIM so that
@@ -745,7 +750,7 @@ class VissimInterface:
             if self.network_file is None:
                 self.network_file = (
                     self.vissim.AttValue('InputFile').split('.')[0])
-                self.create_results_directory()
+                self.create_network_results_directory()
             return True
         else:
             return False
@@ -784,12 +789,12 @@ class VissimInterface:
         self.vissim.Simulation.RunSingleStep()
         self.vissim.Simulation.Stop()
         self.vissim.Evaluation.SetAttValue('KeepPrevResults', 'KEEPALL')
-        self.vissim.Evaluation.SetAttValue('EvalOutDir', result_folder)
+        self.set_results_folder(result_folder)
 
     def use_debug_folder_for_results(self):
         debug_log_folder = os.path.join(self.networks_folder, self.network_file,
                                         'test')
-        self.vissim.Evaluation.SetAttValue('EvalOutDir', debug_log_folder)
+        self.set_results_folder(debug_log_folder)
 
     def get_max_decel_data(self):
         """Checks the vehicle types used in simulation, creates a Panda
@@ -894,7 +899,7 @@ class VissimInterface:
             print('All necessary variables set to be saved.')
             return True
 
-    def create_results_directory(self):
+    def create_network_results_directory(self):
         if self.network_file:
             results_folder = os.path.join(self.networks_folder,
                                           self.network_file)

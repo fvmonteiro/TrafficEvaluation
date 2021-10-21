@@ -275,7 +275,7 @@ class ResultAnalyzer:
             # We only need to load data without any controlled vehicles once
             if 0 in percentage_copy:
                 percentage_copy.remove(0)
-        return data
+        return data.reset_index(drop=True)
 
     def _prepare_data_for_plotting(self, data: pd.DataFrame,
                                    warmup_time: float = 0,
