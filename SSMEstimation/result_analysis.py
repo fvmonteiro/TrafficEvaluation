@@ -1,3 +1,4 @@
+import os
 from typing import List
 from typing import Union
 
@@ -12,6 +13,7 @@ from vehicle import VehicleType
 
 
 class ResultAnalyzer:
+    _figure_folder = 'G:\\My Drive\\Safety in Mixed Traffic\\images'
     units_map = {'TTC': 's', 'low_TTC': '# vehicles',
                  'DRAC': 'm/s^2', 'high_DRAC': '# vehicles',
                  'CPI': 'dimensionless', 'DTSG': 'm',
@@ -60,7 +62,7 @@ class ResultAnalyzer:
     def plot_y_vs_time(self, y: str, vehicles_per_lane: int,
                        controlled_vehicles_percentage:
                        Union[int, List[int]],
-                       warmup_time: int = 0):
+                       warmup_time: int = 0, should_save_fig: bool = False):
         """Plots averaged y over several runs with the same vehicle input 
         versus time.
         
@@ -72,12 +74,16 @@ class ResultAnalyzer:
          int, but, for debugging purposes, a string with the folder name is also 
          accepted.
         :param warmup_time: must be given in minutes. Samples before start_time 
-        are ignored."""
+         are ignored.
+        :param should_save_fig: determines whether to save the resulting
+         figure to a file
+         """
 
         data = self._load_all_data(controlled_vehicles_percentage)
         self._prepare_data_for_plotting(data, warmup_time)
-        relevant_data = data.loc[
-            data['vehicles_per_lane'] == vehicles_per_lane]
+        relevant_data = self._select_relevant_data(data, vehicles_per_lane)
+        # relevant_data = data.loc[
+        #     data['vehicles_per_lane'] == vehicles_per_lane]
         # self.remove_deadlock_simulations(relevant_data)
 
         # Plot
@@ -85,12 +91,15 @@ class ResultAnalyzer:
         ax = sns.lineplot(data=relevant_data, x='time', y=y,
                           hue='control_percentages', ci='sd')
         ax.set_title('Input: ' + str(vehicles_per_lane) + ' vehs per lane')
+        if should_save_fig:
+            self.save_fig(plt.gcf(), 'time_plot', y, [vehicles_per_lane],
+                          controlled_vehicles_percentage)
         plt.show()
 
     def box_plot_y_vs_controlled_percentage(
             self, y: str, vehicles_per_lane: Union[int, List[int]],
             controlled_percentage: Union[int, List[int]],
-            warmup_time: int = 0):
+            warmup_time: int = 0, should_save_fig: bool = False):
         """Plots averaged y over several runs with the same vehicle input
         versus controlled vehicles percentage as a box plot.
 
@@ -102,7 +111,10 @@ class ResultAnalyzer:
          int,but, for debugging purposes, a string with the folder name is also
          accepted.
         :param warmup_time: must be given in minutes. Samples before
-         start_time are ignored."""
+         start_time are ignored.
+        :param should_save_fig: determines whether to save the resulting
+         figure to a file
+        """
 
         if not isinstance(vehicles_per_lane, list):
             vehicles_per_lane = [vehicles_per_lane]
@@ -112,11 +124,13 @@ class ResultAnalyzer:
         # Adjust names for nicer looking plot
         # data['control_percentages'] = data[
         #     'control_percentages'].str.replace('% ', '%\n')
-        relevant_data = data.loc[
-            data['vehicles_per_lane'].isin(vehicles_per_lane)]
+        relevant_data = self._select_relevant_data(data, vehicles_per_lane)
+        # relevant_data = data.loc[
+        #     data['vehicles_per_lane'].isin(vehicles_per_lane)]
         # self.remove_deadlock_simulations(relevant_data)
 
         # Plot
+        plt.rc('font', size=15)
         sns.set_style('whitegrid')
         if len(vehicles_per_lane) > 1:
             sns.boxplot(data=relevant_data,  # orient='h',
@@ -125,6 +139,57 @@ class ResultAnalyzer:
         else:
             sns.boxplot(data=relevant_data,  # orient='h',
                         x='control_percentages', y=y)
+        if should_save_fig:
+            self.save_fig(plt.gcf(), 'box_plot', y, vehicles_per_lane,
+                          controlled_percentage)
+        plt.tight_layout()
+        plt.show()
+
+    def box_plot_y_vs_vehicle_type(
+            self, y: str, vehicles_per_lane: int,
+            controlled_percentage: Union[int, List[int]],
+            warmup_time: int = 0, should_save_fig: bool = False):
+        """Plots averaged y over several runs with the same vehicle input
+        versus vehicles type as a box plot. The control percentages are used
+        as the boxplot hue parameter.
+
+        :param y: name of the variable being plotted.
+        :param vehicles_per_lane: input per lane used to generate the data
+        :param controlled_percentage: Percentage of controlled vehicles
+         present in the simulation. If this is a list, a single plot with
+         different colors for each percentage is drawn. [No more] We expect an
+         int,but, for debugging purposes, a string with the folder name is also
+         accepted.
+        :param warmup_time: must be given in minutes. Samples before
+         start_time are ignored.
+        :param should_save_fig: determines whether to save the resulting
+         figure to a file
+        """
+
+        data = self._load_all_data(controlled_percentage)
+        self._prepare_data_for_plotting(data, warmup_time)
+        # Adjust names for nicer looking plot
+        # data['control_percentages'] = data[
+        #     'control_percentages'].str.replace('% ', '%\n')
+        relevant_data = self._select_relevant_data(data, vehicles_per_lane)
+
+        # For this plot, we want the control type to be on the x axis and the
+        # percentages to be the hue
+        relevant_data[['percentage', 'control_type']] = relevant_data[
+            'control_percentages'].str.split(' ', expand=True)
+        no_control_idx = relevant_data['control_percentages'] == 'no control'
+        relevant_data.loc[no_control_idx, 'control_type'] = 'autonomous'
+        relevant_data.loc[no_control_idx, 'percentage'] = '0%'
+
+        # Plot
+        plt.rc('font', size=15)
+        sns.set_style('whitegrid')
+        sns.boxplot(data=relevant_data,  # orient='h',
+                    x='control_type', y=y,
+                    hue='percentage')
+        if should_save_fig:
+            self.save_fig(plt.gcf(), 'box_plot', y, [vehicles_per_lane],
+                          controlled_percentage)
         plt.tight_layout()
         plt.show()
 
@@ -216,7 +281,7 @@ class ResultAnalyzer:
         if isinstance(controlled_percentage, list):
             percentages = np.sort(controlled_percentage[:])
         else:
-            percentages = np.sort(controlled_percentage)
+            percentages = np.sort([controlled_percentage])
 
         for vehicle_type in self._vehicle_types:
             for p in percentages:
@@ -321,6 +386,47 @@ class ResultAnalyzer:
         data.drop(index=data[data['time'] < warmup_time].index, inplace=True)
 
     @staticmethod
+    def _select_relevant_data(data: pd.DataFrame,
+                              vehicles_per_lane: Union[int, List[int]]):
+        """
+        Selects only the desired vehicle inputs and uniformity of data from
+        each different controlled vehicle percentage. In other words,
+        only keeps the result of a certain random seed if that random seed
+        was used by all controlled vehicle percentages
+        :param data:
+        :param vehicles_per_lane:
+        :return:
+        """
+        if not isinstance(vehicles_per_lane, list):
+            vehicles_per_lane = [vehicles_per_lane]
+
+        filtered_data = data.loc[data['vehicles_per_lane'].isin(
+            vehicles_per_lane)]
+
+        # Get the intersection of random seeds for each control percentage
+        random_seeds = np.array([])
+        for veh_input in vehicles_per_lane:
+            for percent in data['control_percentages'].unique():
+                current_random_seeds = filtered_data.loc[
+                        (filtered_data['control_percentages'] == percent)
+                        & (filtered_data['vehicles_per_lane'] == veh_input),
+                        'random_seed'].unique()
+                if random_seeds.size == 0:
+                    random_seeds = current_random_seeds
+                else:
+                    random_seeds = np.intersect1d(random_seeds,
+                                                  current_random_seeds)
+
+        # Keep only the random_seeds used by all control percentages
+        relevant_data = filtered_data.drop(index=filtered_data[~filtered_data[
+            'random_seed'].isin(random_seeds)].index)
+        if relevant_data.shape[0] != filtered_data.shape[0]:
+            print('Some simulations results were dropped because not all '
+                  'controlled percentages or vehicle inputs had the same '
+                  'amount of simulation results')
+        return relevant_data
+
+    @staticmethod
     def remove_deadlock_simulations(data):
         deadlock_entries = (data.loc[
                                 data['flow'] == 0,
@@ -333,6 +439,34 @@ class ResultAnalyzer:
             print('Removed results from simulation with input {}, random '
                   'seed {} due to deadlock'.
                   format(element[0], element[1]))
+
+    def save_fig(self, fig: plt.Figure, plot_type: str, measurement_name: str,
+                 vehicles_per_lane: List[int],
+                 controlled_percentage: List[int]):
+        # Making the figure nice for inclusion in documents
+        if (len(self._vehicle_types) >= 3) and (len(controlled_percentage) > 1):
+            fig.set_size_inches(6.4*2, 4.8)
+        fig.set_dpi(200)
+        axes = fig.axes
+        for ax in axes:
+            ax.ticklabel_format(style='sci', axis='y', scilimits=(0, 3),
+                                useMathText=True)
+        #     for item in ([ax.title, ax.xaxis.label, ax.yaxis.label] +
+        #                  ax.get_yticklabels() + ax.get_legend().get_texts()):
+        #         item.set_fontsize(15)
+        #     for item in ax.get_xticklabels():
+        #         item.set_fontsize(15)
+        # plt.rcParams.update({'font.size': 13})
+        # plt.rcParams.update({'xtick.labelsize': 12})
+        plt.tight_layout()
+        fig_name = (plot_type + '_' + measurement_name + '_'
+                    + '_'.join(str(v) for v in vehicles_per_lane) + '_'
+                    + 'vehs_per_lane' + '_'
+                    + '_'.join(str(c) for c in controlled_percentage) + '_'
+                    + '_'.join(str(vt.name).lower() for vt in
+                               self._vehicle_types))
+        # plt.show()
+        fig.savefig(os.path.join(self._figure_folder, fig_name))
 
     # Plots for a single simulation - OUTDATED: might not work ================#
 

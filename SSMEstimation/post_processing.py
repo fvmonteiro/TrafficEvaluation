@@ -236,7 +236,8 @@ class DataPostProcessor:
 
         return distance
 
-    def create_ssm_summary(self, network_name: str, vehicle_type,
+    def create_ssm_summary(self, network_name: str,
+                           vehicle_type: VehicleType,
                            controlled_vehicle_percentage: int,
                            vehicle_inputs: List[int] = None):
         """Reads multiple vehicle record data files, postprocesses them,
@@ -316,6 +317,35 @@ class DataPostProcessor:
                                controlled_vehicle_percentage,
                                temp)
             print('Successfully saved.')
+
+    def check_human_take_over(self, network_name: str,
+                              vehicle_type: VehicleType,
+                              controlled_vehicle_percentage: int,
+                              vehicle_inputs: List[int] = None):
+        """Reads multiple vehicle record data files to check how often the
+        autonomous vehicles gave control back to VISSIM
+
+        :param network_name: Network name. Either the actual file name or the
+         network nickname. Currently available: in_and_out, in_and_merge, i710,
+         us101
+        :param vehicle_type: Enum to indicate the vehicle (controller) type
+        :param controlled_vehicle_percentage: Percentage of controlled vehicles
+         present in the simulation.
+        :param vehicle_inputs: simulation vehicle inputs to be checked
+        :return: Nothing.
+        """
+
+        vehicle_record_reader = readers.VehicleRecordReader(network_name,
+                                                            vehicle_type)
+        data_generator = vehicle_record_reader.generate_data(
+            controlled_vehicle_percentage, vehicle_inputs)
+        n_blocked_vehs = []
+        for (vehicle_records, file_number) in data_generator:
+            blocked_vehs = vehicle_records.loc[
+                vehicle_records['vissim_control']==1, 'veh_id'].unique()
+            n_blocked_vehs.append(blocked_vehs.shape[0])
+            print('Total blocked vehicles: ', blocked_vehs.shape[0])
+        print('Mean blocked vehicles:', np.mean(n_blocked_vehs))
 
     @staticmethod
     def add_main_ssms(vehicle_records):
