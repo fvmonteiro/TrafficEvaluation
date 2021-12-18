@@ -8,7 +8,7 @@ from scipy.stats import truncnorm
 
 import readers
 from vehicle import Vehicle, VehicleType
-from data_writer import MergedDataWriter, SSMDataWriter
+from data_writer import MergedDataWriter, SSMDataWriter, RiskyManeuverWriter
 
 
 # TODO: this is (almost) a collection of static methods. Should we just make
@@ -41,7 +41,8 @@ class DataPostProcessor:
         :return: nothing, it alters the data in place"""
 
         if data_source.lower() == DataPostProcessor.VISSIM:
-            DataPostProcessor.post_process_vissim_vehicle_record(vehicle_records)
+            DataPostProcessor.post_process_vissim_vehicle_record(
+                vehicle_records)
         elif data_source.lower() == DataPostProcessor.NGSIM:
             self.post_process_ngsim_data(vehicle_records)
         elif data_source == DataPostProcessor.SYNTHETIC:
@@ -62,8 +63,8 @@ class DataPostProcessor:
         kph_to_mps = 1 / 3.6
         vehicle_records['vx'] = vehicle_records['vx'] * kph_to_mps
 
-        warm_up_time = 60
-        DataPostProcessor.remove_early_samples(vehicle_records, warm_up_time)
+        # warm_up_time = 60
+        # DataPostProcessor.remove_early_samples(vehicle_records, warm_up_time)
 
         # By convention, if vehicle has no leader, we set it as its own leader
         vehicle_records['leader_id'].fillna(vehicle_records['veh_id'],
@@ -239,7 +240,8 @@ class DataPostProcessor:
     def create_ssm_summary(self, network_name: str,
                            vehicle_type: VehicleType,
                            controlled_vehicle_percentage: int,
-                           vehicle_inputs: List[int] = None):
+                           vehicle_inputs: List[int] = None,
+                           debugging: bool = False):
         """Reads multiple vehicle record data files, postprocesses them,
         computes SSMs, averages the SSMs within a time period, and saves a
         single dataframe that can be merged to results from link evaluation
@@ -254,6 +256,8 @@ class DataPostProcessor:
         :param vehicle_inputs: Vehicle inputs for which we want SSMs
          computed. If None (default), computes SSMs for all simulated vehicle
          inputs.
+        :param debugging: If true, we load only 10^5 samples from the vehicle
+         records and do not save results.
         :return: Nothing. SSM results are saved to as csv files"""
 
         # ssm_reader used to check whether data was already processed
@@ -264,15 +268,21 @@ class DataPostProcessor:
         if not ssm_data.empty:
             processed_vehicle_inputs = ssm_data['vehicles_per_lane'].unique()
 
-        aggregation_period = 30  # [s]
-        writer = SSMDataWriter(network_name, vehicle_type)
+        # Creation of generator to load data  and writer to save post
+        # processed data
         vehicle_record_reader = readers.VehicleRecordReader(network_name,
                                                             vehicle_type)
+        n_rows = 10 ** 5 if debugging else None
         data_generator = vehicle_record_reader.generate_data(
-            controlled_vehicle_percentage, vehicle_inputs)
-        column_titles = ['simulation_number', 'time_interval', 'low_TTC',
+            controlled_vehicle_percentage, vehicle_inputs, n_rows)
+        column_titles = ['time_interval', 'low_TTC',
                          'high_DRAC', 'risk', 'risk_no_lane_change']
-        result_df = pd.DataFrame(columns=column_titles)
+        aggregation_period = 30  # [s]
+        ssm_writer = SSMDataWriter(network_name, vehicle_type)
+        risky_maneuver_writer = RiskyManeuverWriter(network_name, vehicle_type)
+
+        ssm_data = []  # pd.DataFrame(columns=column_titles)
+        risky_maneuvers = []
         temp = 0
         already_exists = False
         for (vehicle_records, file_number) in data_generator:
@@ -286,37 +296,120 @@ class DataPostProcessor:
                       ' already exist. They are being recomputed.')
 
             # We save once per vehicle_per_lane value
-            if not already_exists and 0 < temp != vehicles_per_lane:
+            if (not already_exists and not debugging
+                    and 0 < temp != vehicles_per_lane):
                 print('Files with input ', temp, ' done. Saving to file...')
-                writer.save_as_csv(result_df,
-                                   controlled_vehicle_percentage,
-                                   temp)
+                ssm_writer.save_as_csv(pd.concat(ssm_data),
+                                       controlled_vehicle_percentage,
+                                       temp)
+                risky_maneuver_writer.save_as_csv(pd.concat(risky_maneuvers),
+                                                  controlled_vehicle_percentage,
+                                                  temp)
                 print('Successfully saved.')
-                result_df = pd.DataFrame(columns=column_titles)
+                ssm_data = []  # pd.DataFrame(columns=column_titles)
+                risky_maneuvers = []
             temp = vehicles_per_lane
 
             self.post_process_data(DataPostProcessor.VISSIM, vehicle_records)
+            print('Computing SSMs')
+            DataPostProcessor.add_main_ssms(vehicle_records)
+            # Aggregate
             DataPostProcessor.create_time_bins_and_labels(aggregation_period,
                                                           vehicle_records)
-            DataPostProcessor.add_main_ssms(vehicle_records)
-
-            # Aggregate
-            aggregated_data = vehicle_records[column_titles[1:]].groupby(
+            aggregated_data = vehicle_records[column_titles].groupby(
                 'time_interval').sum()
             aggregated_data.reset_index(inplace=True)
             aggregated_data.insert(0, 'simulation_number', file_number)
             aggregated_data['vehicles_per_lane'] = vehicles_per_lane
-
-            result_df = result_df.append(aggregated_data)
+            ssm_data.append(aggregated_data)
+            print('Extracting risky maneuvers')
+            risky_maneuvers.append(
+                self.extract_risky_maneuvers(vehicle_records))
 
             print('-' * 79)
 
-        if not already_exists:
+        if not already_exists and not debugging:
             print('Files with input ', temp, ' done. Saving to file...')
-            writer.save_as_csv(result_df,
-                               controlled_vehicle_percentage,
-                               temp)
+            ssm_writer.save_as_csv(pd.concat(ssm_data),
+                                   controlled_vehicle_percentage,
+                                   temp)
+            risky_maneuver_writer.save_as_csv(pd.concat(risky_maneuvers),
+                                              controlled_vehicle_percentage,
+                                              temp)
             print('Successfully saved.')
+
+    def extract_risky_maneuvers(self, vehicle_record: pd.DataFrame):
+        """
+        Find risky maneuvers and write their information on a dataframe
+        A risky maneuver is defined as a time interval during which risk is
+        greater than zero. We save the vehicles involved, start and end
+        times, total (sum over duration) risk and pointwise max risk of each
+        risky maneuver.
+
+        :param vehicle_record: dataframe with step by step vehicle data
+        including risk
+        :return: dataframe where each row represents one risky maneuver
+        """
+
+        # Note: some vehicles enter simulation with positive risk. This
+        # makes it hard to deal with the whole dataframe at once.
+        # Thus, we deal with one vehicle at a time. There should be no more
+        # than 10k vehicles per simulation, so I'm hoping computations won't
+        # take too long
+        delta_t = round((vehicle_record['time'].iloc[1]
+                         - vehicle_record['time'].iloc[0]), 2)
+        vehicle_record['is_risk_positive'] = vehicle_record['risk'] > 0
+        all_ids = vehicle_record['veh_id'].unique()
+        risky_data_list = []
+        for veh_id in all_ids:
+            single_veh_record = vehicle_record[vehicle_record['veh_id']
+                                               == veh_id]
+            if not any(single_veh_record['is_risk_positive']):
+                continue
+            # TODO: compare computation speeds
+            risk_transition_idx = (single_veh_record['is_risk_positive'].diff()
+                                   != 0)
+            # risk_transition_idx = (
+            #   single_veh_record['is_risk_positive'].shift()
+            #   != single_veh_record['is_risk_positive'])
+
+            # Dealing with cases where the vehicle enters simulation with
+            # positive risk:
+            risk_transition_idx.iloc[0] = (
+                single_veh_record['is_risk_positive'].iloc[0])
+            risk_transition_idx = risk_transition_idx[risk_transition_idx]
+            start_indices = risk_transition_idx.iloc[::2].index
+            end_indices = risk_transition_idx.iloc[1::2].index
+            # Dealing with cases where the vehicle leaves simulation with
+            # positive risk (should never occur with full simulation data):
+            if len(end_indices) == len(start_indices) - 1:
+                end_indices = end_indices.append(
+                    pd.Index([single_veh_record.index[-1]]))
+
+            # Build the df with data for each risky maneuver for this vehicle
+            temp_df = single_veh_record[['veh_id', 'leader_id', 'time']].loc[
+                start_indices]
+            try:
+                temp_df['end_time'] = single_veh_record['time'].loc[
+                    end_indices].values
+            except ValueError:
+                end_times = single_veh_record['time'].loc[
+                    end_indices].values
+                temp_df['end_time'] = 0
+                temp_df['end_time'].iloc[:len(end_times)] = end_times
+            risk = single_veh_record['risk']
+            risk_grouped = risk.groupby((risk == 0).cumsum())
+            cumulative_risk = risk_grouped.cumsum() * delta_t
+            cumulative_max_risk = risk_grouped.cummax()
+            temp_df['total_risk'] = cumulative_risk.shift().loc[
+                end_indices].values
+            temp_df['max_risk'] = cumulative_max_risk.shift().loc[
+                end_indices].values
+            risky_data_list.append(temp_df)
+        risky_data = pd.concat(risky_data_list)
+        risky_data['simulation_number'] = vehicle_record[
+            'simulation_number'].iloc[0]
+        return risky_data
 
     def check_human_take_over(self, network_name: str,
                               vehicle_type: VehicleType,
@@ -342,7 +435,7 @@ class DataPostProcessor:
         n_blocked_vehs = []
         for (vehicle_records, file_number) in data_generator:
             blocked_vehs = vehicle_records.loc[
-                vehicle_records['vissim_control']==1, 'veh_id'].unique()
+                vehicle_records['vissim_control'] == 1, 'veh_id'].unique()
             n_blocked_vehs.append(blocked_vehs.shape[0])
             print('Total blocked vehicles: ', blocked_vehs.shape[0])
         print('Mean blocked vehicles:', np.mean(n_blocked_vehs))
@@ -845,6 +938,15 @@ class SSMEstimator:
                 * (follower.brake_delay / 2 * (follower.accel_t0
                                                + leader.max_brake)
                    + delta_vel))
+        # For when the leader is at low speeds
+        leader_low_vel_idx = (leader_vel
+                              < follower.brake_delay * leader.max_brake)
+        gap_thresholds[0][leader_low_vel_idx] = (
+                follower.brake_delay
+                * (follower.brake_delay / 2 * follower.accel_t0
+                   + follower_vel[leader_low_vel_idx])
+                - leader_vel[leader_low_vel_idx] ** 2 / 2 / leader.max_brake
+        )
         gap_thresholds[1] = (
                 (follower.brake_delay + follower_effective_tau_j)
                 * (follower_effective_lambda1 + delta_vel

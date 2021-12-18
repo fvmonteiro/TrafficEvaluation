@@ -88,7 +88,8 @@ class VissimDataReader(DataReader):
 
     def load_data(self, file_identifier: Union[int, str],
                   controlled_vehicles_percentage: int = None,
-                  vehicles_per_lane: int = None):
+                  vehicles_per_lane: int = None,
+                  n_rows: int = None):
         """ Loads data from one file of a chosen network with given
         vehicle input and controlled vehicle percentage
 
@@ -98,6 +99,8 @@ class VissimDataReader(DataReader):
          in the simulation. Current possible values: 0:25:100
         :param vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
          values depend on the controlled_vehicles_percentage: 500:500:2500
+        :param n_rows: Number of rows going to be read from the file.
+         Used for debugging purposes.
         :return: pandas dataframe with the data
         """
 
@@ -145,8 +148,13 @@ class VissimDataReader(DataReader):
                                             + extra_info)
                 else:
                     column_names = file_header
-                data = pd.read_csv(file, sep=self.separator, names=column_names,
-                                   index_col=False)
+                if n_rows is None:
+                    data = pd.read_csv(file, sep=self.separator,
+                                       names=column_names, index_col=False)
+                else:
+                    data = pd.read_csv(file, sep=self.separator,
+                                       names=column_names, index_col=False,
+                                       nrows=n_rows)
         except OSError:
             raise ValueError('No VISSIM file with name {}'.format(file_name))
 
@@ -164,8 +172,7 @@ class VissimDataReader(DataReader):
 
         :param percentage: Percentage of controlled vehicles
          in the simulation. If this is a list, all the data is appended to a 
-         single data frame. [No More] We expect an int, but, for debugging
-         purposes, a string with the folder name is also accepted.
+         single data frame.
         :return: pandas dataframe with the data
         """
         if not isinstance(percentage, list):
@@ -314,8 +321,8 @@ class VehicleRecordReader(VissimDataReader):
 
     def load_data(self, file_identifier,
                   controlled_vehicles_percentage: int = 0,
-                  vehicles_per_lane: int = None) -> \
-            pd.DataFrame:
+                  vehicles_per_lane: int = None,
+                  n_rows: int = None) -> pd.DataFrame:
         """ Loads data from simulations of a chosen network and selects
         the relevant variables to keep.
 
@@ -323,11 +330,13 @@ class VehicleRecordReader(VissimDataReader):
         :param controlled_vehicles_percentage: Percentage of autonomous vehicles
          in the simulation.
         :param vehicles_per_lane: Vehicle input per lane used in simulation
+        :param n_rows: Number of rows going to be read from the file.
+         Used for debugging purposes.
         :return: pandas dataframes
         """
         data = VissimDataReader.load_data(self, file_identifier,
                                           controlled_vehicles_percentage,
-                                          vehicles_per_lane)
+                                          vehicles_per_lane, n_rows)
         # self.select_relevant_columns(data)
         return data
 
@@ -338,13 +347,24 @@ class VehicleRecordReader(VissimDataReader):
               'vehicle record data.')
         return
 
-    def generate_data(self, percentage: int, vehicle_inputs: List[int] = None):
+    def generate_data(self, percentage: int, vehicle_inputs: List[int] = None,
+                      n_rows: int = None):
+        """
+        Yields all the vehicle record files for the chosen simulation scenario.
+
+        :param percentage: Percentage of autonomous vehicles
+         in the simulation.
+        :param vehicle_inputs: Vehicle input per lane used in simulation
+        :param n_rows: Number of rows going to be read from the file.
+         Used for debugging purposes.
+        :return:
+        """
+
         percent_folder = VissimInterface.create_percent_folder_name(
             percentage, self.vehicle_type)
         percentage_path = os.path.join(self.data_dir, percent_folder)
 
         # Check all the *_vehs_per_lane folders in the percentage folder
-        # TODO: put this for+if in a (generator?) function
         for folder in os.listdir(percentage_path):
             if (os.path.isdir(os.path.join(percentage_path, folder))
                     and folder.endswith('vehs_per_lane')):
@@ -359,7 +379,8 @@ class VehicleRecordReader(VissimDataReader):
                     print('Loading file number {} / {}'.format(
                         file_number - min_file_number + 1,
                         max_file_number - min_file_number + 1))
-                    yield (self.load_data(file_number, percentage, veh_input),
+                    yield (self.load_data(file_number, percentage, veh_input,
+                                          n_rows),
                            file_number)
 
 
@@ -468,23 +489,38 @@ class SSMDataReader(VissimDataReader):
 
     def load_data(self, file_identifier: int,
                   controlled_vehicles_percentage: [int, str] = 0,
-                  vehicles_per_lane: int = None) -> pd.DataFrame:
+                  vehicles_per_lane: int = None,
+                  n_rows: int = None) -> pd.DataFrame:
         """
 
         :param file_identifier: Simulation number in set of simulations
         :param controlled_vehicles_percentage: Percentage of autonomous
          vehicles in the simulation.
         :param vehicles_per_lane: Vehicle input per lane used in simulation
+        :param n_rows: Number of rows going to be read from the file.
+         Used for debugging purposes.
         :return: SSM data for the requested simulation
         """
         data = super().load_data(file_identifier,
                                  controlled_vehicles_percentage,
-                                 vehicles_per_lane)
+                                 vehicles_per_lane, n_rows)
         # Ensure compatibility with previous naming convention
         data.rename(columns={'exact_risk': 'risk'}, inplace=True)
         data.rename(columns={
             'exact_risk_no_lane_change': 'risk_no_lane_change'}, inplace=True)
         return data
+
+
+class RiskyManeuverReader(VissimDataReader):
+    _file_format = '.csv'
+    _separator = ','
+    _data_identifier = '_Risky Maneuvers'
+
+    def __init__(self, network_name, vehicle_type):
+        VissimDataReader.__init__(self, network_name, vehicle_type,
+                                  self._file_format, self._separator,
+                                  self._data_identifier,
+                                  "", {})
 
 
 class MergedDataReader(DataReader):

@@ -210,16 +210,22 @@ class VissimInterface:
             return
 
         # Definition of scenarios
-        scenarios = [{'link': 5, 'lane': 2, 'coordinate': 10,
-                      'incident_start_time': 30, 'incident_end_time': 30},
-                     {'link': 5, 'lane': 2, 'coordinate': 10,
-                      'incident_start_time': 30, 'incident_end_time': 10000},
-                     {'link': 5, 'lane': 2, 'coordinate': 10,
-                      'incident_start_time': 780, 'incident_end_time': 1980}]
+        scenarios = [{'link': 5, 'upstream_link': 10010, 'lane': 2,
+                      'coordinate': 10, 'incident_start_time': 30,
+                      'incident_end_time': 30},
+                     {'link': 5, 'upstream_link': 10010, 'lane': 2,
+                      'coordinate': 10, 'incident_start_time': 30,
+                      'incident_end_time': 10000},
+                     {'link': 5, 'upstream_link': 10010, 'lane': 2,
+                      'coordinate': 10, 'incident_start_time': 780,
+                      'incident_end_time': 1980}]
 
-        # Incident time period
+        # Incident parameters
         incident_start_time = scenarios[scenario_idx]['incident_start_time']
         incident_end_time = scenarios[scenario_idx]['incident_end_time']
+        incident_link = scenarios[scenario_idx]['link']
+        incident_upstream_link = scenarios[scenario_idx]['upstream_link']
+        incident_lane = scenarios[scenario_idx]['lane']
 
         if demand is not None:
             print('NOT YET TESTED')
@@ -231,51 +237,77 @@ class VissimInterface:
         links = net.Links
         vehicles = net.Vehicles
 
+        # Get total simulation time and number of runs
+        sim_time = self.vissim.Simulation.AttValue('SimPeriod')
+        n_runs = self.vissim.Simulation.AttValue('NumRuns')
+
         # Make sure that all lanes are open
         for link in links:
             # Open all lanes
             for lane in link.Lanes:
                 lane.SetAttValue('BlockedVehClasses', '')
 
-        # Get total simulation time and set a break point
-        sim_time = self.vissim.Simulation.AttValue('SimPeriod')
-        self.vissim.Simulation.SetAttValue("SimBreakAt",
-                                           incident_start_time)
-
         # Start simulation
         print("Scenario:", scenario_idx)
         print("Random Seed:", self.vissim.Simulation.AttValue('RandSeed'))
         print("Client: Starting simulation")
+        # Set break point for first run and run until accident
+        self.vissim.Simulation.SetAttValue("SimBreakAt",
+                                           incident_start_time)
         self.vissim.Simulation.RunContinuous()
+        run_counter = 0
+        while run_counter < n_runs:
+            # Create incident (simulation stops automatically at the
+            # SimBreakAt value)
+            current_time = self.vissim.Simulation.AttValue('SimSec')
+            bus_no = 2  # No. of buses used to block the lane
+            bus_array = []
+            if current_time >= incident_start_time:
+                print('Client: Creating incident')
+                for i in range(bus_no):
+                    bus_array.append(vehicles.AddVehicleAtLinkPosition(
+                        300, incident_link, incident_lane,
+                        scenarios[scenario_idx]['coordinate'] + 20 * i, 0, 0))
+                # Tell vehicles to change lanes by blocking the accident lane
+                for lane in links.ItemByKey(incident_upstream_link).Lanes:
+                    if lane.AttValue('Index') == incident_lane:
+                        lane.SetAttValue('BlockedVehClasses', '10')
 
-        # Create incident (simulation stops automatically at the
-        # SimBreakAt value)
-        bus_no = 2  # No. of buses used to block the lane
-        bus_array = []
-        # TODO: loop to create accident in all the runs
-        if sim_time >= incident_start_time:
-            print('Client: Creating incident')
-            for i in range(bus_no):
-                bus_array.append(vehicles.AddVehicleAtLinkPosition(
-                    300, scenarios[scenario_idx]['link'],
-                    scenarios[scenario_idx]['lane'],
-                    scenarios[scenario_idx]['coordinate'] + 20 * i, 0, 0))
-            self.vissim.Simulation.SetAttValue("SimBreakAt",
-                                               incident_end_time)
-            print('Client: Running again')
-            self.vissim.Simulation.RunContinuous()
+                # Set the accident end break point or set the next accident
+                # start break point
+                if sim_time >= incident_end_time:
+                    self.vissim.Simulation.SetAttValue("SimBreakAt",
+                                                       incident_end_time)
+                else:
+                    self.vissim.Simulation.SetAttValue("SimBreakAt",
+                                                       incident_start_time)
+                print('Client: Running again')
+                self.vissim.Simulation.RunContinuous()
 
-        # Remove the incident
-        if sim_time >= incident_end_time:
-            print('Client: Removing incident')
-            for veh in bus_array:
-                vehicles.RemoveVehicle(veh.AttValue('No'))
-            # open all closed lanes
+            # Make sure that all lanes are open after the incident (either in
+            # the same run or in the next run)
             for link in links:
                 for lane in link.Lanes:
                     lane.SetAttValue('BlockedVehClasses', '')
-            print('Client: Running again')
-            self.vissim.Simulation.RunContinuous()
+
+            # Remove the incident
+            current_time = self.vissim.Simulation.AttValue('SimSec')
+            if current_time >= incident_end_time:
+                print('Client: Removing incident')
+                for veh in bus_array:
+                    vehicles.RemoveVehicle(veh.AttValue('No'))
+                # open all closed lanes
+                for link in links:
+                    for lane in link.Lanes:
+                        lane.SetAttValue('BlockedVehClasses', '')
+                # Set accident start break point for next the simulation run
+                self.vissim.Simulation.SetAttValue("SimBreakAt",
+                                                   incident_start_time)
+                print('Client: Running again')
+                self.vissim.Simulation.RunContinuous()
+
+            run_counter += 1
+            print('runs finished: ', run_counter)
 
         print('Simulation done')
 
@@ -346,7 +378,7 @@ class VissimInterface:
               format(self.vissim.Simulation.AttValue('RandSeed'),
                      self.vissim.Simulation.AttValue('RandSeedIncr')))
 
-        # self.vissim.SuspendUpdateGUI()
+        self.vissim.SuspendUpdateGUI()
         n_inputs = 0
         start_time = time.perf_counter()
         # 'highway_in_and_out_lanes', 'I710-MultiSec-3mi', 'US_101'

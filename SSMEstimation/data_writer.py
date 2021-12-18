@@ -60,6 +60,14 @@ class SSMDataWriter(DataWriter):
         self._save_as_csv(data, folder_path, file_name)
 
 
+class RiskyManeuverWriter(SSMDataWriter):
+    _data_type_identifier = 'Risky Maneuvers'
+
+    def __init__(self, network_name: str, vehicle_type: VehicleType):
+        DataWriter.__init__(self, self._data_type_identifier, network_name,
+                            vehicle_type)
+
+
 class MergedDataWriter(DataWriter):
     _data_type_identifier = 'Merged Data'
 
