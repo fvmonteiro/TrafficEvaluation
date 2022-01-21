@@ -293,7 +293,8 @@ class DataPostProcessor:
             already_exists = vehicles_per_lane in processed_vehicle_inputs
             if already_exists:
                 print('FYI: SSM results for vehicle input ', vehicles_per_lane,
-                      ' already exist. They are being recomputed.')
+                      'already exist. They are being recomputed but will not '
+                      'be saved.')
 
             # We save once per vehicle_per_lane value
             if (not already_exists and not debugging
@@ -355,7 +356,8 @@ class DataPostProcessor:
         # makes it hard to deal with the whole dataframe at once.
         # Thus, we deal with one vehicle at a time. There should be no more
         # than 10k vehicles per simulation, so I'm hoping computations won't
-        # take too long
+        # take too long.
+        # Spoiler alert: it takes some minutes to run over 10 files
         delta_t = round((vehicle_record['time'].iloc[1]
                          - vehicle_record['time'].iloc[0]), 2)
         vehicle_record['is_risk_positive'] = vehicle_record['risk'] > 0

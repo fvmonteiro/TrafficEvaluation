@@ -121,13 +121,7 @@ class ResultAnalyzer:
 
         data = self._load_all_merged_data(controlled_percentage)
         self._prepare_data_for_plotting(data, warmup_time)
-        # Adjust names for nicer looking plot
-        # data['control_percentages'] = data[
-        #     'control_percentages'].str.replace('% ', '%\n')
         relevant_data = self._select_relevant_data(data, vehicles_per_lane)
-        # relevant_data = data.loc[
-        #     data['vehicles_per_lane'].isin(vehicles_per_lane)]
-        # self.remove_deadlock_simulations(relevant_data)
 
         # Plot
         plt.rc('font', size=15)
@@ -142,6 +136,7 @@ class ResultAnalyzer:
         if should_save_fig:
             self.save_fig(plt.gcf(), 'box_plot', y, vehicles_per_lane,
                           controlled_percentage)
+        self.widen_fig(plt.gcf(), controlled_percentage)
         plt.tight_layout()
         plt.show()
 
@@ -189,13 +184,15 @@ class ResultAnalyzer:
         if should_save_fig:
             self.save_fig(plt.gcf(), 'box_plot', y, [vehicles_per_lane],
                           controlled_percentage)
+        self.widen_fig(plt.gcf(), controlled_percentage)
         plt.tight_layout()
         plt.show()
 
     def plot_risky_maneuver_histogram(
             self, controlled_percentage: Union[int, List[int]],
             vehicles_per_lane: Union[int, List[int]],
-            warmup_time=10):
+            warmup_time: int = 10,
+            min_total_risk: float = 0):
         """
         Plots histograms of risky maneuvers' duration, total risk and max risk.
 
@@ -205,21 +202,30 @@ class ResultAnalyzer:
         :param vehicles_per_lane: input per lane used to generate the data.
          If this is a list, generates one plot per input.
         :param warmup_time: must be given in minutes. Samples before
-         start_time are ignored.
+         warmup_time are ignored.
+        :param min_total_risk: risky maneuvers with total risk below this
+         value are ignored.
         :return: Nothing, just plots figures
         """
         if not isinstance(vehicles_per_lane, list):
             vehicles_per_lane = [vehicles_per_lane]
         data = self._load_all_risky_maneuver_data(controlled_percentage,
                                                   vehicles_per_lane)
+        warmup_time *= 60  # minutes to seconds
         data.drop(index=data[data['time'] < warmup_time].index, inplace=True)
+        data.drop(index=data[data['total_risk'] < min_total_risk].index,
+                  inplace=True)
+
         data['duration'] = data['end_time'] - data['time']
-        variables_list = ['duration', 'total_risk', 'max_risk']
+        variables_list = [#'duration',
+                          'total_risk',
+                          #'max_risk'
+                          ]
         for veh_input in vehicles_per_lane:
             data_to_plot = self._select_relevant_data(data, veh_input)
             for variable in variables_list:
                 sns.histplot(data=data_to_plot, x=variable,
-                             stat='probability', hue='control_percentages')
+                             stat='count', hue='control_percentages')
                 plt.show()
 
     def plot_fundamental_diagram(self,
@@ -440,7 +446,8 @@ class ResultAnalyzer:
                 data_per_percentage.append(
                     reader.load_data_with_controlled_vehicles_percentage(
                         percentage))
-            data_per_veh_type.append(pd.concat(data_per_percentage, ignore_index=True))
+            data_per_veh_type.append(pd.concat(data_per_percentage,
+                                               ignore_index=True))
         data = pd.concat(data_per_veh_type)
 
         # Create single columns with all controlled vehicles' percentages info
@@ -515,8 +522,7 @@ class ResultAnalyzer:
                  vehicles_per_lane: List[int],
                  controlled_percentage: List[int]):
         # Making the figure nice for inclusion in documents
-        if (len(self._vehicle_types) >= 3) and (len(controlled_percentage) > 1):
-            fig.set_size_inches(6.4*2, 4.8)
+        self.widen_fig(fig, controlled_percentage)
         fig.set_dpi(200)
         axes = fig.axes
         for ax in axes:
@@ -538,6 +544,10 @@ class ResultAnalyzer:
                                self._vehicle_types))
         # plt.show()
         fig.savefig(os.path.join(self._figure_folder, fig_name))
+
+    def widen_fig(self, fig: plt.Figure, controlled_percentage: List[int]):
+        if (len(self._vehicle_types) >= 3) and (len(controlled_percentage) > 1):
+            fig.set_size_inches(6.4*2, 4.8)
 
     # Plots for a single simulation - OUTDATED: might not work ================#
 
