@@ -164,7 +164,10 @@ def main():
     # =============== Define data source =============== #
     # Options: i710, us-101, in_and_out, in_and_merge
     network_file = VissimInterface.network_names_map['in_and_out']
-    vehicle_type = VehicleType.CONNECTED
+    vehicle_type = [# VehicleType.ACC,
+                    # VehicleType.AUTONOMOUS,
+                    VehicleType.CONNECTED
+                    ]
 
     # =============== Temporary tests  =============== #
     # ra = result_analysis.ResultAnalyzer(network_file, vehicle_type)
@@ -172,54 +175,71 @@ def main():
 
     # =============== Running =============== #
     # run_simulations(network_name='in_and_out', vehicle_types=vehicle_type,
-    #                 percentage=100, input_per_lane=2000)
+    #                 percentage=25, percentage_increase=25,
+    #                 final_percentage=75,
+    #                 input_per_lane=2000)
 
     # =============== Post processing =============== #
 
     post_processor = post_processing.DataPostProcessor()
-    # for percentage in range(100, 100+1, 100):
-    #     post_processor.create_ssm_summary(network_file,
-    #                                       vehicle_type,
-    #                                       percentage,
-    #                                       vehicle_inputs=[2000],
-    #                                       # debugging=True
-    #                                       )
-        # post_processor.merge_data(network_file, vehicle_type, percentage)
+    # for vt in vehicle_type:
+    #     for percentage in range(25, 75+1, 25):
+    #         post_processor.create_ssm_summary(network_file,
+    #                                           vt,
+    #                                           percentage,
+    #                                           vehicle_inputs=[2000],
+    #                                           # debugging=True
+    #                                           )
+    #         post_processor.merge_data(network_file, vt, percentage)
 
     # =============== Check results numbers =============== #
     # for percentage in range(100, 100+1, 25):
     #     print('Percentage: ', percentage)
     #     post_processor.check_human_take_over(network_file,
-    #                                          VehicleType.AUTONOMOUS,
+    #                                          VehicleType.CONNECTED,
     #                                          percentage, [2000])
 
     # =============== Check results graphically =============== #
 
-    vehicle_types = [#VehicleType.ACC,
-                     #VehicleType.AUTONOMOUS,
-                     VehicleType.CONNECTED]
+    vehicle_types = [
+        # VehicleType.ACC,
+        # VehicleType.AUTONOMOUS,
+        VehicleType.CONNECTED
+        ]
     result_analyzer = result_analysis.ResultAnalyzer('in_and_out',
                                                      vehicle_types)
+    # result_analyzer.find_removed_vehicles(VehicleType.CONNECTED, 100, [1000,
+    #                                                                   2000])
+
     save_results = False
 
-    percentages = [0, 100]
-    result_analyzer.plot_risky_maneuver_histogram(percentages, 2000)
-    # for veh_input in [1000, 2000]:
-    #     result_analyzer.plot_y_vs_time('flow', veh_input, percentages,
-    #                                    warmup_time=5)
-    #     result_analyzer.plot_y_vs_time('risk', veh_input, [100],
-    #                                    warmup_time=5)
-    #     # result_analyzer.plot_y_vs_time('risk_no_lane_change', veh_input,
-    #     #                                [100], warmup_time=5)
-    # veh_inputs = [i for i in range(2000, 2001, 1000)]
-    # result_analyzer.box_plot_y_vs_controlled_percentage(
-    #     'flow', veh_inputs, percentages, warmup_time=10,
-    #     should_save_fig=save_results
+    percentages = [i for i in range(0, 101, 25)]
+    veh_inputs = [i for i in range(1000, 2001, 1000)]
+    # result_analyzer.plot_risky_maneuver_histogram_per_vehicle_type(
+    #     percentages, [2000], min_total_risk=1,
+    #     should_save_fig=save_results)
+    # result_analyzer.plot_risky_maneuver_histogram_per_percentage(
+    #     percentages, 2000, min_total_risk=1, should_save_fig=save_results
     # )
+    result_analyzer.box_plot_y_vs_controlled_percentage(
+        'flow', [2000], percentages, warmup_time=10,
+        should_save_fig=save_results
+    )
     # result_analyzer.box_plot_y_vs_controlled_percentage(
     #     'risk', veh_inputs, percentages, warmup_time=10,
     #     should_save_fig=save_results
     # )
+
+    # for veh_input in [2000]:
+    #     result_analyzer.plot_y_vs_time('flow', veh_input, percentages,
+    #                                    warmup_time=5)
+    #     result_analyzer.plot_y_vs_time('risk', veh_input, percentages,
+    #                                    warmup_time=5)
+    #     # result_analyzer.plot_y_vs_time('risk_no_lane_change', veh_input,
+    #     #                                [100], warmup_time=5)
+
+
+
     # result_analyzer.box_plot_y_vs_controlled_percentage(
     #     'risk_no_lane_change', veh_inputs, [100], warmup_time=10)
 
@@ -234,7 +254,14 @@ def main():
     #     should_save_fig=save_results
     # )
 
-    # percentages = [i for i in range(0, 101, 25)]
+    # percentages = [i for i in range(0, 101, 100)]
+    # vehicle_types = [
+    #     VehicleType.ACC,
+    #     VehicleType.AUTONOMOUS,
+    #     VehicleType.CONNECTED
+    # ]
+    # result_analyzer = result_analysis.ResultAnalyzer('in_and_out',
+    #                                                  vehicle_types)
     # result_analyzer.box_plot_y_vs_vehicle_type('flow', 2000, percentages,
     #                                            warmup_time=10,
     #                                            should_save_fig=save_results)

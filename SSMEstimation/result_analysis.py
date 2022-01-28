@@ -255,10 +255,10 @@ class ResultAnalyzer:
             sns.histplot(data=data_to_plot, x='total_risk',
                          stat='count', hue='vehicles_per_lane',
                          binwidth=1, palette='tab10')
+            plt.tight_layout()
             if should_save_fig:
                 fig = plt.gcf()
                 fig.set_dpi(200)
-                plt.tight_layout()
                 fig_name = ('risky_intervals_'
                             + '_'.join(str(v) for v in vehicles_per_lane) + '_'
                             + 'vehs_per_lane' + '_'
@@ -300,7 +300,7 @@ class ResultAnalyzer:
             should_save_fig: bool = False):
         """
         Plots histograms of risky maneuvers' total risk.
-
+        TODO: rewrite doc
         :param controlled_percentage: Percentage of controlled vehicles
          in the simulation. If this is a list, generates one plot per input.
         :param vehicles_per_lane: input per lane used to generate the data.
@@ -333,22 +333,25 @@ class ResultAnalyzer:
 
         relevant_data = self._select_relevant_data(data, vehicles_per_lane)
         # for vt in self._vehicle_types:
-        plt.rc('font', size=15)
-        sns.histplot(data=relevant_data, x='total_risk',
-                     stat='count', hue='control_percentages',
-                     binwidth=1, palette='tab10')
-        if should_save_fig:
-            fig = plt.gcf()
-            fig.set_dpi(200)
+        for ct in relevant_data['control_percentages'].unique():
+            data_to_plot = relevant_data[relevant_data['control_percentages']
+                                         == ct]
+            plt.rc('font', size=15)
+            sns.histplot(data=data_to_plot, x='total_risk',
+                         stat='count', #hue='control_percentages',
+                         binwidth=1, palette='tab10')
             plt.tight_layout()
-            fig_name = ('risky_intervals_'
-                        + str(vehicles_per_lane) + '_'
-                        + 'vehs_per_lane' + '_'
-                        + '_'.join([str(p) for p in controlled_percentage])
-                        + '_' + self._vehicle_types[0].name.lower()
-                        )
-            fig.savefig(os.path.join(self._figure_folder, fig_name))
-        plt.show()
+            if should_save_fig:
+                fig = plt.gcf()
+                fig.set_dpi(200)
+                fig_name = ('risky_intervals_'
+                            + str(vehicles_per_lane) + '_'
+                            + 'vehs_per_lane' + '_'
+                            + '_'.join([str(p) for p in controlled_percentage])
+                            + '_' + self._vehicle_types[0].name.lower()
+                            )
+                fig.savefig(os.path.join(self._figure_folder, fig_name))
+            plt.show()
 
     def plot_fundamental_diagram(self,
                                  controlled_percentage: Union[int, List[int]],
@@ -565,18 +568,23 @@ class ResultAnalyzer:
         :return:
         """
 
-        if not isinstance(controlled_percentage, list):
-            controlled_percentage = [controlled_percentage]
+        if isinstance(controlled_percentage, list):
+            percentage_copy = controlled_percentage[:]
+        else:
+            percentage_copy = [controlled_percentage]
         data_per_veh_type = []
         for vt in self._vehicle_types:
             reader = readers.RiskyManeuverReader(self.network_name, vt)
             data_per_percentage = []
-            for percentage in controlled_percentage:
+            for percentage in percentage_copy:
                 data_per_percentage.append(
                     reader.load_data_with_controlled_vehicles_percentage(
                         percentage))
             data_per_veh_type.append(pd.concat(data_per_percentage,
                                                ignore_index=True))
+            # To avoid loading the no control case several times
+            if 0 in percentage_copy:
+                percentage_copy.remove(0)
         data = pd.concat(data_per_veh_type, ignore_index=True)
 
         # Create single columns with all controlled vehicles' percentages info

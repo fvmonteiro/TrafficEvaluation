@@ -269,7 +269,12 @@ class VissimDataReader(DataReader):
             if (file_str.startswith(self.network_name + self.data_identifier)
                     and file_str.endswith(self.file_format)):
                 file_no_extension = file_str.split('.')[0]
-                sim_number = int(file_no_extension.split('_')[-1])
+                try:
+                    sim_number = int(file_no_extension.split('_')[-1])
+                except ValueError:
+                    print('File {} is not being read because its name does not '
+                          'end with a number.'.format(file_no_extension))
+                    continue
                 if sim_number > max_simulation_number:
                     max_simulation_number = sim_number
                 if sim_number < min_simulation_number:
