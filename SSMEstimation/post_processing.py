@@ -362,7 +362,9 @@ class DataPostProcessor:
                          - vehicle_record['time'].iloc[0]), 2)
         vehicle_record['is_risk_positive'] = vehicle_record['risk'] > 0
         all_ids = vehicle_record['veh_id'].unique()
-        risky_data_list = []
+        risky_data_list = [pd.DataFrame(
+            columns=['veh_id', 'leader_id', 'time', 'end_time',
+                     'total_risk', 'max_risk'])]
         for veh_id in all_ids:
             single_veh_record = vehicle_record[vehicle_record['veh_id']
                                                == veh_id]
@@ -409,6 +411,8 @@ class DataPostProcessor:
                 end_indices].values
             risky_data_list.append(temp_df)
         risky_data = pd.concat(risky_data_list)
+        if risky_data.empty:
+            risky_data.loc[0] = 0
         risky_data['simulation_number'] = vehicle_record[
             'simulation_number'].iloc[0]
         return risky_data
@@ -437,7 +441,9 @@ class DataPostProcessor:
         n_blocked_vehs = []
         for (vehicle_records, file_number) in data_generator:
             blocked_vehs = vehicle_records.loc[
-                vehicle_records['vissim_control'] == 1, 'veh_id'].unique()
+                (vehicle_records['vissim_control'] == 1)
+                & (vehicle_records['veh_type'] != Vehicle.VISSIM_CAR_ID),
+                'veh_id'].unique()
             n_blocked_vehs.append(blocked_vehs.shape[0])
             print('Total blocked vehicles: ', blocked_vehs.shape[0])
         print('Mean blocked vehicles:', np.mean(n_blocked_vehs))

@@ -247,7 +247,7 @@ class VissimDataReader(DataReader):
         return sim_output
 
     def find_min_max_file_number(self, percentage: Union[int, str],
-                                 vehicles_per_lane: int = None) -> (int, int):
+                                 vehicles_per_lane: int) -> (int, int):
         """"Looks for the file with the highest simulation number. This is
         usually the file containing results from all simulations.
 
@@ -259,15 +259,11 @@ class VissimDataReader(DataReader):
         min_simulation_number = 10000
         percentage_folder = VissimInterface.create_percent_folder_name(
             percentage, self.vehicle_type)
-        if vehicles_per_lane:
-            vehicle_input_folder = (VissimInterface.
-                                    create_vehs_per_lane_folder_name(
-                                        vehicles_per_lane))
-            results_full_path = os.path.join(self.data_dir, percentage_folder,
-                                             vehicle_input_folder)
-        else:
-            results_full_path = os.path.join(self.data_dir, percentage_folder)
-
+        vehicle_input_folder = (VissimInterface.
+                                create_vehs_per_lane_folder_name(
+                                    vehicles_per_lane))
+        results_full_path = os.path.join(self.data_dir, percentage_folder,
+                                         vehicle_input_folder)
         for file in os.listdir(results_full_path):
             file_str = os.fsdecode(file)
             if (file_str.startswith(self.network_name + self.data_identifier)
