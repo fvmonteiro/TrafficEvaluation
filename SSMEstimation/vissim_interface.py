@@ -15,8 +15,8 @@ class VissimInterface:
     # IN_AND_OUT = 'highway_in_and_out_lanes'
     # I710 = 'I710-MultiSec-3mi'
     # US_101 = 'US_101'
-    networks_folder = ('C:\\Users\\fvall\\Documents\\Research'
-                       '\\TrafficSimulation\\VISSIM_networks')
+    # networks_folder = ('C:\\Users\\fvall\\Documents\\Research'
+    #                    '\\TrafficSimulation\\VISSIM_networks')
 
     vissim_net_ext = '.inpx'
     vissim_layout_ext = '.layx'
@@ -29,12 +29,23 @@ class VissimInterface:
                           'highway_in_and_merge': 1800,
                           'I710-MultiSec-3mi': 3600,
                           'US_101': 1800}
+    init_random_seed = 7
 
     def __init__(self):
+        self.networks_folder = VissimInterface.get_networks_folder()
         self.network_file = None
         self.layout_file = None
         self.vissim = None
         self.open_vissim()
+
+    @staticmethod
+    def get_networks_folder():
+        if os.environ['COMPUTERNAME'] == 'DESKTOP-626HHGI':
+            return ('C:\\Users\\fvall\\Documents\\Research'
+                    '\\AV_TrafficSimulation\\VISSIM_networks')
+        else:
+            return ('C:\\Users\\fvall\\Documents\\Research'
+                    '\\TrafficSimulation\\VISSIM_networks')
 
     @staticmethod
     def get_file_name_from_network_name(network_name):
@@ -443,7 +454,7 @@ class VissimInterface:
         self.set_evaluation_outputs(True, True, True, True, 60, 30)
         # Any values for initial random seed and increment are good, as long
         # as they are the same over each set of simulations.
-        self.set_random_seed(7)
+        self.set_random_seed(self.init_random_seed)
         self.set_random_seed_increment(1)
         vehicle_type_name = vehicle_type.name.lower()
         results_base_folder = os.path.join(self.networks_folder,

@@ -16,8 +16,8 @@ class DataWriter:
         network_name = VissimInterface.get_file_name_from_network_name(
             network_name)
         self.file_base_name = network_name + '_' + data_type_identifier
-        self.network_data_dir = os.path.join(VissimInterface.networks_folder,
-                                             network_name)
+        self.network_data_dir = os.path.join(
+            VissimInterface.get_networks_folder(), network_name)
         self.vehicle_type = vehicle_type.name.lower()
 
     @staticmethod
@@ -29,8 +29,8 @@ class DataWriter:
             data.to_csv(full_address, index=False)
         except FileNotFoundError:
             print('Couldn''t save at', full_address, '. Saving at: ',
-                  VissimInterface.networks_folder, 'instead.')
-            data.to_csv(os.path.join(VissimInterface.networks_folder,
+                  VissimInterface.get_networks_folder(), 'instead.')
+            data.to_csv(os.path.join(VissimInterface.get_networks_folder(),
                                      file_name), index=False)
 
 

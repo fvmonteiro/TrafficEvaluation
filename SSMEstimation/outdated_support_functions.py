@@ -147,7 +147,7 @@ def explore_issues():
     ssm_estimator = post_processing.SSMEstimator(veh_record)
     ssm_estimator.include_ttc()
 
-    conflicts = pd.read_csv(VissimInterface.networks_folder
+    conflicts = pd.read_csv(VissimInterface.get_networks_folder()
                             + '\\highway_in_and_out_lanes_001.csv')
     ttc_threshold = 1.5
 
