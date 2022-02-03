@@ -13,7 +13,7 @@ from vehicle import VehicleType
 
 
 class ResultAnalyzer:
-    _figure_folder = 'G:\\My Drive\\Safety in Mixed Traffic\\images'
+
     units_map = {'TTC': 's', 'low_TTC': '# vehicles',
                  'DRAC': 'm/s^2', 'high_DRAC': '# vehicles',
                  'CPI': 'dimensionless', 'DTSG': 'm',
@@ -27,6 +27,12 @@ class ResultAnalyzer:
 
     def __init__(self, network_name: str,
                  vehicle_types: Union[VehicleType, List[VehicleType]]):
+        if os.environ['COMPUTERNAME'] == 'DESKTOP-626HHGI':
+            self._figure_folder = ('C:\\Users\\fvall\\Google Drive\\Safety in '
+                                   'Mixed Traffic\\images')
+        else:
+            self._figure_folder = ('G:\\My Drive\\Safety in Mixed Traffic'
+                                   '\\images')
         if not isinstance(vehicle_types, list):
             vehicle_types = [vehicle_types]
         self.network_name = network_name
@@ -675,10 +681,16 @@ class ResultAnalyzer:
                   format(element[0], element[1]))
 
     def save_fig(self, fig: plt.Figure, plot_type: str, measurement_name: str,
-                 vehicles_per_lane: List[int],
-                 controlled_percentage: List[int]):
+                 vehicles_per_lane: Union[int, List[int]],
+                 controlled_percentage: Union[int, List[int]]):
         # Making the figure nice for inclusion in documents
         # self.widen_fig(fig, controlled_percentage)
+
+        if not isinstance(vehicles_per_lane, list):
+            vehicles_per_lane = [vehicles_per_lane]
+        if not isinstance(controlled_percentage, list):
+            controlled_percentage = [controlled_percentage]
+
         fig.set_dpi(200)
         axes = fig.axes
         for ax in axes:
