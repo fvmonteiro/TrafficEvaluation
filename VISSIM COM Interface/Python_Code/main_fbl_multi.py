@@ -1,6 +1,8 @@
-# attempt to use VISSIM COM interface through Pytyhon win32com
-# ref : Mark Hammond, Andy Robinson (2000, Jan). Python Programming on Win32, [Online]. Available: http://www.icodeguru.com/WebServer/Python-Programming-on-Win32/
-# ref : VISSIM 5.30-04 - COM Interface Manual, PTV group, Karlsrueh, Germany, 2011.
+# attempt to use VISSIM COM interface through Pytyhon win32com ref : Mark
+# Hammond, Andy Robinson (2000, Jan). Python Programming on Win32, [Online].
+# Available: http://www.icodeguru.com/WebServer/Python-Programming-on-Win32/
+# ref : VISSIM 5.30-04 - COM Interface Manual, PTV group, Karlsrueh, Germany,
+# 2011.
 
 import ctypes.wintypes
 #import email_interface
@@ -15,29 +17,32 @@ import random
 #import win_interface
 
 def getProgramName():
-    # ref : In Python, how do I get the path and name of the file that is currently executing?, 2008, [Online] Available at : http://stackoverflow.com/questions/50499/in-python-how-do-i-get-the-path-and-name-of-the-file-that-is-currently-executin
+    # ref : In Python, how do I get the path and name of the file that is
+    # currently executing?, 2008, [Online] Available at :
+    # http://stackoverflow.com/questions/50499/in-python-how-do-i-get-the
+    # -path-and-name-of-the-file-that-is-currently-executin
     PROGRAM_FULL_NAME = inspect.getfile(inspect.currentframe())
     PROGRAM_NAME = os.path.split(PROGRAM_FULL_NAME)[-1]
     return PROGRAM_NAME
 
 def mkdir(path):
-    ''' recursively create given path '''
+    """ recursively create given path """
     upper, name = os.path.split(path)
     if not os.path.exists(upper):
         mkdir(upper)
     # if path already exists, do not create. Otherwise, error will occur
     if not os.path.exists(path):
-        os.mkdir(path)  
+        os.mkdir(path)
 
 
 def calcRandomSeeds(nMonteCarlo):
     # list comprehension
     # same as {3i + 1 | 0 <= i < nMonteCarlo}
     return [3*i + 1 for i in range(nMonteCarlo)]
-    
+
 
 def writeHeader(fileName, title, Nsec, firstColumnHeader = "t/s", columnHeader = "Sec"):
-    '''write header line of a data file
+    """write header line of a data file
     Parameters
     ----------
     fileName : string
@@ -52,7 +57,7 @@ def writeHeader(fileName, title, Nsec, firstColumnHeader = "t/s", columnHeader =
         header of each column. Repeated Nsec times with headers
         example : Nsec = 2, columnHeader = "Sec"
         -> "Sec1\tSec2\t"
-    '''
+    """
     LogFile = open(fileName, 'w')
     # first line
     LogFile.write(title)
@@ -70,7 +75,7 @@ def writeHeader(fileName, title, Nsec, firstColumnHeader = "t/s", columnHeader =
     LogFile.close()
 
 def LC_Control(scenario, links_obj, LC_distance):
-    '''Apply Lane Change control for specific scenario
+    """Apply Lane Change control for specific scenario
     Parameters
     -------------
         scenario: dict
@@ -81,11 +86,11 @@ def LC_Control(scenario, links_obj, LC_distance):
             the list of link groups
         ramp_links: list
             the list of links with off ramp
-        LC_distance: int 
+        LC_distance: int
         the distance of LC controlled section (m)
 
-    '''
-    
+    """
+
     link_ID = scenario['link']
     link_ID = 10010
     lane = scenario['lane']
@@ -96,20 +101,20 @@ def LC_Control(scenario, links_obj, LC_distance):
 
 
 def vsl_FeedbackLinearization(density, speed, rho_star, vsl, section_length, link_groups, err_sum, perturbation):
-    '''
+    """
     density: (list[Nsec]) list of densities in all sections
     vsl: (list[Nsec]) current VSL command in each sections
     section_length: (list[Nsec]) length of each section
-    
-    '''
+
+    """
     startSection = 0    #startSection: (int) the first section controlled with VSL
-    endSection = 5    
-    #endSection: (int) the last section upstream the discharging section. 
+    endSection = 5
+    #endSection: (int) the last section upstream the discharging section.
     #First downstream section of endSection is the discharging section.
-    Nsec_controlled = endSection - startSection + 1 
-    #Nsec_controlled is the number of sections under control, 
+    Nsec_controlled = endSection - startSection + 1
+    #Nsec_controlled is the number of sections under control,
     #including the discharging section! The discharging section is considered as one single section
-    
+
     wbar = 15*(1+perturbation)
     w = 30*(1+perturbation)
     C = 7200
@@ -121,17 +126,17 @@ def vsl_FeedbackLinearization(density, speed, rho_star, vsl, section_length, lin
     vslMIN = 20
     vslMAX = 100
     rho_e = [rho_star]*(Nsec_controlled+1)
-    
+
     #incorporate uncertainties
     density1 = [(1+0)*x for x in density]
-    
+
     rho = density1[startSection:(endSection+2)]
     flow = np.multiply(density1,speed)
     q = flow[startSection:(endSection+2)]
     x = np.subtract(rho,rho_e)
     for i in range(len(x)):
         err_sum[i] = err_sum[i] + x[i]
-    
+
     # we need N+1 measurements to produce N VSL commands
     Lambda1 = [200.0]*(Nsec_controlled)
     Lambda2 = [2.0]*(Nsec_controlled)
@@ -140,7 +145,7 @@ def vsl_FeedbackLinearization(density, speed, rho_star, vsl, section_length, lin
     qv = [0.0]*(Nsec_controlled)
     for i in range(Nsec_controlled):
         qv[i] = Lambda1[i]*x[i+1] + Lambda2[i]*(err_sum[i+1] + c[i])
-    
+
     for i in range(Nsec_controlled):
         if i == 0:
             v[i] = (q[i+1] - qv[i]) * w / (w*rho_j - q[i+1] + qv[i])
@@ -149,7 +154,7 @@ def vsl_FeedbackLinearization(density, speed, rho_star, vsl, section_length, lin
         else:
             v[i] = (q[i+1] - qv[i]) / rho[i]
 
-    
+
     for i in range(Nsec_controlled):
         v[i] = round(v[i] * 0.1) * 10
         if v[i] <= vsl[i + startSection]:
@@ -170,7 +175,7 @@ def vsl_FeedbackLinearization(density, speed, rho_star, vsl, section_length, lin
 
 
 def runSimulation(simulationTime_sec, idxScenario, idxController, idxLaneClosure, randomSeed, folderDir, networkDir, demand, perturbation, sec1len):
-    '''run PTV VISSIM simulation using given arguments
+    """run PTV VISSIM simulation using given arguments
     Parameters
     ----------
         simulationTime_sec : int
@@ -193,7 +198,7 @@ def runSimulation(simulationTime_sec, idxScenario, idxController, idxLaneClosure
             location of data files
         networkDir : string, path
             location of network file
-    '''
+    """
 
     # Link Groups
     link_groups = [
@@ -219,7 +224,7 @@ def runSimulation(simulationTime_sec, idxScenario, idxController, idxLaneClosure
     simResolution = 5   # No. of simulation steps per second
     Tdata_sec = 30.0     # Data sampling period
     Tctrl_sec = 30.0 # Control time interval
-    
+
 
     #   Incident time period
     startTime_sec = scenarios[idxScenario]['startTime_sec']
@@ -241,7 +246,7 @@ def runSimulation(simulationTime_sec, idxScenario, idxController, idxLaneClosure
     flowSection = [0.0] * Nsec
     err_sum = [0.0] * Nsec
     vsl = [vf] * Nsec
-    
+
 
 
     '''Define log file names'''
@@ -250,24 +255,24 @@ def runSimulation(simulationTime_sec, idxScenario, idxController, idxLaneClosure
     VSLFileName = os.path.join(folderDir, "vsl_Log.txt")
     VTTFileName = os.path.join(folderDir, "vtt_Log.txt")
 
-    
+
     ProgID = "VISSIM.Vissim.1000"
-    
+
     '''file paths'''
     networkFileName = "I710 - MultiSec - 3mi.inpx"
     layoutFileName = "I710 - MultiSec - 3mi.layx"
-    
+
     ''' Start VISSIM simulation '''
-    ''' COM lines'''  
+    ''' COM lines'''
 
     try:
         print("Client: Creating a Vissim instance")
         vs = com.Dispatch(ProgID)
-    
+
         print("Client: read network and layout")
         vs.LoadNet(os.path.join(networkDir, networkFileName), 0)
         vs.LoadLayout(os.path.join(networkDir, layoutFileName))
-    
+
         ''' initialize simulations '''
         ''' setting random seed, simulation time, simulation resolution, simulation speed '''
         print("Client: Setting simulations")
@@ -281,15 +286,15 @@ def runSimulation(simulationTime_sec, idxScenario, idxController, idxLaneClosure
         ''' Set vehicle input '''
         vehInputs = net.VehicleInputs
         vehInput = vehInputs.ItemByKey(1)
-        vehInput.SetAttValue('Volume(1)', demand)           
+        vehInput.SetAttValue('Volume(1)', demand)
 
         ''' Set default speed limit and 1st sign location'''
         VSLs = net.DesSpeedDecisions
-        
+
         for VSL in VSLs :
             VSL.SetAttValue("DesSpeedDistr(10)", vf)   # car (km/h)
             VSL.SetAttValue("DesSpeedDistr(20)", vf)   # HGV (km/h)
-            
+
         pos = 3203 - (sec1len-1)*1600
         VSLs.ItemByKey(4).SetAttValue("Pos", pos)
         VSLs.ItemByKey(5).SetAttValue("Pos", pos)
@@ -301,8 +306,8 @@ def runSimulation(simulationTime_sec, idxScenario, idxController, idxLaneClosure
         vTT = net.VehicleTravelTimeMeasurements
 
         # Make sure that all lanes are open      
-        link_Nlane = {} 
-        link_length = {}  
+        link_Nlane = {}
+        link_length = {}
 
         for link in links:
             ID = link.AttValue('No')
@@ -311,7 +316,7 @@ def runSimulation(simulationTime_sec, idxScenario, idxController, idxLaneClosure
             # Open all lanes
             for lane in link.Lanes:
                 lane.SetAttValue('BlockedVehClasses', '')
-                 
+
 
         section_length = [0.0] * Nsec # length of each section
         for iSec in range(len(link_groups)): #xrange
@@ -334,12 +339,12 @@ def runSimulation(simulationTime_sec, idxScenario, idxController, idxLaneClosure
         print("Random Seed:", randomSeed)
 
         currentTime = 0
-        
+
         #vs.Simulation.SetAttValue("SimBreakAt", 200)
         #vs.Simulation.RunContinuous()
-        
+
         '''Link Segment Results'''
-        
+
         while currentTime <= simulationTime_sec:
             # run sigle step of simulation
             vs.Simulation.RunSingleStep()
@@ -350,7 +355,7 @@ def runSimulation(simulationTime_sec, idxScenario, idxController, idxLaneClosure
                 for iSection in range(Nsec): #xrange
                     # Flow volume in one sampling period
                     dataCollection = dataCollections.ItemByKey(link_groups[iSection]['DC'])
-                    flowSection[iSection] = dataCollection.AttValue('Vehs(Current,Last,All)') 
+                    flowSection[iSection] = dataCollection.AttValue('Vehs(Current,Last,All)')
 
                     # Density and Speed in each section
                     Nveh = 0
@@ -375,30 +380,30 @@ def runSimulation(simulationTime_sec, idxScenario, idxController, idxLaneClosure
                         speed[iSection] = 0
                     else:
                         speed[iSection] = dist / Nveh #km/h
-                
+
                 ''' vehicle travel time '''
                 vtt = vTT.ItemByKey(1)
                 TravTm = vtt.AttValue('TravTm(Current,Last,All)')
 
-                        
+
                 ''' write log files : flowSection, speed, density '''
-                
+
                 denFile = open(DenFileName, "a")
                 flowFile = open(FlowFileName, "a")
                 vttFile = open(VTTFileName, "a")
-                
+
                 for i in range(Nsec):
                     denFile.write(str(density[i]) + '\t')
                     flowFile.write(str(density[i]*speed[i]) + '\t')
                 vttFile.write(str(TravTm) + '\t')
-                
+
                 denFile.write('\n')
                 denFile.close()
                 flowFile.write('\n')
                 flowFile.close()
                 vttFile.write('\n')
                 vttFile.close()
-                
+
 
 
             if currentTime == startTime_sec:
@@ -421,7 +426,7 @@ def runSimulation(simulationTime_sec, idxScenario, idxController, idxLaneClosure
                         lane.SetAttValue('BlockedVehClasses', '')
 
             #Compute the VSL command
-            if 0 == currentTime % Tctrl_sec:               
+            if 0 == currentTime % Tctrl_sec:
                 if (idxController == 3 or idxController == 1) and (startTime_sec <= currentTime < endTime_sec):
                     vsl, err_sum = vsl_FeedbackLinearization(density, speed, rho_star, vsl, section_length, link_groups, err_sum, perturbation)
                 else:
@@ -435,7 +440,7 @@ def runSimulation(simulationTime_sec, idxScenario, idxController, idxLaneClosure
                         VSL.SetAttValue("DesSpeedDistr(10)", vsl[iSec])   # car
                         VSL.SetAttValue("DesSpeedDistr(20)", vsl[iSec])   # HGV
 
-                VSLFile = open(VSLFileName, "a") 
+                VSLFile = open(VSLFileName, "a")
                 for i in range(Nsec):
                     VSLFile.write(str(vsl[i]) + '\t')
                 VSLFile.write('\n')
@@ -454,8 +459,8 @@ def runSimulation(simulationTime_sec, idxScenario, idxController, idxLaneClosure
         The error occurs when requesting results that have not been previously configured.
         For example, using the GetSegmentResult() method of the ILink interface to request
         density results can end up with this error if the density has not been requested within the configuration
-        ''' 
-        
+        '''
+
 
 def main():
     idxScenario = 2 # 0: NoBlock 1: AlltimeBlock
@@ -471,9 +476,9 @@ def main():
 
     # Vehicle Composition ID
     # 1: 10% Trucks
-    
+
     #demandComposition = 2
-    
+
     networkDir = os.path.abspath(os.curdir)
     for demand in demands:
         for jController, kLaneClosure in ctrl:
@@ -494,4 +499,4 @@ if __name__ == '__main__':
 
 
 
-    
+
