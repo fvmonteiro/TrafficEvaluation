@@ -2,22 +2,22 @@ import os
 
 import numpy as np
 import pandas as pd
+import xml.etree.ElementTree as ET
 
 from vehicle import Vehicle, VehicleType
-from vissim_interface import VissimInterface
+import file_handling
 
 
 class DataWriter:
-
     file_extension = '.csv'
 
     def __init__(self, data_type_identifier: str, network_name: str,
                  vehicle_type: VehicleType):
-        network_name = VissimInterface.get_file_name_from_network_name(
+        network_name = file_handling.get_file_name_from_network_name(
             network_name)
         self.file_base_name = network_name + '_' + data_type_identifier
         self.network_data_dir = os.path.join(
-            VissimInterface.get_networks_folder(), network_name)
+            file_handling.get_networks_folder(), network_name)
         self.vehicle_type = vehicle_type.name.lower()
 
     @staticmethod
@@ -29,8 +29,8 @@ class DataWriter:
             data.to_csv(full_address, index=False)
         except FileNotFoundError:
             print('Couldn''t save at', full_address, '. Saving at: ',
-                  VissimInterface.get_networks_folder(), 'instead.')
-            data.to_csv(os.path.join(VissimInterface.get_networks_folder(),
+                  file_handling.get_networks_folder(), 'instead.')
+            data.to_csv(os.path.join(file_handling.get_networks_folder(),
                                      file_name), index=False)
 
 
@@ -45,15 +45,14 @@ class SSMDataWriter(DataWriter):
     def save_as_csv(self, data: pd.DataFrame,
                     controlled_vehicles_percentage: int,
                     vehicles_per_lane: int):
-
         max_sim_number = data['simulation_number'].iloc[-1]
         num_str = '_' + str(max_sim_number).rjust(3, '0')
         file_name = self.file_base_name + num_str + self.file_extension
 
-        percentage_folder = VissimInterface.create_percent_folder_name(
+        percentage_folder = file_handling.create_percent_folder_name(
             controlled_vehicles_percentage, self.vehicle_type)
         vehicles_per_lane_folder = (
-            VissimInterface.create_vehs_per_lane_folder_name(
+            file_handling.create_vehs_per_lane_folder_name(
                 vehicles_per_lane))
         folder_path = os.path.join(self.network_data_dir, percentage_folder,
                                    vehicles_per_lane_folder)
@@ -77,9 +76,8 @@ class MergedDataWriter(DataWriter):
 
     def save_as_csv(self, data: pd.DataFrame,
                     controlled_vehicles_percentage: int):
-
         file_name = self.file_base_name + self.file_extension
-        percentage_folder = VissimInterface.create_percent_folder_name(
+        percentage_folder = file_handling.create_percent_folder_name(
             controlled_vehicles_percentage, self.vehicle_type)
         folder_path = os.path.join(self.network_data_dir, percentage_folder)
         self._save_as_csv(data, folder_path, file_name)
@@ -152,3 +150,74 @@ class SyntheticDataWriter:
             data[key] = np.hstack((follower[key], leader[key]))
 
         return pd.DataFrame(data)
+
+
+class SignalControllerTreeEditor:  # SignalControllerTreeEditor
+    """
+    Class to edit signal controller files (.sig).
+
+    Currently, we assume the signal controllers have a single signal group,
+    which is always set to the Red-Green-Amber sequence.
+    """
+    _file_extension = '.sig'
+    traffic_light_red = '1'
+    traffic_light_green = '3'
+    traffic_light_amber = '4'
+
+    def set_times(self, signal_controller_tree: ET.ElementTree,
+                  red_duration: int, green_duration: int,
+                  amber_duration: int = 5, starts_at_red: bool = True):
+        """"
+        Sets red, green and optionally amber times. The function also sets the
+        cycle time equal to the sum of the three times.
+
+        :param signal_controller_tree: obtained by a SignalContrllerFileReader
+        :param red_duration: in seconds
+        :param green_duration: in seconds
+        :param amber_duration: in seconds (optional)
+        :param starts_at_red: if true, traffic light starts red. Otherwise,
+         it starts green
+        """
+        # could include checks to count the number of signal controllers and
+        # confirm the signal sequence
+
+        # VISSIM uses nano seconds:
+        red_duration *= 1000
+        green_duration *= 1000
+        amber_duration *= 1000
+
+        program = signal_controller_tree.find('progs').find('prog')
+        cycle_time = int(red_duration + green_duration + amber_duration)
+        program.set('cycletime', str(cycle_time))
+
+        if starts_at_red:
+            red_start_time = '0'
+            green_start_time = str(red_duration)
+        else:
+            green_start_time = '0'
+            red_start_time = str(green_duration)
+        signal_group_program = program.find('sgs').find('sg')
+
+        for command in signal_group_program.iter('cmd'):
+            if command.get('display') == self.traffic_light_red:
+                command.set('begin', red_start_time)
+            elif command.get('display') == self.traffic_light_green:
+                command.set('begin', green_start_time)
+            else:
+                print('Unexpected traffic light color. Value ',
+                      command.get('display'))
+
+        signal_group_program.find('fixedstates').find('fixedstate').set(
+            'duration', str(amber_duration))
+
+    def save_file(self, signal_controller_tree: ET.ElementTree,
+                  folder: str, file_name: str):
+        signal_controller_tree.write(os.path.join(folder, file_name
+                                                  + self._file_extension),
+                                     encoding='UTF-8',
+                                     xml_declaration=True)
+
+    @staticmethod
+    def set_signal_controller_id(signal_controller_tree: ET.ElementTree,
+                                 new_id: int):
+        signal_controller_tree.getroot().set('id', str(new_id))

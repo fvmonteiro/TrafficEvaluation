@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+import data_writer
+import file_handling
 import post_processing
 import result_analysis
 from data_writer import SyntheticDataWriter
@@ -141,8 +143,8 @@ def run_simulations(network_name: str,
         final_input_per_lane = initial_input_per_lane
     runs_per_scenario = 2 if debugging else 10
 
-    # =============== Running =============== #
-    network_file = VissimInterface.network_names_map[network_name]
+    # Running
+    network_file = file_handling.network_names_map[network_name]
     vi = VissimInterface()
     vi.load_simulation(network_file)
     for vt in vehicle_types:
@@ -161,9 +163,21 @@ def run_simulations(network_name: str,
 def main():
     # image_folder = "G:\\My Drive\\Safety in Mixed Traffic\\images"
 
+    # ============ Playing with Traffic Lights =========== #
+    # sc_reader = readers.SignalControllerFileReader('traffic_lights')
+    # file_id = 1
+    # sc_tree = sc_reader.load_data(file_id)
+    # sc_writer = data_writer.SignalControllerTreeEditor()
+    # sc_writer.set_times(sc_tree, 20, 30)
+    # sc_writer.save_file(sc_tree, sc_reader.data_dir,
+    #                     sc_reader.network_name + str(file_id))
+    vi = VissimInterface()
+    vi.load_simulation('traffic_lights')
+    vi.set_traffic_lights()
+
     # =============== Define data source =============== #
     # Options: i710, us-101, in_and_out, in_and_merge
-    network_file = VissimInterface.network_names_map['in_and_out']
+    network_file = file_handling.network_names_map['in_and_out']
     vehicle_type = [# VehicleType.ACC,
                     # VehicleType.AUTONOMOUS,
                     VehicleType.CONNECTED
@@ -181,7 +195,7 @@ def main():
 
     # =============== Post processing =============== #
 
-    post_processor = post_processing.DataPostProcessor()
+    # post_processor = post_processing.DataPostProcessor()
     # for vt in vehicle_type:
     #     for percentage in range(25, 75+1, 25):
     #         post_processor.create_ssm_summary(network_file,
@@ -221,10 +235,10 @@ def main():
     # result_analyzer.plot_risky_maneuver_histogram_per_percentage(
     #     percentages, 2000, min_total_risk=1, should_save_fig=save_results
     # )
-    result_analyzer.box_plot_y_vs_controlled_percentage(
-        'flow', [2000], percentages, warmup_time=10,
-        should_save_fig=save_results
-    )
+    # result_analyzer.box_plot_y_vs_controlled_percentage(
+    #     'flow', [2000], percentages, warmup_time=10,
+    #     should_save_fig=save_results
+    # )
     # result_analyzer.box_plot_y_vs_controlled_percentage(
     #     'risk', veh_inputs, percentages, warmup_time=10,
     #     should_save_fig=save_results
@@ -237,8 +251,6 @@ def main():
     #                                    warmup_time=5)
     #     # result_analyzer.plot_y_vs_time('risk_no_lane_change', veh_input,
     #     #                                [100], warmup_time=5)
-
-
 
     # result_analyzer.box_plot_y_vs_controlled_percentage(
     #     'risk_no_lane_change', veh_inputs, [100], warmup_time=10)
