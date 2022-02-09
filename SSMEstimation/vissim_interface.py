@@ -4,6 +4,7 @@ from typing import Union
 import warnings
 
 import pandas as pd
+import pywintypes
 import win32com.client as com
 
 import data_writer
@@ -757,46 +758,121 @@ class VissimInterface:
         csv_reader = readers.TrafficLightSourceReader(self.network_file)
         source_data = csv_reader.load_data()
         signal_controller_container = self.vissim.Net.SignalControllers
+        signal_head_container = self.vissim.Net.SignalHeads
+        lane_container = self.vissim.Net.Links[0].Lanes
 
         if signal_controller_container.Count > source_data.shape[0]:
             print('FYI, more signal controllers in the simulation than in the '
                   'source file.')
-        elif signal_controller_container.Count < source_data.shape[0]:
-            print('Source file defines more signal controllers than '
-                  'currently exist in the simulation. The code will '
-                  'automatically generate them.')
 
         for _, row_unsure_type in source_data.iterrows():
             row = row_unsure_type.astype(int)
-            # Set values in sig files
-            sc_reader = readers.SignalControllerFileReader(self.network_file)
-            sc_editor = data_writer.SignalControllerTreeEditor()
-            try:
-                sc_file_tree = sc_reader.load_data(row['id'])
-            except ValueError:
-                if row['id'] == 1:
-                    raise OSError("Network {} doesn't have any signal "
-                                  "controller files (sig) defined yet"
-                                  .format(self.network_file))
-                # If there is no file yet, we get the first file as template,
-                # modify it and save with a different name
-                sc_file_tree = sc_reader.load_data(1)
-                sc_editor.set_signal_controller_id(sc_file_tree, row['id'])
+            sc_id = row['id']  # starts at 1
 
-            sc_editor.set_times(sc_file_tree, row['red duration'],
-                                row['green duration'], row['amber duration'])
-            sc_editor.save_file(sc_file_tree, self.networks_folder,
-                                self.network_file + str(row['id']))
+            self.set_signal_controller_times_in_file(sc_id, row['red duration'],
+                                                     row['green duration'],
+                                                     row['amber duration'])
+            self.set_signal_controller(sc_id, signal_controller_container)
+            self.set_signal_head(sc_id, lane_container, row['position'],
+                                 signal_head_container)
+        self.vissim.SaveNet()
 
-            # Modify signal controllers in VISSIM
-            if not signal_controller_container.ItemKeyExists(row['id']):
-                signal_controller_container.AddSignalController(row['id'])
-            signal_controller = signal_controller_container.ItemByKey(row['id'])
-            signal_controller.SetAttValue('SupplyFile2', os.path.join(
-                self.networks_folder,
-                self.network_file + str(row['id']) + '.sig'))
+    def set_signal_controller_times_in_file(
+            self, sc_id: int, red_duration: int, green_duration: int,
+            amber_duration: int) -> None:
+        """
+        Opens a signal controller file (.sig), edits the traffic light times,
+        and saves the file.
 
-            # Place signal heads and assign signal controllers to them
+        :param sc_id: Signal controller id
+        :param red_duration: time traffic light stays red in seconds
+        :param green_duration: time traffic light stays green in seconds
+        :param amber_duration: time traffic light stays amber in seconds
+        :return:
+        """
+
+        sc_reader = readers.SignalControllerFileReader(self.network_file)
+        sc_editor = data_writer.SignalControllerTreeEditor()
+        try:
+            sc_file_tree = sc_reader.load_data(sc_id)
+        except ValueError:
+            if sc_id == 1:
+                raise OSError("Network {} doesn't have any signal "
+                              "controller files (sig) defined yet"
+                              .format(self.network_file))
+            # If there is no file yet, we get the first file as template,
+            # modify it and save with a different name
+            sc_file_tree = sc_reader.load_data(1)
+            sc_editor.set_signal_controller_id(sc_file_tree, sc_id)
+
+        sc_editor.set_times(sc_file_tree, red_duration,
+                            green_duration, amber_duration)
+        sc_editor.save_file(sc_file_tree, self.networks_folder,
+                            self.network_file + str(sc_id))
+
+    def set_signal_controller(self, sc_id, signal_controller_container=None):
+        """
+        Sets the file named [simulation_name]sc_id.sig as the supply file for
+        signal controller with id sc_id. Creates a new signal controller if one
+        with sc_id doesn't exist, but this requires manually saving the file
+        through VISSIM.
+
+        :param sc_id: Signal controller id
+        :param signal_controller_container: VISSIM object containing all the
+         signal controllers
+        :return:
+        """
+        if signal_controller_container is None:
+            signal_controller_container = self.vissim.Net.SignalControllers
+
+        ask_for_user_action = False
+        if not signal_controller_container.ItemKeyExists(sc_id):
+            ask_for_user_action = True
+            signal_controller_container.AddSignalController(sc_id)
+        signal_controller = signal_controller_container.ItemByKey(sc_id)
+        signal_controller.SetAttValue('SupplyFile2', os.path.join(
+            self.networks_folder,
+            self.network_file + str(sc_id) + '.sig'))
+        if ask_for_user_action:
+            input('You must manually open the signal controller window of '
+                  'VISSIM and save the file.\nOtherwise, the code will '
+                  'produce and error. Press any key when done.')
+
+    def set_signal_head(self, sc_id: int, lane_container, position: int,
+                        signal_head_container=None):
+        """
+        Sets as many signal heads as lanes in the lane_container to the given
+        position and with the given signal controller. Assumes that each signal
+        controller only has one signal group and that the network has a
+        single link.
+
+        :param sc_id: Signal controller id
+        :param lane_container: VISSIM object containing all the lanes of some
+         link
+        :param position: longitudinal position of the signal head in the link
+        :param signal_head_container: VISSIM object containing all the signal
+         heads
+        :return:
+        """
+
+        if signal_head_container is None:
+            signal_head_container = self.vissim.Net.SignalHeads
+        n_lanes = lane_container.Count
+        for lane in lane_container:
+            lane_idx = lane.AttValue('Index')
+            signal_head_key = (sc_id - 1) * n_lanes + lane_idx
+            if not signal_head_container.ItemKeyExists(signal_head_key):
+                signal_head_container.AddSignalHead(signal_head_key,
+                                                    lane,
+                                                    position)
+                signal_head = signal_head_container.ItemByKey(
+                    signal_head_key)
+            else:
+                signal_head = signal_head_container.ItemByKey(
+                    signal_head_key)
+                signal_head.SetAttValue('Lane', '1-' + str(lane_idx))
+                signal_head.SetAttValue('Pos', position)
+            signal_head.SetAttValue('SG', str(sc_id) + '-1')
 
     # HELPER FUNCTIONS --------------------------------------------------------#
 
