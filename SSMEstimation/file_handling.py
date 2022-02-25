@@ -1,12 +1,15 @@
 import os
 from typing import Union
 
-network_names_map = {'in_and_out': 'highway_in_and_out_lanes',
-                         'in_and_merge': 'highway_in_and_merge',
-                         'i710': 'I710-MultiSec-3mi',
-                         'us101': 'US_101',
-                         'traffic_lights': os.path.join(
-                             'traffic_lights_study', 'traffic_lights_study')}
+_network_names_map = {'in_and_out': 'highway_in_and_out_lanes',
+                      'in_and_merge': 'highway_in_and_merge',
+                      'i710': 'I710-MultiSec-3mi',
+                      'us101': 'US_101',
+                      'traffic_lights': 'traffic_lights_study'}
+
+_network_relative_folders_map = {'in_and_out': '', 'in_and_merge': '',
+                                 'i710': '', 'us101': '',
+                                 'traffic_lights': 'traffic_lights_study'}
 
 
 def get_networks_folder():
@@ -19,10 +22,10 @@ def get_networks_folder():
 
 
 def get_file_name_from_network_name(network_name):
-    if network_name in network_names_map:
-        network_name = network_names_map[
+    if network_name in _network_names_map:
+        network_name = _network_names_map[
             network_name]
-    elif network_name in network_names_map.values():
+    elif network_name in _network_names_map.values():
         pass
     else:
         raise ValueError('Network "{}" is not in the list of valid '
@@ -31,6 +34,16 @@ def get_file_name_from_network_name(network_name):
                          'existing_networks'.
                          format(network_name))
     return network_name
+
+
+def get_network_name_from_file_name(network_file):
+    return list(_network_names_map.keys())[
+        list(_network_names_map.values()).index(network_file)]
+
+
+def get_relative_address_from_network_name(network_name):
+    return os.path.join(_network_relative_folders_map[network_name],
+                        _network_names_map[network_name])
 
 
 def create_percent_folder_name(percentage: Union[int, str],

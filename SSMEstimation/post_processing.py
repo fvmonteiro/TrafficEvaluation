@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import truncnorm
 
+import data_writer
 import readers
 from vehicle import Vehicle, VehicleType
 from data_writer import MergedDataWriter, SSMDataWriter, RiskyManeuverWriter
@@ -22,6 +23,9 @@ class DataPostProcessor:
     integer_columns = {'veh_id': int, 'leader_id': int,
                        'veh_type': int, 'lane': int}
 
+    highway_scenarios = {'in_and_out', 'in_and_merge', 'i710', 'us101'}
+    traffic_light_scenarios = {'traffic_lights'}
+
     # def __init__(self, data_source):
     #     """
     #     :param data_source: string 'vissim' or 'ngsim'
@@ -32,7 +36,6 @@ class DataPostProcessor:
     def post_process_data(self, data_source: str,
                           vehicle_records: pd.DataFrame):
         """Post processing includes:
-         - Removing early samples
          - Computing relative velocity and bumper to bumper distance to leader,
          - Adding leader type
          - Converting all data to SI units
@@ -66,6 +69,11 @@ class DataPostProcessor:
         # warm_up_time = 60
         # DataPostProcessor.remove_early_samples(vehicle_records, warm_up_time)
 
+        # When the vehicle is stopping due to a traffic light, we consider it
+        # has no leader
+        if 'leader_type' in vehicle_records.columns:
+            signal_ahead_idx = vehicle_records['leader_type'] == 'Signal head'
+            vehicle_records.loc[signal_ahead_idx, 'leader_id'] = np.nan
         # By convention, if vehicle has no leader, we set it as its own leader
         vehicle_records['leader_id'].fillna(vehicle_records['veh_id'],
                                             inplace=True, downcast='infer')
@@ -169,7 +177,6 @@ class DataPostProcessor:
 
             adjusted_idx = veh_idx - min_idx
             adjusted_leader_idx = leader_idx - min_idx
-
             vel_vector[adjusted_idx] = current_data['vx']
             delta_v[counter:counter + current_data.shape[0]] = (
                     vel_vector[adjusted_idx] - vel_vector[adjusted_leader_idx])
@@ -244,12 +251,10 @@ class DataPostProcessor:
                            debugging: bool = False):
         """Reads multiple vehicle record data files, postprocesses them,
         computes SSMs, averages the SSMs within a time period, and saves a
-        single dataframe that can be merged to results from link evaluation
-        and data collection measurements.
+        single dataframe per vehicle input.
 
-        :param network_name: Network name. Either the actual file name or the
-         network nickname. Currently available: in_and_out, in_and_merge, i710,
-         us101
+        :param network_name: Currently available: in_and_out, in_and_merge,
+         i710, us101, traffic_lights
         :param vehicle_type: Enum to indicate the vehicle (controller) type
         :param controlled_vehicle_percentage: Percentage of controlled vehicles
          present in the simulation.
@@ -259,15 +264,9 @@ class DataPostProcessor:
         :param debugging: If true, we load only 10^5 samples from the vehicle
          records and do not save results.
         :return: Nothing. SSM results are saved to as csv files"""
-
-        # ssm_reader used to check whether data was already processed
-        processed_vehicle_inputs = []
-        ssm_reader = readers.SSMDataReader(network_name, vehicle_type)
-        ssm_data = ssm_reader.load_data_with_controlled_vehicles_percentage(
-            controlled_vehicle_percentage)
-        if not ssm_data.empty:
-            processed_vehicle_inputs = ssm_data['vehicles_per_lane'].unique()
-
+        processed_vehicle_inputs = (
+            DataPostProcessor.get_already_processed_vehicle_inputs(
+                network_name, vehicle_type, controlled_vehicle_percentage))
         # Creation of generator to load data  and writer to save post
         # processed data
         vehicle_record_reader = readers.VehicleRecordReader(network_name,
@@ -275,8 +274,13 @@ class DataPostProcessor:
         n_rows = 10 ** 5 if debugging else None
         data_generator = vehicle_record_reader.generate_data(
             controlled_vehicle_percentage, vehicle_inputs, n_rows)
-        column_titles = ['time_interval', 'low_TTC',
-                         'high_DRAC', 'risk', 'risk_no_lane_change']
+        if network_name in DataPostProcessor.highway_scenarios:
+            column_titles = ['time_interval', 'low_TTC',
+                             'high_DRAC', 'risk', 'risk_no_lane_change']
+        elif network_name in DataPostProcessor.traffic_light_scenarios:
+            column_titles = ['time_interval', 'barrier_function_risk']
+        else:
+            raise ValueError('Unknown network name.')
         aggregation_period = 30  # [s]
         ssm_writer = SSMDataWriter(network_name, vehicle_type)
         risky_maneuver_writer = RiskyManeuverWriter(network_name, vehicle_type)
@@ -284,7 +288,7 @@ class DataPostProcessor:
         ssm_data = []  # pd.DataFrame(columns=column_titles)
         risky_maneuvers = []
         temp = 0
-        already_exists = False
+        # already_exists = False
         for (vehicle_records, file_number) in data_generator:
             vehicles_per_lane = int(
                 vehicle_records.iloc[0]['vehicles_per_lane'])
@@ -293,12 +297,10 @@ class DataPostProcessor:
             already_exists = vehicles_per_lane in processed_vehicle_inputs
             if already_exists:
                 print('FYI: SSM results for vehicle input ', vehicles_per_lane,
-                      'already exist. They are being recomputed but will not '
-                      'be saved.')
+                      'already exist. They are being recomputed.')
 
             # We save once per vehicle_per_lane value
-            if (not already_exists and not debugging
-                    and 0 < temp != vehicles_per_lane):
+            if not debugging and 0 < temp != vehicles_per_lane:
                 print('Files with input ', temp, ' done. Saving to file...')
                 ssm_writer.save_as_csv(pd.concat(ssm_data),
                                        controlled_vehicle_percentage,
@@ -313,7 +315,7 @@ class DataPostProcessor:
 
             self.post_process_data(DataPostProcessor.VISSIM, vehicle_records)
             print('Computing SSMs')
-            DataPostProcessor.add_main_ssms(vehicle_records)
+            DataPostProcessor.add_main_ssms(vehicle_records, network_name)
             # Aggregate
             DataPostProcessor.create_time_bins_and_labels(aggregation_period,
                                                           vehicle_records)
@@ -325,11 +327,11 @@ class DataPostProcessor:
             ssm_data.append(aggregated_data)
             print('Extracting risky maneuvers')
             risky_maneuvers.append(
-                self.extract_risky_maneuvers(vehicle_records))
+                self.extract_risky_maneuvers(network_name, vehicle_records))
 
             print('-' * 79)
 
-        if not already_exists and not debugging:
+        if not debugging:
             print('Files with input ', temp, ' done. Saving to file...')
             ssm_writer.save_as_csv(pd.concat(ssm_data),
                                    controlled_vehicle_percentage,
@@ -339,7 +341,9 @@ class DataPostProcessor:
                                               temp)
             print('Successfully saved.')
 
-    def extract_risky_maneuvers(self, vehicle_record: pd.DataFrame):
+    @staticmethod
+    def extract_risky_maneuvers(network_name: str,
+                                vehicle_record: pd.DataFrame):
         """
         Find risky maneuvers and write their information on a dataframe
         A risky maneuver is defined as a time interval during which risk is
@@ -347,8 +351,10 @@ class DataPostProcessor:
         times, total (sum over duration) risk and pointwise max risk of each
         risky maneuver.
 
+        :param network_name: Currently available: in_and_out, in_and_merge,
+         i710, us101, traffic_lights
         :param vehicle_record: dataframe with step by step vehicle data
-        including risk
+         including some risk measurement
         :return: dataframe where each row represents one risky maneuver
         """
 
@@ -358,9 +364,17 @@ class DataPostProcessor:
         # than 10k vehicles per simulation, so I'm hoping computations won't
         # take too long.
         # Spoiler alert: it takes some minutes to run over 10 files
+
+        if network_name in DataPostProcessor.highway_scenarios:
+            risk_name = 'risk'
+        elif network_name in DataPostProcessor.traffic_light_scenarios:
+            risk_name = 'barrier_function_risk'
+        else:
+            raise ValueError('Unknown network name')
+
         delta_t = round((vehicle_record['time'].iloc[1]
                          - vehicle_record['time'].iloc[0]), 2)
-        vehicle_record['is_risk_positive'] = vehicle_record['risk'] > 0
+        vehicle_record['is_risk_positive'] = vehicle_record[risk_name] > 0
         all_ids = vehicle_record['veh_id'].unique()
         risky_data_list = [pd.DataFrame(
             columns=['veh_id', 'leader_id', 'time', 'end_time',
@@ -401,7 +415,7 @@ class DataPostProcessor:
                     end_indices].values
                 temp_df['end_time'] = 0
                 temp_df['end_time'].iloc[:len(end_times)] = end_times
-            risk = single_veh_record['risk']
+            risk = single_veh_record[risk_name]
             risk_grouped = risk.groupby((risk == 0).cumsum())
             cumulative_risk = risk_grouped.cumsum() * delta_t
             cumulative_max_risk = risk_grouped.cummax()
@@ -417,7 +431,8 @@ class DataPostProcessor:
             'simulation_number'].iloc[0]
         return risky_data
 
-    def check_human_take_over(self, network_name: str,
+    @staticmethod
+    def check_human_take_over(network_name: str,
                               vehicle_type: VehicleType,
                               controlled_vehicle_percentage: int,
                               vehicle_inputs: List[int] = None):
@@ -449,14 +464,81 @@ class DataPostProcessor:
         print('Mean blocked vehicles:', np.mean(n_blocked_vehs))
 
     @staticmethod
-    def add_main_ssms(vehicle_records):
+    def find_traffic_light_violations(network_name: str,
+                                      vehicle_type: VehicleType,
+                                      controlled_vehicle_percentage: int,
+                                      vehicle_inputs: List[int] = None,
+                                      debugging: bool = False):
+        """
+        Reads multiple vehicle record data files, looks for cases of
+        traffic light violation, and records them in a new csv file
+
+        :param network_name: only network with traffic lights is traffic_lights
+        :param vehicle_type: Vehicle type enum. Choose between
+        TRAFFIC_LIGHT_ACC or TRAFFIC_LIGHT_CACC
+        :param controlled_vehicle_percentage: Percentage of controlled vehicles
+         present in the simulation.
+        :param vehicle_inputs: Vehicle inputs for which we want SSMs
+         computed. If None (default), computes SSMs for all simulated vehicle
+         inputs.
+        :param debugging: If true, we load only 10^5 samples from the vehicle
+         records and do not save results.
+        :return: Nothing. Violation results are saved to as csv files"""
+
+        traffic_light_reader = readers.TrafficLightSourceReader(network_name)
+        try:
+            traffic_light_data = traffic_light_reader.load_data()
+        except FileNotFoundError:
+            print('No traffic light source file, so no violations.')
+            return
+
+        if 'starts_red' not in traffic_light_data.columns:
+            traffic_light_data['starts_red'] = True
+
+        violations_list = []
+        vehicle_record_reader = readers.VehicleRecordReader(network_name,
+                                                            vehicle_type)
+        n_rows = 10 ** 6 if debugging else None
+        data_generator = vehicle_record_reader.generate_data(
+            controlled_vehicle_percentage, vehicle_inputs, n_rows)
+        for (vehicle_records, file_number) in data_generator:
+            warmup_time = vehicle_records['time'].iloc[0]
+            for _, tf in traffic_light_data.iterrows():
+                vehicle_records['dist_to_tf'] = (vehicle_records['x']
+                                                 - tf['position'])
+                after_tf = vehicle_records[vehicle_records['dist_to_tf'] > 0]
+                crossing_time = after_tf.loc[
+                    after_tf.groupby('veh_id').dist_to_tf.idxmin(),
+                    'time']
+                crossing_time = crossing_time[crossing_time > warmup_time]
+                tf_cycle = (tf['red duration'] + tf['green duration']
+                            + tf['amber duration'])
+                violation_idx = crossing_time[(crossing_time % tf_cycle) <
+                                              tf['red duration']].index
+                violations_per_tf = vehicle_records.loc[
+                    violation_idx, ['simulation_number', 'veh_id', 'time',
+                                    'vehicles_per_lane']]
+                violations_per_tf['traffic_light'] = tf['id']
+                violations_list.append(violations_per_tf)
+        violations = pd.concat(violations_list)
+        tf_violation_writer = data_writer.TrafficLightViolationWriter(
+            network_name, vehicle_type)
+        tf_violation_writer.save_as_csv(violations,
+                                        controlled_vehicle_percentage)
+        # return violations
+
+    @staticmethod
+    def add_main_ssms(vehicle_records, network_name):
         ssm_estimator = SSMEstimator(vehicle_records)
-        ssm_estimator.include_ttc()
-        ssm_estimator.include_drac()
-        for choice in [False, True]:
-            ssm_estimator.include_collision_free_gap(
-                consider_lane_change=choice)
-            ssm_estimator.include_risk(consider_lane_change=choice)
+        if network_name in ['in_and_out', 'i710', 'us101']:
+            ssm_estimator.include_ttc()
+            ssm_estimator.include_drac()
+            for choice in [False, True]:
+                ssm_estimator.include_collision_free_gap(
+                    consider_lane_change=choice)
+                ssm_estimator.include_risk(consider_lane_change=choice)
+        elif network_name in ['traffic_lights']:
+            ssm_estimator.include_barrier_function_risk()
 
     @staticmethod
     def create_time_bins_and_labels(period, vehicle_records):
@@ -518,6 +600,26 @@ class DataPostProcessor:
             lambda x: int(x.split('-')[0]) / seconds_in_minute)
 
     @staticmethod
+    def get_already_processed_vehicle_inputs(
+            network_name: str, vehicle_type: VehicleType,
+            controlled_vehicle_percentage: int):
+        """
+
+        :param network_name: Currently available: in_and_out, in_and_merge,
+         i710, us101, traffic_lights
+        :param vehicle_type: Enum to indicate the vehicle (controller) type
+        :param controlled_vehicle_percentage: Percentage of controlled vehicles
+         present in the simulation
+        :return:
+        """
+        ssm_reader = readers.SSMDataReader(network_name, vehicle_type)
+        ssm_data = ssm_reader.load_data_with_controlled_vehicles_percentage(
+            controlled_vehicle_percentage)
+        if not ssm_data.empty:
+            return ssm_data['vehicles_per_lane'].unique()
+        return []
+
+    @staticmethod
     def merge_data(network_name: str, vehicle_type: VehicleType,
                    controlled_vehicle_percentage: Union[int, List[int]]):
         """Loads data collections, link evaluation and SSM data, merges them
@@ -552,8 +654,8 @@ class DataPostProcessor:
 
 
 class SSMEstimator:
-    coded_ssms = {'TTC', 'DRAC', 'CPI', 'safe_gap', 'DTSG', 'vf_gap',
-                  'risk', 'estimated_risk'}
+    coded_ssms = {'TTC', 'DRAC', 'CPI', 'collision_free_gap', 'DTSG', 'vf_gap',
+                  'risk', 'estimated_risk', 'barrier_function_safe_gap'}
     ttc_threshold = 1.5  # [s]
     drac_threshold = 3.5  # [m/s2]
 
@@ -669,7 +771,7 @@ class SSMEstimator:
          assuming a reduced max brake during lane changes.
         """
 
-        ssm_1 = 'safe_gap'
+        ssm_1 = 'collision_free_gap'
         ssm_2 = 'DTSG'
         self.include_distance_based_ssm(
             ssm_1, same_type_gamma, consider_lane_change=consider_lane_change)
@@ -740,6 +842,28 @@ class SSMEstimator:
         self.include_distance_based_ssm('estimated_risk', same_type_gamma, rho,
                                         free_flow_velocity)
 
+    def include_barrier_function_risk(self):
+        """
+        Computes the safe gap as defined by the control barrier function and
+        compares it to the current gap. We only include values if they are
+        negative.
+        :return: nothing; the method changes the dataframe.
+        """
+        time_headway = 1
+        standstill_distance = 3
+        comfortable_braking = 4
+
+        gap = self.veh_data['delta_x'].values
+        follower_vel = self.veh_data['vx'].values
+        delta_vel = self.veh_data['delta_v'].values
+        leader_vel = follower_vel - delta_vel
+        safe_gap = (time_headway * follower_vel + standstill_distance
+                    + (follower_vel ** 2 - leader_vel ** 2)
+                    / 2 / comfortable_braking)
+        diff_to_safe_gap = safe_gap - gap
+        self.veh_data['barrier_function_risk'] = diff_to_safe_gap
+        self.veh_data.loc[diff_to_safe_gap < 0, 'barrier_function_risk'] = 0
+
     def include_distance_based_ssm(self, ssm_name: str,
                                    same_type_gamma: float = 1,
                                    rho: float = 0.2,
@@ -748,8 +872,7 @@ class SSMEstimator:
         """
         Generic method to include one out of a set of distance based surrogate
         safety measures.
-        :param ssm_name: {safe_gap, vf_gap,
-         risk, estimated_risk}
+        :param ssm_name: {collision_free_gap, vf_gap, risk, estimated_risk}
         :param same_type_gamma: factor multiplying standard value of maximum
          braking of the leader when both leader and follower are of the same
          type. Values greater than 1 indicate more conservative assumptions

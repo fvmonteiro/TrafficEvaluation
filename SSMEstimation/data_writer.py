@@ -9,15 +9,19 @@ import file_handling
 
 
 class DataWriter:
-    file_extension = '.csv'
+    _file_extension = '.csv'
 
     def __init__(self, data_type_identifier: str, network_name: str,
                  vehicle_type: VehicleType):
-        network_name = file_handling.get_file_name_from_network_name(
+        network_file = file_handling.get_file_name_from_network_name(
             network_name)
-        self.file_base_name = network_name + '_' + data_type_identifier
+        network_relative_address = (file_handling.
+                                    get_relative_address_from_network_name(
+                                        network_name))
+        self.file_base_name = (network_file + '_'
+                               + data_type_identifier)
         self.network_data_dir = os.path.join(
-            file_handling.get_networks_folder(), network_name)
+            file_handling.get_networks_folder(), network_relative_address)
         self.vehicle_type = vehicle_type.name.lower()
 
     @staticmethod
@@ -47,7 +51,8 @@ class SSMDataWriter(DataWriter):
                     vehicles_per_lane: int):
         max_sim_number = data['simulation_number'].iloc[-1]
         num_str = '_' + str(max_sim_number).rjust(3, '0')
-        file_name = self.file_base_name + num_str + self.file_extension
+
+        file_name = self.file_base_name + num_str + self._file_extension
 
         percentage_folder = file_handling.create_percent_folder_name(
             controlled_vehicles_percentage, self.vehicle_type)
@@ -67,6 +72,22 @@ class RiskyManeuverWriter(SSMDataWriter):
                             vehicle_type)
 
 
+class TrafficLightViolationWriter(DataWriter):
+    _data_type_identifier = 'Traffic Light Violations'
+
+    def __init__(self, network_name: str, vehicle_type: VehicleType):
+        DataWriter.__init__(self, self._data_type_identifier, network_name,
+                            vehicle_type)
+
+    def save_as_csv(self, data: pd.DataFrame,
+                    controlled_vehicles_percentage: int):
+        file_name = self.file_base_name + self._file_extension
+        percentage_folder = file_handling.create_percent_folder_name(
+            controlled_vehicles_percentage, self.vehicle_type)
+        folder_path = os.path.join(self.network_data_dir, percentage_folder)
+        self._save_as_csv(data, folder_path, file_name)
+
+
 class MergedDataWriter(DataWriter):
     _data_type_identifier = 'Merged Data'
 
@@ -76,7 +97,7 @@ class MergedDataWriter(DataWriter):
 
     def save_as_csv(self, data: pd.DataFrame,
                     controlled_vehicles_percentage: int):
-        file_name = self.file_base_name + self.file_extension
+        file_name = self.file_base_name + self._file_extension
         percentage_folder = file_handling.create_percent_folder_name(
             controlled_vehicles_percentage, self.vehicle_type)
         folder_path = os.path.join(self.network_data_dir, percentage_folder)
@@ -152,7 +173,7 @@ class SyntheticDataWriter:
         return pd.DataFrame(data)
 
 
-class SignalControllerTreeEditor:  # SignalControllerTreeEditor
+class SignalControllerTreeEditor:
     """
     Class to edit signal controller files (.sig).
 

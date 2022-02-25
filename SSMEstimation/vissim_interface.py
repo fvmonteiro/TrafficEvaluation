@@ -14,29 +14,22 @@ from vehicle import Vehicle, VehicleType
 
 
 class VissimInterface:
-    # vissim_networks_folder = '.\\..\\VISSIM_networks'  # relative path not
-    # working but preferred
-    # IN_AND_OUT = 'highway_in_and_out_lanes'
-    # I710 = 'I710-MultiSec-3mi'
-    # US_101 = 'US_101'
-    # networks_folder = ('C:\\Users\\fvall\\Documents\\Research'
-    #                    '\\TrafficSimulation\\VISSIM_networks')
-
     vissim_net_ext = '.inpx'
     vissim_layout_ext = '.layx'
 
-    evaluation_periods = {'highway_in_and_out_lanes': 1800,
-                          'highway_in_and_merge': 1800,
-                          'I710-MultiSec-3mi': 3600,
-                          'US_101': 1800,
-                          'traffic_lights': 1800}
+    _evaluation_periods = {'in_and_out': 1800,
+                           'in_and_merge': 1800,
+                           'i710': 3600,
+                           'us101': 1800,
+                           'traffic_lights': 1800}
 
-    init_random_seed = 7
+    _initial_random_seed = 7
 
     def __init__(self):
         self.networks_folder = file_handling.get_networks_folder()
-        self.network_file = None
-        self.layout_file = None
+        self.network_name = None
+        # self.layout_file = None
+        self.network_relative_address = None
         self.vissim = None
         self.open_vissim()
 
@@ -55,23 +48,27 @@ class VissimInterface:
 
         :param network_name: Network name. Either the actual file name or the
          network nickname. Currently available: in_and_out, in_and_merge, i710,
-         us101
+         us101, traffic_lights
         :param layout_file: Optionally defines the layout file for the network
         :return: boolean indicating if simulation was properly loaded
         """
 
-        self.network_file = file_handling.get_file_name_from_network_name(
-            network_name)
-        self.layout_file = (self.network_file if layout_file is None else
-                            layout_file)
+        self.network_name = network_name
+        # file_handling.get_file_name_from_network_name(
+        #     network_name)
+        self.network_relative_address = (
+            file_handling.get_relative_address_from_network_name(network_name))
+        layout_file = (self.network_relative_address if layout_file is None else
+                       layout_file)
         net_full_path = os.path.join(self.networks_folder,
-                                     self.network_file + self.vissim_net_ext)
+                                     self.network_relative_address
+                                     + self.vissim_net_ext)
 
         if os.path.isfile(net_full_path):
             print("Client: Loading file")
             self.vissim.LoadNet(net_full_path)
             layout_full_path = os.path.join(self.networks_folder,
-                                            self.layout_file
+                                            layout_file
                                             + self.vissim_layout_ext)
             if os.path.isfile(layout_full_path):
                 self.vissim.LoadLayout(layout_full_path)
@@ -103,12 +100,7 @@ class VissimInterface:
         :return: None
         """
 
-        if (self.vissim.AttValue('InputFile')
-                != (file_handling.network_names_map[scenario]
-                    + self.vissim_net_ext)):
-            print('You must load the scenario ',
-                  file_handling.network_names_map[scenario],
-                  ' before running it')
+        if not self.is_network_loaded(scenario):
             return
 
         veh_volumes = dict()
@@ -164,10 +156,7 @@ class VissimInterface:
          element list from fastest to slowest lane
         """
 
-        if (self.vissim.AttValue('InputFile')
-                != (file_handling.network_names_map[
-                        'us101'] + self.vissim_net_ext)):
-            print('You must load the us101 scenario before running it')
+        if not self.is_network_loaded('us101'):
             return
 
         veh_inputs = {'highway_input': highway_input,
@@ -188,17 +177,14 @@ class VissimInterface:
 
     def run_i710_simulation(self, scenario_idx: int, demand=None):
         """
-        Run PTV VISSIM simulation using given arguments
+        Run PTV VISSIM simulation of the I-710 with possible accident.
 
         :param scenario_idx: index of simulation scenarios. Follows:
          0: No block, 1: All time block, 2: Temporary block
         :param demand: vehicle input (veh/hr)
         """
 
-        if (self.vissim.AttValue('InputFile')
-                != (file_handling.network_names_map['i710']
-                    + self.vissim_net_ext)):
-            print('You must load the i710 scenario before running it')
+        if not self.is_network_loaded('i710'):
             return
 
         # Definition of scenarios
@@ -303,6 +289,25 @@ class VissimInterface:
 
         print('Simulation done')
 
+    def run_traffic_lights_scenario(self, vehicle_input=None):
+        """
+        Run PTV VISSIM simulation traffic_lights_study.
+
+        :param vehicle_input: Total vehicles per hour entering the scenario
+        :return: None
+        """
+
+        if not self.is_network_loaded('traffic_lights'):
+            return
+
+        if vehicle_input is not None:
+            self.set_vehicle_inputs_by_name({'main': vehicle_input})
+
+        # Run
+        print('Client: Simulation starting.')
+        self.vissim.Simulation.RunContinuous()
+        print('Client: Simulation done.')
+
     def test_lane_access(self):
         """Code to figure out how to read lane by lane information"""
 
@@ -361,7 +366,7 @@ class VissimInterface:
         self.vissim.Evaluation.SetAttValue('KeepPrevResults', 'KEEPALL')
         if not simulation_period:  # None, zero or empty string
             self.set_simulation_period(
-                self.evaluation_periods[self.network_file])
+                self._evaluation_periods[self.network_name])
         else:
             self.set_simulation_period(simulation_period)
         self.set_number_of_runs(runs_per_input)
@@ -373,7 +378,6 @@ class VissimInterface:
         self.vissim.SuspendUpdateGUI()
         n_inputs = 0
         start_time = time.perf_counter()
-        # 'highway_in_and_out_lanes', 'I710-MultiSec-3mi', 'US_101'
         for input_per_lane in range(initial_input_per_lane,
                                     max_input_per_lane + 1,
                                     input_increase_per_lane):
@@ -390,14 +394,16 @@ class VissimInterface:
             results_folder = os.path.join(head, veh_input_folder)
             self.set_results_folder(results_folder)
 
-            if self.network_file == 'highway_in_and_out_lanes':
+            if self.network_name == 'in_and_out':
                 self.run_in_and_out_scenario()
-            elif self.network_file == 'highway_in_and_merge':
+            elif self.network_name == 'in_and_merge':
                 self.run_in_and_merge_scenario()
-            elif self.network_file == 'I710-MultiSec-3mi':
+            elif self.network_name == 'i710':
                 self.run_i710_simulation(scenario_idx=1)
-            elif self.network_file == 'US_101':
+            elif self.network_name == 'us101':
                 self.run_us_101_simulation()
+            elif self.network_name == 'traffic_lights':
+                self.run_traffic_lights_scenario()
             else:
                 print("Error: trying to evaluate unknown scenario")
             n_inputs += 1
@@ -415,6 +421,7 @@ class VissimInterface:
             initial_input_per_lane: int = 500,
             max_input_per_lane: int = 2500,
             runs_per_input: int = 10,
+            simulation_period: int = None,
             is_debugging: bool = False):
         """Runs scenarios with increasing demand for varying percentage
         values of controlled vehicles
@@ -429,17 +436,30 @@ class VissimInterface:
         :param max_input_per_lane: maximum value of input per lane
         :param runs_per_input: how many runs with the same input and varying
          seed
+        :param simulation_period: Parameter used for debugging, when we want
+        shorter runs. If left at None, the code uses the predefined period
+        chosen for longer evaluations.
         :param is_debugging: if true, results are saved to a test folder
         """
 
-        self.set_evaluation_outputs(True, True, True, True, 60, 30)
+        if (self.network_name in {'in_and_out', 'in_and_merge', 'us101'}
+                or is_debugging):
+            warm_up_minutes = 1
+            save_ssam = True
+        elif self.network_name in {'i710', 'traffic_lights'}:
+            warm_up_minutes = 10
+            save_ssam = False
+        else:
+            raise ValueError('Warm up time not set for network ',
+                             self.network_name)
+        self.set_evaluation_outputs(True, save_ssam, True, True,
+                                    warm_up_minutes * 60, 30)
         # Any values for initial random seed and increment are good, as long
         # as they are the same over each set of simulations.
-        self.set_random_seed(self.init_random_seed)
+        self.set_random_seed(self._initial_random_seed)
         self.set_random_seed_increment(1)
-        vehicle_type_name = vehicle_type.name.lower()
         results_base_folder = os.path.join(self.networks_folder,
-                                           self.network_file)
+                                           self.network_relative_address)
 
         for percentage in range(initial_percentage,
                                 final_percentage + 1,
@@ -455,20 +475,18 @@ class VissimInterface:
                 runs_per_input = 2
                 simulation_period = 360
             else:  # save all results in different folders
-                simulation_period = None  # run_with_increasing demand will
-                # set the proper value
                 # For each percentage, we reset VISSIM's simulation count
                 self.reset_saved_simulations(warning_active=False)
                 # Then we set the proper folder to save the results
                 results_folder = os.path.join(
                     results_base_folder,
                     file_handling.create_percent_folder_name(
-                        percentage, vehicle_type_name))
+                        percentage, vehicle_type.name.lower()))
                 self.set_results_folder(results_folder)
 
             # Finally, we set the percentage and run the simulation
             self.set_controlled_vehicles_percentage(percentage,
-                                                    vehicle_type_name)
+                                                    vehicle_type)
             self.run_with_increasing_demand(
                 input_increase_per_lane=input_increase_per_lane,
                 initial_input_per_lane=initial_input_per_lane,
@@ -477,10 +495,7 @@ class VissimInterface:
                 simulation_period=simulation_period)
 
     def run_us_101_with_different_speed_limits(self, possible_speeds=None):
-        if (self.vissim.AttValue('InputFile')
-                != (file_handling.network_names_map['us101']
-                    + self.vissim_net_ext)):
-            print('You must load the us101 scenario before running it')
+        if not self.is_network_loaded('us101'):
             return
 
         n_lanes = 5
@@ -689,30 +704,32 @@ class VissimInterface:
                 break
         else:  # no break
             raise ValueError('Client: Composition name not found in {} '
-                             'network.'.format(self.network_file))
+                             'network.'.format(self.network_name))
 
         # Set the desired composition to all vehicle inputs in the simulation
         veh_input_container = self.vissim.Net.VehicleInputs
         for veh_input in veh_input_container:
             veh_input.SetAttValue('VehComp(1)', vehicle_composition_number)
             print('Client: Composition of vehicle input {} set to {}'.
-                  format(veh_input.AttValue('Name'), composition_name))
+                  format(veh_input.AttValue('Name'),
+                         veh_compositions_container.ItemByKey(
+                             vehicle_composition_number).AttValue('Name')))
 
     def set_controlled_vehicles_percentage(
-            self, percentage: float, vehicle_type: str):
-        """ Looks for the specified vehicle composition and sets the
+            self, percentage: float, vehicle_type: VehicleType):
+        """
+        Looks for the specified vehicle composition and sets the
         percentage of autonomous vehicles in it. The rest of the composition
         will be made of 'human' driven vehicles.
         Assumption worth noting: the vehicle composition in VISSIM already
-        exists and it contains only two vehicle types: 100 (Car) and 110
-        (Autonomous Car).
+        exists and it contains two vehicle types: regular car and the
+        controlled vehicle type
 
         :param percentage: This should be expressed either as
          an integer between 0 and 100 or as a float in the range [0, 1) . If a
          percentage below 1 is desired, the user must pass it as a fraction
          (example 0.005).
-        :param vehicle_type: the vehicle type that gives name to the
-        compositions being altered.
+        :param vehicle_type: enum to indicate the vehicle (controller) type
         """
         # Adjust from [0, 1) to [0, 100]
         if percentage < 1:
@@ -721,14 +738,14 @@ class VissimInterface:
         if percentage <= 0:
             self.set_vehicle_inputs_composition('all_human')
         elif percentage >= 100:
-            composition_name = 'all_' + vehicle_type
+            composition_name = 'all_' + vehicle_type.name.lower()
             self.set_vehicle_inputs_composition(composition_name)
         else:
-            composition_name = 'with_' + vehicle_type
+            composition_name = 'with_' + vehicle_type.name.lower()
             self.set_vehicle_inputs_composition(composition_name)
             desired_flows = {
-                Vehicle.VISSIM_CAR_ID: 100 - percentage,
-                Vehicle.VISSIM_AUTONOMOUS_CAR_ID: percentage}
+                Vehicle.ENUM_TO_VISSIM_ID[VehicleType.HUMAN]: 100 - percentage,
+                Vehicle.ENUM_TO_VISSIM_ID[vehicle_type]: percentage}
 
             veh_compositions_container = self.vissim.Net.VehicleCompositions
             for veh_composition in veh_compositions_container:
@@ -741,8 +758,9 @@ class VissimInterface:
                         if flow_vehicle_type in desired_flows:
                             relative_flow.SetAttValue(
                                 'RelFlow', desired_flows[flow_vehicle_type])
-        print('Client: input flows are {}% {}.'.
-              format(percentage, vehicle_type))
+                            print('Client: veh type {} at {}%.'.
+                                  format(flow_vehicle_type,
+                                         relative_flow.AttValue('RelFlow')))
 
     def set_traffic_lights(self):
         """
@@ -755,7 +773,7 @@ class VissimInterface:
         csv file times the number of lanes.
         :return:
         """
-        csv_reader = readers.TrafficLightSourceReader(self.network_file)
+        csv_reader = readers.TrafficLightSourceReader(self.network_name)
         source_data = csv_reader.load_data()
         signal_controller_container = self.vissim.Net.SignalControllers
         signal_head_container = self.vissim.Net.SignalHeads
@@ -791,7 +809,7 @@ class VissimInterface:
         :return:
         """
 
-        sc_reader = readers.SignalControllerFileReader(self.network_file)
+        sc_reader = readers.SignalControllerFileReader(self.network_name)
         sc_editor = data_writer.SignalControllerTreeEditor()
         try:
             sc_file_tree = sc_reader.load_data(sc_id)
@@ -799,7 +817,7 @@ class VissimInterface:
             if sc_id == 1:
                 raise OSError("Network {} doesn't have any signal "
                               "controller files (sig) defined yet"
-                              .format(self.network_file))
+                              .format(self.network_name))
             # If there is no file yet, we get the first file as template,
             # modify it and save with a different name
             sc_file_tree = sc_reader.load_data(1)
@@ -808,7 +826,7 @@ class VissimInterface:
         sc_editor.set_times(sc_file_tree, red_duration,
                             green_duration, amber_duration)
         sc_editor.save_file(sc_file_tree, self.networks_folder,
-                            self.network_file + str(sc_id))
+                            self.network_relative_address + str(sc_id))
 
     def set_signal_controller(self, sc_id, signal_controller_container=None):
         """
@@ -832,7 +850,7 @@ class VissimInterface:
         signal_controller = signal_controller_container.ItemByKey(sc_id)
         signal_controller.SetAttValue('SupplyFile2', os.path.join(
             self.networks_folder,
-            self.network_file + str(sc_id) + '.sig'))
+            self.network_relative_address + str(sc_id) + '.sig'))
         if ask_for_user_action:
             input('You must manually open the signal controller window of '
                   'VISSIM and save the file.\nOtherwise, the code will '
@@ -879,13 +897,25 @@ class VissimInterface:
     def is_some_network_loaded(self):
         if self.vissim.AttValue('InputFile') != '':
             # In case we loaded the simulation through VISSIM's interface:
-            if self.network_file is None:
-                self.network_file = (
+            if self.network_name is None:
+                network_file = (
                     self.vissim.AttValue('InputFile').split('.')[0])
-                self.create_network_results_directory()
+                self.network_name = (file_handling.
+                                     get_network_name_from_file_name(
+                                         network_file))
+                # self.create_network_results_directory()
             return True
         else:
             return False
+
+    def is_network_loaded(self, network_name: str):
+        if (self.vissim.AttValue('InputFile')
+                != (file_handling.get_file_name_from_network_name(network_name)
+                    + self.vissim_net_ext)):
+            print('You must load the ', network_name,
+                  ' scenario before running it')
+            return False
+        return True
 
     def reset_saved_simulations(self, warning_active: bool = True):
         """
@@ -926,8 +956,8 @@ class VissimInterface:
         self.set_results_folder(result_folder)
 
     def use_debug_folder_for_results(self):
-        debug_log_folder = os.path.join(self.networks_folder, self.network_file,
-                                        'test')
+        debug_log_folder = os.path.join(self.networks_folder,
+                                        self.network_relative_address, 'test')
         self.set_results_folder(debug_log_folder)
 
     def get_max_decel_data(self):
@@ -940,11 +970,11 @@ class VissimInterface:
 
         if not self.is_some_network_loaded():
             print("No network loaded")
-            if self.network_file is None:
+            if self.network_name is None:
                 print("No network file defined to load either")
                 return
-            print("Loading network: ", self.network_file)
-            self.load_simulation(self.network_file)
+            print("Loading network: ", self.network_name)
+            self.load_simulation(self.network_name)
 
         # Stats of the uniform distribution (0, 1) from which VISSIM draws
         # numbers
@@ -1008,10 +1038,12 @@ class VissimInterface:
             return True
 
         needed_variables = {'SIMSEC', 'NO', 'VEHTYPE', 'LANE\\LINK\\NO',
-                            'LANE\\INDEX', 'LEADTARGNO',
-                            'SPEED', 'SPEEDDIFF',
+                            'LANE\\INDEX', 'POS', 'SPEED', 'POSLAT',
+                            'SPEEDDIFF', 'SIMRUN',
                             'COORDFRONTX', 'COORDFRONTY',
-                            'COORDREARX', 'COORDREARY'}
+                            'COORDREARX', 'COORDREARY',
+                            'LENGTH',
+                            'ACCELERATION', 'LNCHG'}
         att_selection_container = self.vissim.Evaluation.VehRecAttributes
         recorded_variables = set()
         for att_selection in att_selection_container:
@@ -1034,9 +1066,9 @@ class VissimInterface:
             return True
 
     def create_network_results_directory(self):
-        if self.network_file:
+        if self.network_relative_address:
             results_folder = os.path.join(self.networks_folder,
-                                          self.network_file)
+                                          self.network_relative_address)
             if not os.path.isdir(results_folder):
                 os.mkdir(results_folder)
 

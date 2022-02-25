@@ -13,7 +13,6 @@ from vehicle import VehicleType
 
 
 class ResultAnalyzer:
-
     units_map = {'TTC': 's', 'low_TTC': '# vehicles',
                  'DRAC': 'm/s^2', 'high_DRAC': '# vehicles',
                  'CPI': 'dimensionless', 'DTSG': 'm',
@@ -155,14 +154,14 @@ class ResultAnalyzer:
             print('Veh input: ', veh_input)
             veh_input_idx = relevant_data['vehicles_per_lane'] == veh_input
             for control_percentage in relevant_data[
-                'control_percentages'].unique():
-
+                                    'control_percentages'].unique():
                 control_percentage_idx = (relevant_data['control_percentages']
                                           == control_percentage)
-                print('Mean {}: {}'.
-                      format(y, relevant_data.loc[(veh_input_idx
-                                                   & control_percentage_idx),
-                                                  y].mean()))
+                print('{}, Median {}: {}'.
+                      format(control_percentage, y,
+                             relevant_data.loc[(veh_input_idx
+                                                & control_percentage_idx),
+                                               y].median()))
 
     def box_plot_y_vs_vehicle_type(
             self, y: str, vehicles_per_lane: int,
@@ -258,9 +257,13 @@ class ResultAnalyzer:
             data_to_plot = relevant_data[relevant_data['control_percentages']
                                          == control_percentage]
             plt.rc('font', size=15)
+            min_bin = int(np.floor(min_total_risk))
+            max_bin = int(np.ceil(data_to_plot['total_risk'].max()))
+            bins = [i for i in range(min_bin, max_bin)]
             sns.histplot(data=data_to_plot, x='total_risk',
                          stat='count', hue='vehicles_per_lane',
-                         binwidth=1, palette='tab10')
+                         # binwidth=1,
+                         palette='tab10', bins=bins)
             plt.tight_layout()
             if should_save_fig:
                 fig = plt.gcf()
@@ -344,7 +347,7 @@ class ResultAnalyzer:
                                          == ct]
             plt.rc('font', size=15)
             sns.histplot(data=data_to_plot, x='total_risk',
-                         stat='count', #hue='control_percentages',
+                         stat='count',  # hue='control_percentages',
                          binwidth=1, palette='tab10')
             plt.tight_layout()
             if should_save_fig:
@@ -459,7 +462,8 @@ class ResultAnalyzer:
                 #  makes sense
                 veh_record = veh_record_reader.load_data(max_file, p,
                                                          vehicles_per_lane)
-                # Get only main segment. TODO: this must change for other scenarios
+                # Get only main segment.
+                # TODO: this must change for other scenarios
                 veh_record.drop(
                     index=veh_record[(veh_record['link'] != 3)
                                      | (veh_record['time'] < 300)].index,
@@ -478,6 +482,24 @@ class ResultAnalyzer:
             # We only plot 0 percentage once
             if 0 in percentages:
                 percentages = np.delete(percentages, 0)
+
+    # Multiple plots  =========================================================#
+
+    def get_flow_and_risk_plots(self, veh_inputs, percentages,
+                                save_results=False):
+        """Generates the plots used in the Safe Lane Changes paper."""
+
+        self.box_plot_y_vs_controlled_percentage(
+            'flow', veh_inputs, percentages, warmup_time=10,
+            should_save_fig=save_results
+        )
+        self.box_plot_y_vs_controlled_percentage(
+            'risk', veh_inputs, percentages, warmup_time=10,
+            should_save_fig=save_results
+        )
+        self.plot_risky_maneuver_histogram_per_vehicle_type(
+            percentages, veh_inputs, min_total_risk=1,
+            should_save_fig=save_results)
 
     # Support methods =========================================================#
 

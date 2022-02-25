@@ -100,7 +100,8 @@ def run_simulations(network_name: str,
     """
     Runs sets of simulations in VISSIM.
 
-    :param network_name: Options are i710, us-101, in_and_out, in_and_merge
+    :param network_name: Options are i710, us-101, in_and_out, in_and_merge,
+     and traffic_lights
     :param vehicle_types: Type of controlled vehicle in the simulation
     :param percentage: Percentage of controlled vehicles in the simulation
     :param input_per_lane: Vehicles per hour entering the simulation on each
@@ -144,9 +145,11 @@ def run_simulations(network_name: str,
     runs_per_scenario = 2 if debugging else 10
 
     # Running
-    network_file = file_handling.network_names_map[network_name]
+    # network_file = file_handling.get_file_name_from_network_name(network_name)
     vi = VissimInterface()
-    vi.load_simulation(network_file)
+    vi.load_simulation(network_name)
+    if network_name == 'traffic_lights':
+        vi.set_traffic_lights()
     for vt in vehicle_types:
         vi.run_with_increasing_controlled_vehicle_percentage(
             vt,
@@ -160,51 +163,172 @@ def run_simulations(network_name: str,
     vi.close_vissim()
 
 
+def post_process_results(network_name: str,
+                         vehicle_types: Union[VehicleType, List[VehicleType]],
+                         input_per_lane: Union[int, List[int]],
+                         initial_percentage: int,
+                         percentage_increment: int = None,
+                         final_percentage: int = None,
+                         debugging: bool = False):
+    """
+    Creates files with safety and flow measurements for the highway
+    scenario in_and_out
+    :param network_name: Options are i710, us-101, in_and_out, in_and_merge,
+     and traffic_lights
+    :param vehicle_types: Type of controlled vehicle in the simulation
+    :param input_per_lane: Vehicles per hour entering the simulation on each
+     lane
+    :param initial_percentage: Percentage of controlled vehicles in the
+     simulation
+    :param percentage_increment: (optional) Percentage increase of controlled
+     vehicles between sets of runs. Must be set together with
+     percentage_final
+    :param final_percentage: (optional) Percentage of controlled vehicles in
+     the last set of simulation runs. Must be set together with
+     percentage_increment
+    :param debugging: If true, loads fewer samples from vehicle records and
+     does not save results.
+    :return:
+    """
+    if (percentage_increment is None) != (final_percentage is None):
+        raise ValueError("Either set both percentage_increment and "
+                         "percentage_final values or leave both as None.")
+    if not percentage_increment:
+        final_percentage = initial_percentage
+        percentage_increment = 100
+    if not isinstance(input_per_lane, list):
+        input_per_lane = [input_per_lane]
+
+    post_processor = post_processing.DataPostProcessor()
+    for vt in vehicle_types:
+        for percentage in range(initial_percentage,
+                                final_percentage + 1, percentage_increment):
+            post_processor.create_ssm_summary(network_name, vt, percentage,
+                                              vehicle_inputs=input_per_lane,
+                                              debugging=debugging)
+            post_processor.merge_data(network_name, vt, percentage)
+            # post_processor.find_traffic_light_violations(
+            #     # network_name,
+            #     # vehicle_type,
+            #     percentage,
+            #     vehicle_inputs=[1000, 2000],
+            #     debugging=True
+            #     )
+
+
+def plot_acc_av_and_cav_results(save_results=False):
+    network_name = 'in_and_out'
+    vehicle_types = [
+        VehicleType.ACC,
+        VehicleType.AUTONOMOUS,
+        VehicleType.CONNECTED
+    ]
+    percentage = 100
+    veh_inputs = [1000, 2000]
+    result_analyzer = result_analysis.ResultAnalyzer(network_name,
+                                                     vehicle_types)
+    result_analyzer.get_flow_and_risk_plots(veh_inputs, percentage)
+
+
+def plot_cav_varying_percentage_results(save_results=False):
+    network_name = 'in_and_out'
+    vehicle_types = [VehicleType.CONNECTED]
+    percentages = [i for i in range(0, 101, 25)]
+    veh_inputs = [1000, 2000]
+    result_analyzer = result_analysis.ResultAnalyzer(network_name,
+                                                     vehicle_types)
+    result_analyzer.get_flow_and_risk_plots(veh_inputs, percentages)
+
+
+def post_process_traffic_light_results(
+        vehicle_types: Union[VehicleType, List[VehicleType]],
+        input_per_lane: Union[int, List[int]],
+        initial_percentage: int,
+        percentage_increment: int = None,
+        final_percentage: int = None,
+        debugging: bool = False):
+    """
+    Creates files with TODO
+    :param vehicle_types:
+    :param input_per_lane: Vehicles per hour entering the simulation on each
+     lane
+    :param initial_percentage: Percentage of controlled vehicles in the
+     simulation
+    :param percentage_increment: (optional) Percentage increase of controlled
+     vehicles between sets of runs. Must be set together with
+     percentage_final
+    :param final_percentage: (optional) Percentage of controlled vehicles in
+     the last set of simulation runs. Must be set together with
+     percentage_increment
+    :param debugging: If true, loads fewer samples from vehicle records and
+     does not save results.
+    :return:
+    """
+    if (percentage_increment is None) != (final_percentage is None):
+        raise ValueError("Either set both percentage_increment and "
+                         "percentage_final values or leave both as None.")
+    if not percentage_increment:
+        final_percentage = initial_percentage
+        percentage_increment = 100
+    if not isinstance(input_per_lane, list):
+        input_per_lane = [input_per_lane]
+
+    network_name = 'traffic_lights'
+    post_processor = post_processing.DataPostProcessor()
+
+    for vt in vehicle_types:
+        for percentage in range(initial_percentage,
+                                final_percentage + 1, percentage_increment):
+            post_processor.create_ssm_summary(network_name, vt,
+                                              percentage, input_per_lane,
+                                              debugging)
+            # post_processor.merge_data(network_name, vt, percentage)
+
+
 def main():
     # image_folder = "G:\\My Drive\\Safety in Mixed Traffic\\images"
 
     # ============ Playing with Traffic Lights =========== #
-    # sc_reader = readers.SignalControllerFileReader('traffic_lights')
-    # file_id = 1
-    # sc_tree = sc_reader.load_data(file_id)
-    # sc_writer = data_writer.SignalControllerTreeEditor()
-    # sc_writer.set_times(sc_tree, 20, 30)
-    # sc_writer.save_file(sc_tree, sc_reader.data_dir,
-    #                     sc_reader.network_name + str(file_id))
-    vi = VissimInterface()
-    vi.load_simulation('traffic_lights')
-    vi.set_traffic_lights()
+    # percentage = 0
+    # post_processor = post_processing.DataPostProcessor()
+    # post_processor.find_traffic_light_violations(
+    #     # network_name,
+    #     # vehicle_type,
+    #     percentage,
+    #     vehicle_inputs=[1000, 2000],
+    #     debugging=True
+    #     )
 
     # =============== Define data source =============== #
-    # Options: i710, us-101, in_and_out, in_and_merge
-    network_file = file_handling.network_names_map['in_and_out']
-    vehicle_type = [# VehicleType.ACC,
-                    # VehicleType.AUTONOMOUS,
-                    VehicleType.CONNECTED
-                    ]
-
-    # =============== Temporary tests  =============== #
-    # ra = result_analysis.ResultAnalyzer(network_file, vehicle_type)
-    # ra.find_unfinished_simulations(100)
+    # Options: i710, us101, in_and_out, in_and_merge, traffic_lights
+    network_name = 'traffic_lights'
+    vehicle_type = [
+        # VehicleType.ACC,
+        # VehicleType.AUTONOMOUS,
+        # VehicleType.CONNECTED,
+        VehicleType.TRAFFIC_LIGHT_ACC,
+        # VehicleType.TRAFFIC_LIGHT_CACC
+    ]
 
     # =============== Running =============== #
-    # run_simulations(network_name='in_and_out', vehicle_types=vehicle_type,
-    #                 percentage=25, percentage_increase=25,
-    #                 final_percentage=75,
-    #                 input_per_lane=2000)
+    # run_simulations(network_name=network_name, vehicle_types=vehicle_type,
+    #                 percentage=100,
+    #                 percentage_increase=100,
+    #                 final_percentage=100,
+    #                 input_per_lane=1000,
+    #                 input_per_lane_increase=1000,
+    #                 final_input_per_lane=2000,
+    #                 )
 
     # =============== Post processing =============== #
-
-    # post_processor = post_processing.DataPostProcessor()
-    # for vt in vehicle_type:
-    #     for percentage in range(25, 75+1, 25):
-    #         post_processor.create_ssm_summary(network_file,
-    #                                           vt,
-    #                                           percentage,
-    #                                           vehicle_inputs=[2000],
-    #                                           # debugging=True
-    #                                           )
-    #         post_processor.merge_data(network_file, vt, percentage)
+    # post_process_highway_results(vehicle_type, [1000, 2000], )
+    # post_process_traffic_light_results(vehicle_type, [1000, 2000], 0, 100, 100)
+    post_processor = post_processing.DataPostProcessor()
+    # post_processor.create_ssm_summary(network_name,
+    #                                   vehicle_type[0],
+    #                                   0, [1000],
+    #                                   debugging)
+    post_processor.merge_data(network_name, vehicle_type[0], 0)
 
     # =============== Check results numbers =============== #
     # for percentage in range(100, 100+1, 25):
@@ -215,35 +339,6 @@ def main():
 
     # =============== Check results graphically =============== #
 
-    vehicle_types = [
-        # VehicleType.ACC,
-        # VehicleType.AUTONOMOUS,
-        VehicleType.CONNECTED
-        ]
-    result_analyzer = result_analysis.ResultAnalyzer('in_and_out',
-                                                     vehicle_types)
-    # result_analyzer.find_removed_vehicles(VehicleType.CONNECTED, 100, [1000,
-    #                                                                   2000])
-
-    save_results = False
-
-    percentages = [i for i in range(0, 101, 25)]
-    veh_inputs = [i for i in range(1000, 2001, 1000)]
-    # result_analyzer.plot_risky_maneuver_histogram_per_vehicle_type(
-    #     percentages, [2000], min_total_risk=1,
-    #     should_save_fig=save_results)
-    # result_analyzer.plot_risky_maneuver_histogram_per_percentage(
-    #     percentages, 2000, min_total_risk=1, should_save_fig=save_results
-    # )
-    # result_analyzer.box_plot_y_vs_controlled_percentage(
-    #     'flow', [2000], percentages, warmup_time=10,
-    #     should_save_fig=save_results
-    # )
-    # result_analyzer.box_plot_y_vs_controlled_percentage(
-    #     'risk', veh_inputs, percentages, warmup_time=10,
-    #     should_save_fig=save_results
-    # )
-
     # for veh_input in [2000]:
     #     result_analyzer.plot_y_vs_time('flow', veh_input, percentages,
     #                                    warmup_time=5)
@@ -251,35 +346,6 @@ def main():
     #                                    warmup_time=5)
     #     # result_analyzer.plot_y_vs_time('risk_no_lane_change', veh_input,
     #     #                                [100], warmup_time=5)
-
-    # result_analyzer.box_plot_y_vs_controlled_percentage(
-    #     'risk_no_lane_change', veh_inputs, [100], warmup_time=10)
-
-    # result_analyzer.box_plot_y_vs_controlled_percentage(
-    #     'risk', veh_inputs, [100], warmup_time=10,
-    #     should_save_fig=save_results
-    # )
-    # result_analyzer = result_analysis.ResultAnalyzer(
-    #     'in_and_out', [VehicleType.AUTONOMOUS, VehicleType.CONNECTED])
-    # result_analyzer.box_plot_y_vs_controlled_percentage(
-    #     'risk', veh_inputs, [100], warmup_time=10,
-    #     should_save_fig=save_results
-    # )
-
-    # percentages = [i for i in range(0, 101, 100)]
-    # vehicle_types = [
-    #     VehicleType.ACC,
-    #     VehicleType.AUTONOMOUS,
-    #     VehicleType.CONNECTED
-    # ]
-    # result_analyzer = result_analysis.ResultAnalyzer('in_and_out',
-    #                                                  vehicle_types)
-    # result_analyzer.box_plot_y_vs_vehicle_type('flow', 2000, percentages,
-    #                                            warmup_time=10,
-    #                                            should_save_fig=save_results)
-    # result_analyzer.box_plot_y_vs_vehicle_type('risk', 2000, percentages,
-    #                                            warmup_time=10,
-    #                                            should_save_fig=save_results)
 
     # =============== SSM computation check =============== #
     # veh_rec_reader = readers.VehicleRecordReader('toy')

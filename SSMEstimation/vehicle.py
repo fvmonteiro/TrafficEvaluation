@@ -6,9 +6,11 @@ class VehicleType (Enum):
     ACC = 1
     AUTONOMOUS = 2
     CONNECTED = 3
-    TRUCK = 4
-    BUS = 5
-    MOTORCYCLE = 6
+    TRAFFIC_LIGHT_ACC = 4
+    TRAFFIC_LIGHT_CACC = 5
+    TRUCK = 6
+    BUS = 7
+    MOTORCYCLE = 8
 
 
 class Vehicle:
@@ -21,6 +23,8 @@ class Vehicle:
     VISSIM_ACC_CAR_ID = 105
     VISSIM_AUTONOMOUS_CAR_ID = 110
     VISSIM_CONNECTED_CAR_ID = 120
+    VISSIM_TRAFFIC_LIGHT_ACC_ID = 130
+    VISSIM_TRAFFIC_LIGHT_CACC_ID = 135
     VISSIM_TRUCK_ID = 200
     VISSIM_BUS_ID = 300
     # TYPE_CAR = 'car'
@@ -32,41 +36,68 @@ class Vehicle:
 
     RELEVANT_TYPES = {VehicleType.HUMAN, VehicleType.TRUCK,
                       VehicleType.ACC,
-                      VehicleType.AUTONOMOUS, VehicleType.CONNECTED}
+                      VehicleType.AUTONOMOUS, VehicleType.CONNECTED,
+                      VehicleType.TRAFFIC_LIGHT_ACC,
+                      VehicleType.TRAFFIC_LIGHT_CACC}
 
-    # VISSIM and NGSIM codes for different vehicle types
-    INT_TO_ENUM = {NGSIM_MOTORCYCLE_ID: VehicleType.MOTORCYCLE,
-                   NGSIM_CAR_ID: VehicleType.HUMAN,
-                   NGSIM_TRUCK_ID: VehicleType.TRUCK,
-                   VISSIM_CAR_ID: VehicleType.HUMAN,
-                   VISSIM_ACC_CAR_ID: VehicleType.ACC,
-                   VISSIM_AUTONOMOUS_CAR_ID: VehicleType.AUTONOMOUS,
-                   VISSIM_CONNECTED_CAR_ID: VehicleType.CONNECTED,
-                   VISSIM_TRUCK_ID: VehicleType.TRUCK,
-                   VISSIM_BUS_ID: VehicleType.CONNECTED}
+    # VISSIM and NGSIM codes for different vehicle types. This dictionary is
+    # necessary when reading results, i.e., from data source to python.
+    _INT_TO_ENUM = {NGSIM_MOTORCYCLE_ID: VehicleType.MOTORCYCLE,
+                    NGSIM_CAR_ID: VehicleType.HUMAN,
+                    NGSIM_TRUCK_ID: VehicleType.TRUCK,
+                    VISSIM_CAR_ID: VehicleType.HUMAN,
+                    VISSIM_ACC_CAR_ID: VehicleType.ACC,
+                    VISSIM_AUTONOMOUS_CAR_ID: VehicleType.AUTONOMOUS,
+                    VISSIM_CONNECTED_CAR_ID: VehicleType.CONNECTED,
+                    VISSIM_TRAFFIC_LIGHT_ACC_ID: VehicleType.TRAFFIC_LIGHT_ACC,
+                    VISSIM_TRAFFIC_LIGHT_CACC_ID:
+                        VehicleType.TRAFFIC_LIGHT_CACC,
+                    VISSIM_TRUCK_ID: VehicleType.TRUCK,
+                    VISSIM_BUS_ID: VehicleType.CONNECTED}
+
+    # Useful when editing vissim simulation parameters
+    ENUM_TO_VISSIM_ID = {
+        VehicleType.HUMAN: VISSIM_CAR_ID,
+        VehicleType.ACC: VISSIM_ACC_CAR_ID,
+        VehicleType.AUTONOMOUS: VISSIM_AUTONOMOUS_CAR_ID,
+        VehicleType.CONNECTED: VISSIM_CONNECTED_CAR_ID,
+        VehicleType.TRAFFIC_LIGHT_ACC: VISSIM_TRAFFIC_LIGHT_ACC_ID,
+        VehicleType.TRAFFIC_LIGHT_CACC: VISSIM_TRAFFIC_LIGHT_CACC_ID
+    }
 
     # Typical parameters values
-    _MAX_BRAKE_PER_TYPE = {VehicleType.HUMAN: 7.5,
-                           VehicleType.ACC: 7.5,
-                           VehicleType.AUTONOMOUS: 7.5,
-                           VehicleType.CONNECTED: 7.5,
+    _CAR_MAX_BRAKE = 7.5   # [m/s2]
+    _CAR_MAX_JERK = 50  # [m/s3]
+    _CAR_FREE_FLOW_VELOCITY = 33  # 33 m/s ~= 120km/h ~= 75 mph
+    _MAX_BRAKE_PER_TYPE = {VehicleType.HUMAN: _CAR_MAX_BRAKE,
+                           VehicleType.ACC: _CAR_MAX_BRAKE,
+                           VehicleType.AUTONOMOUS: _CAR_MAX_BRAKE,
+                           VehicleType.CONNECTED: _CAR_MAX_BRAKE,
+                           VehicleType.TRAFFIC_LIGHT_ACC: _CAR_MAX_BRAKE,
+                           VehicleType.TRAFFIC_LIGHT_CACC: _CAR_MAX_BRAKE,
                            VehicleType.TRUCK: 5.5}
-    _MAX_JERK_PER_TYPE = {VehicleType.HUMAN: 50,
-                          VehicleType.ACC: 50,
-                          VehicleType.AUTONOMOUS: 50,
-                          VehicleType.CONNECTED: 50,
+    _MAX_JERK_PER_TYPE = {VehicleType.HUMAN: _CAR_MAX_JERK,
+                          VehicleType.ACC: _CAR_MAX_JERK,
+                          VehicleType.AUTONOMOUS: _CAR_MAX_JERK,
+                          VehicleType.CONNECTED: _CAR_MAX_JERK,
+                          VehicleType.TRAFFIC_LIGHT_ACC: _CAR_MAX_JERK,
+                          VehicleType.TRAFFIC_LIGHT_CACC: _CAR_MAX_JERK,
                           VehicleType.TRUCK: 30}
     _BRAKE_DELAY_PER_TYPE = {VehicleType.HUMAN: 0.75,
                              VehicleType.ACC: 0.2,
                              VehicleType.AUTONOMOUS: 0.2,
                              VehicleType.CONNECTED: 0.1,
+                             VehicleType.TRAFFIC_LIGHT_ACC: 0.2,
+                             VehicleType.TRAFFIC_LIGHT_CACC: 0.1,
                              VehicleType.TRUCK: 0.5}
-    # 33 m/s ~= 120km/h ~= 75 mph
-    _FREE_FLOW_VELOCITY_PER_TYPE = {VehicleType.HUMAN: 33,
-                                    VehicleType.ACC: 33,
-                                    VehicleType.AUTONOMOUS: 33,
-                                    VehicleType.CONNECTED: 33,
-                                    VehicleType.TRUCK: 25}
+    _FREE_FLOW_VELOCITY_PER_TYPE = {
+        VehicleType.HUMAN: _CAR_FREE_FLOW_VELOCITY,
+        VehicleType.ACC: _CAR_FREE_FLOW_VELOCITY,
+        VehicleType.AUTONOMOUS: _CAR_FREE_FLOW_VELOCITY,
+        VehicleType.CONNECTED: _CAR_FREE_FLOW_VELOCITY,
+        VehicleType.TRAFFIC_LIGHT_ACC: _CAR_FREE_FLOW_VELOCITY,
+        VehicleType.TRAFFIC_LIGHT_CACC: _CAR_FREE_FLOW_VELOCITY,
+        VehicleType.TRUCK: 25}
 
     def __init__(self, i_type: int, gamma: float = 1):
         """Assigns typical vehicle values based on the vehicle type
@@ -75,7 +106,7 @@ class Vehicle:
         """
 
         try:
-            self.type = self.INT_TO_ENUM[i_type]
+            self.type = self._INT_TO_ENUM[i_type]
         except KeyError:
             print('{}: KeyError: vehicle type {} not defined'.
                   format(self.__class__.__name__, i_type))
