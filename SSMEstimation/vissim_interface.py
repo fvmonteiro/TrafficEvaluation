@@ -1,10 +1,10 @@
 import os
 import time
-from typing import Union
+# from typing import Union
 import warnings
 
 import pandas as pd
-import pywintypes
+# import pywintypes
 import win32com.client as com
 
 import data_writer

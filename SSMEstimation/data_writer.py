@@ -16,8 +16,8 @@ class DataWriter:
         network_file = file_handling.get_file_name_from_network_name(
             network_name)
         network_relative_address = (file_handling.
-                                    get_relative_address_from_network_name(
-                                        network_name))
+            get_relative_address_from_network_name(
+            network_name))
         self.file_base_name = (network_file + '_'
                                + data_type_identifier)
         self.network_data_dir = os.path.join(
@@ -49,11 +49,10 @@ class SSMDataWriter(DataWriter):
     def save_as_csv(self, data: pd.DataFrame,
                     controlled_vehicles_percentage: int,
                     vehicles_per_lane: int):
-        max_sim_number = data['simulation_number'].iloc[-1]
-        num_str = '_' + str(max_sim_number).rjust(3, '0')
-
-        file_name = self.file_base_name + num_str + self._file_extension
-
+        # max_sim_number = data['simulation_number'].iloc[-1]
+        # num_str = '_' + str(max_sim_number).rjust(3, '0')
+        # file_name = self.file_base_name + num_str + self._file_extension
+        file_name = self.file_base_name + self._file_extension
         percentage_folder = file_handling.create_percent_folder_name(
             controlled_vehicles_percentage, self.vehicle_type)
         vehicles_per_lane_folder = (
@@ -72,7 +71,7 @@ class RiskyManeuverWriter(SSMDataWriter):
                             vehicle_type)
 
 
-class TrafficLightViolationWriter(DataWriter):
+class TrafficLightViolationWriter(SSMDataWriter):
     _data_type_identifier = 'Traffic Light Violations'
 
     def __init__(self, network_name: str, vehicle_type: VehicleType):
@@ -80,12 +79,11 @@ class TrafficLightViolationWriter(DataWriter):
                             vehicle_type)
 
     def save_as_csv(self, data: pd.DataFrame,
-                    controlled_vehicles_percentage: int):
-        file_name = self.file_base_name + self._file_extension
-        percentage_folder = file_handling.create_percent_folder_name(
-            controlled_vehicles_percentage, self.vehicle_type)
-        folder_path = os.path.join(self.network_data_dir, percentage_folder)
-        self._save_as_csv(data, folder_path, file_name)
+                    controlled_vehicles_percentage: int,
+                    vehicles_per_lane: int):
+        if not data.empty:
+            super().save_as_csv(data, controlled_vehicles_percentage,
+                                vehicles_per_lane)
 
 
 class MergedDataWriter(DataWriter):

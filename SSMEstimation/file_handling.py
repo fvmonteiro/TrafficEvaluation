@@ -60,11 +60,13 @@ def create_percent_folder_name(percentage: Union[int, str],
     return percentage_folder
 
 
-def create_vehs_per_lane_folder_name(vehs_per_lane: int):
+def create_vehs_per_lane_folder_name(vehicles_per_lane: Union[int, str]) -> str:
     """Creates the name of the folder which contains results for the
     given vehicle per lane input (not the full path)"""
-    if isinstance(vehs_per_lane, str):
-        vehs_per_lane_folder = vehs_per_lane
+    if not vehicles_per_lane:
+        return ''
+    if isinstance(vehicles_per_lane, str):
+        vehs_per_lane_folder = vehicles_per_lane
     else:
-        vehs_per_lane_folder = str(int(vehs_per_lane)) + '_vehs_per_lane'
+        vehs_per_lane_folder = str(int(vehicles_per_lane)) + '_vehs_per_lane'
     return vehs_per_lane_folder
