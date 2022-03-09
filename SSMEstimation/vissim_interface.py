@@ -10,6 +10,7 @@ import win32com.client as com
 import data_writer
 import file_handling
 import readers
+import vehicle
 from vehicle import Vehicle, VehicleType
 
 
@@ -19,6 +20,7 @@ class VissimInterface:
 
     _evaluation_periods = {'in_and_out': 1800,
                            'in_and_merge': 1800,
+                           'platoon_lane_change': 1800,
                            'i710': 3600,
                            'us101': 1800,
                            'traffic_lights': 1800}
@@ -58,8 +60,8 @@ class VissimInterface:
         #     network_name)
         self.network_relative_address = (
             file_handling.get_relative_address_from_network_name(network_name))
-        layout_file = (self.network_relative_address if layout_file is None else
-                       layout_file)
+        # layout_file = (self.network_relative_address if layout_file is None else
+        #                layout_file)
         net_full_path = os.path.join(self.networks_folder,
                                      self.network_relative_address
                                      + self.vissim_net_ext)
@@ -67,14 +69,15 @@ class VissimInterface:
         if os.path.isfile(net_full_path):
             print("Client: Loading file")
             self.vissim.LoadNet(net_full_path)
-            layout_full_path = os.path.join(self.networks_folder,
-                                            layout_file
-                                            + self.vissim_layout_ext)
-            if os.path.isfile(layout_full_path):
-                self.vissim.LoadLayout(layout_full_path)
-            else:
-                print('Client: Layout file {} not found.'.
-                      format(net_full_path))
+            if layout_file is not None:
+                layout_full_path = os.path.join(self.networks_folder,
+                                                layout_file
+                                                + self.vissim_layout_ext)
+                if os.path.isfile(layout_full_path):
+                    self.vissim.LoadLayout(layout_full_path)
+                else:
+                    print('Client: Layout file {} not found.'.
+                          format(net_full_path))
         else:
             print('Client: File {} not found.'.
                   format(net_full_path))
@@ -184,6 +187,10 @@ class VissimInterface:
         :param demand: vehicle input (veh/hr)
         """
 
+        # TODO: we can maybe find a way of running this through Vissim too,
+        #  so it would be easier to test this scenario. We need to Run Script
+        #  File or Event Based from the Vissim interface for that
+
         if not self.is_network_loaded('i710'):
             return
 
@@ -216,8 +223,9 @@ class VissimInterface:
         vehicles = net.Vehicles
 
         # Get total simulation time and number of runs
-        sim_time = self.vissim.Simulation.AttValue('SimPeriod')
-        n_runs = self.vissim.Simulation.AttValue('NumRuns')
+        simulation = self.vissim.Simulation
+        sim_time = simulation.AttValue('SimPeriod')
+        n_runs = simulation.AttValue('NumRuns')
 
         # Make sure that all lanes are open
         for link in links:
@@ -227,17 +235,16 @@ class VissimInterface:
 
         # Start simulation
         print("Scenario:", scenario_idx)
-        print("Random Seed:", self.vissim.Simulation.AttValue('RandSeed'))
+        print("Random Seed:", simulation.AttValue('RandSeed'))
         print("Client: Starting simulation")
         # Set break point for first run and run until accident
-        self.vissim.Simulation.SetAttValue("SimBreakAt",
-                                           incident_start_time)
-        self.vissim.Simulation.RunContinuous()
+        simulation.SetAttValue("SimBreakAt", incident_start_time)
+        simulation.RunContinuous()
         run_counter = 0
         while run_counter < n_runs:
             # Create incident (simulation stops automatically at the
             # SimBreakAt value)
-            current_time = self.vissim.Simulation.AttValue('SimSec')
+            current_time = simulation.AttValue('SimSec')
             bus_no = 2  # No. of buses used to block the lane
             bus_array = []
             if current_time >= incident_start_time:
@@ -254,13 +261,11 @@ class VissimInterface:
                 # Set the accident end break point or set the next accident
                 # start break point
                 if sim_time >= incident_end_time:
-                    self.vissim.Simulation.SetAttValue("SimBreakAt",
-                                                       incident_end_time)
+                    simulation.SetAttValue("SimBreakAt", incident_end_time)
                 else:
-                    self.vissim.Simulation.SetAttValue("SimBreakAt",
-                                                       incident_start_time)
+                    simulation.SetAttValue("SimBreakAt", incident_start_time)
                 print('Client: Running again')
-                self.vissim.Simulation.RunContinuous()
+                simulation.RunContinuous()
 
             # Make sure that all lanes are open after the incident (either in
             # the same run or in the next run)
@@ -269,7 +274,7 @@ class VissimInterface:
                     lane.SetAttValue('BlockedVehClasses', '')
 
             # Remove the incident
-            current_time = self.vissim.Simulation.AttValue('SimSec')
+            current_time = simulation.AttValue('SimSec')
             if current_time >= incident_end_time:
                 print('Client: Removing incident')
                 for veh in bus_array:
@@ -279,10 +284,9 @@ class VissimInterface:
                     for lane in link.Lanes:
                         lane.SetAttValue('BlockedVehClasses', '')
                 # Set accident start break point for next the simulation run
-                self.vissim.Simulation.SetAttValue("SimBreakAt",
-                                                   incident_start_time)
+                simulation.SetAttValue("SimBreakAt", incident_start_time)
                 print('Client: Running again')
-                self.vissim.Simulation.RunContinuous()
+                simulation.RunContinuous()
 
             run_counter += 1
             print('runs finished: ', run_counter)
@@ -296,17 +300,55 @@ class VissimInterface:
         :param vehicle_input: Total vehicles per hour entering the scenario
         :return: None
         """
-
         if not self.is_network_loaded('traffic_lights'):
             return
-
         if vehicle_input is not None:
             self.set_vehicle_inputs_by_name({'main': vehicle_input})
-
         # Run
         print('Client: Simulation starting.')
         self.vissim.Simulation.RunContinuous()
         print('Client: Simulation done.')
+
+    def run_platoon_scenario(self, vehicle_input=None):
+        """
+
+        :param vehicle_input:
+        :return:
+        """
+        if not self.is_network_loaded('platoon_lane_change'):
+            return
+
+        simulation = self.vissim.Simulation
+        self.set_simulation_period(60)
+        self.set_number_of_runs(2)
+        sim_time = simulation.AttValue('SimPeriod')
+        n_runs = simulation.AttValue('NumRuns')
+
+        platoon_size = 3  # number of vehicles
+        first_platoon_time = 10
+        platoon_creation_period = 10
+
+        run_counter = 0
+        simulation.SetAttValue("SimBreakAt", first_platoon_time)
+        simulation.RunContinuous()
+        while run_counter < n_runs:
+            platoon_counter = 0
+            platoon_creation_time = first_platoon_time
+            print('Client: simulation', run_counter + 1, 'started')
+            while platoon_creation_time < sim_time:
+                platoon_counter += 1
+                platoon_creation_time += platoon_creation_period
+                print('Client: Creating platoon ', platoon_counter)
+                self.create_platoon(platoon_size)
+                if sim_time > platoon_creation_time:
+                    simulation.SetAttValue("SimBreakAt", platoon_creation_time)
+                else:
+                    simulation.SetAttValue("SimBreakAt", first_platoon_time)
+                print('Client: Running again')
+                simulation.RunContinuous()
+            run_counter += 1
+            print('runs finished:', run_counter)
+        print('Simulation done')
 
     def test_lane_access(self):
         """Code to figure out how to read lane by lane information"""
@@ -325,9 +367,10 @@ class VissimInterface:
         links = self.vissim.Net.Links.GetAll()
         # Run each time step at a time
         print('Simulation starting.')
+        simulation = self.vissim.Simulation
         while current_time <= simulation_time_sec:
-            self.vissim.Simulation.RunSingleStep()
-            current_time = self.vissim.Simulation.AttValue('SimSec')
+            simulation.RunSingleStep()
+            current_time = simulation.AttValue('SimSec')
             if current_time % t_data_sec == 0:
                 for link in links:
                     for lane in link.Lanes.GetAll():
@@ -371,10 +414,12 @@ class VissimInterface:
             self.set_simulation_period(simulation_period)
         self.set_number_of_runs(runs_per_input)
 
+        simulation = self.vissim.Simulation
         print('Starting series of runs, with initial seed {} and increment {}'.
-              format(self.vissim.Simulation.AttValue('RandSeed'),
-                     self.vissim.Simulation.AttValue('RandSeedIncr')))
+              format(simulation.AttValue('RandSeed'),
+                     simulation.AttValue('RandSeedIncr')))
 
+        self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode", 1)
         self.vissim.SuspendUpdateGUI()
         n_inputs = 0
         start_time = time.perf_counter()
@@ -413,6 +458,7 @@ class VissimInterface:
               'vehicle inputs'.format(end_time - start_time,
                                       n_inputs * runs_per_input, n_inputs))
         self.vissim.ResumeUpdateGUI()
+        self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode", 0)
 
     def run_with_increasing_controlled_vehicle_percentage(
             self, vehicle_type: VehicleType, percentage_increase: int,
@@ -493,6 +539,10 @@ class VissimInterface:
                 max_input_per_lane=max_input_per_lane,
                 runs_per_input=runs_per_input,
                 simulation_period=simulation_period)
+            # TODO: we can save DataCollectionResults from here. Get the
+            #  container from INet.DataCollectionMeasurements. It looks like
+            #  we'll have to read one time interval and one simulation result
+            #  at a time.
 
     def run_us_101_with_different_speed_limits(self, possible_speeds=None):
         if not self.is_network_loaded('us101'):
@@ -892,6 +942,28 @@ class VissimInterface:
                 signal_head.SetAttValue('Pos', position)
             signal_head.SetAttValue('SG', str(sc_id) + '-1')
 
+    def create_platoon(self, platoon_size):
+
+        desired_speed = 100  # km/h
+        vehicle_type = vehicle.VehicleType.CONNECTED
+        platoon_vehicle = vehicle.Vehicle(vehicle_type)
+        platoon_vehicle.free_flow_velocity = desired_speed / 3.6
+        h, d = platoon_vehicle.compute_vehicle_following_parameters(
+            leader_max_brake=platoon_vehicle.max_brake, rho=0.05)
+        safe_gap = h * desired_speed / 3.6 + d
+
+        vehicles = self.vissim.Net.Vehicles
+        vissim_vehicle_type = vehicle.Vehicle.ENUM_TO_VISSIM_ID[vehicle_type]
+        in_ramp_link = 2
+        lane = 1
+        position = 10
+        interaction = True  # optional
+        for i in range(platoon_size):
+            added_vehicle = vehicles.AddVehicleAtLinkPosition(
+                vissim_vehicle_type, in_ramp_link, lane, position,
+                desired_speed, interaction)
+            position += added_vehicle.AttValue('Length') + safe_gap
+
     # HELPER FUNCTIONS --------------------------------------------------------#
 
     def is_some_network_loaded(self):
@@ -900,9 +972,9 @@ class VissimInterface:
             if self.network_name is None:
                 network_file = (
                     self.vissim.AttValue('InputFile').split('.')[0])
-                self.network_name = (file_handling.
-                                     get_network_name_from_file_name(
-                                         network_file))
+                self.network_name = (
+                    file_handling.get_network_name_from_file_name(
+                        network_file))
                 # self.create_network_results_directory()
             return True
         else:
@@ -925,10 +997,9 @@ class VissimInterface:
 
         :param warning_active: If True, asks the user for confirmation before
          deleting data.
-         """
+        """
 
         # Double check we're not doing anything stupid
-
         if warning_active:
             print('You are trying to reset the current simulation count.\n',
                   'This might lead to previous results being overwritten.')
@@ -942,18 +1013,17 @@ class VissimInterface:
                 print('You chose to KEEP the current simulation count.')
                 return
 
-        # VISSIM does not provide a direct method to erase list results and
-        # reset simulation number. The workaround is to change the evaluation
-        # configuration to not keep results of previous simulations and then
-        # run a single simulation step.
         print('Client: Resetting simulation count...')
-        result_folder = self.vissim.Evaluation.AttValue('EvalOutDir')
-        self.use_debug_folder_for_results()
-        self.vissim.Evaluation.SetAttValue('KeepPrevResults', 'KEEPNONE')
-        self.vissim.Simulation.RunSingleStep()
-        self.vissim.Simulation.Stop()
-        self.vissim.Evaluation.SetAttValue('KeepPrevResults', 'KEEPALL')
-        self.set_results_folder(result_folder)
+        for simRun in self.vissim.Net.SimulationRuns:
+            self.vissim.Net.SimulationRuns.RemoveSimulationRun(simRun)
+        # Old implementation
+        # result_folder = self.vissim.Evaluation.AttValue('EvalOutDir')
+        # self.use_debug_folder_for_results()
+        # self.vissim.Evaluation.SetAttValue('KeepPrevResults', 'KEEPNONE')
+        # self.vissim.Simulation.RunSingleStep()
+        # self.vissim.Simulation.Stop()
+        # self.vissim.Evaluation.SetAttValue('KeepPrevResults', 'KEEPALL')
+        # self.set_results_folder(result_folder)
 
     def use_debug_folder_for_results(self):
         debug_log_folder = os.path.join(self.networks_folder,

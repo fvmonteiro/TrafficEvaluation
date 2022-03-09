@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Union
 
 
 class VehicleType (Enum):
@@ -99,18 +100,21 @@ class Vehicle:
         VehicleType.TRAFFIC_LIGHT_CACC: _CAR_FREE_FLOW_VELOCITY,
         VehicleType.TRUCK: 25}
 
-    def __init__(self, i_type: int, gamma: float = 1):
+    def __init__(self, i_type: Union[int, VehicleType], gamma: float = 1):
         """Assigns typical vehicle values based on the vehicle type
         :param i_type: integer describing the vehicle type
         :param gamma: factor multiplying standard value maximum braking
         """
 
-        try:
-            self.type = self._INT_TO_ENUM[i_type]
-        except KeyError:
-            print('{}: KeyError: vehicle type {} not defined'.
-                  format(self.__class__.__name__, i_type))
-            raise
+        if isinstance(i_type, VehicleType):
+            self.type = i_type
+        else:
+            try:
+                self.type = self._INT_TO_ENUM[i_type]
+            except KeyError:
+                print('{}: KeyError: vehicle type {} not defined'.
+                      format(self.__class__.__name__, i_type))
+                raise
         if self.type not in self.RELEVANT_TYPES:
             self.is_relevant = False
             return
