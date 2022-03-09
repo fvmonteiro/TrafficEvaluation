@@ -85,8 +85,6 @@ def extract_risky_maneuvers(vehicle_record: pd.DataFrame,
     # take too long.
     # Spoiler alert: it takes some minutes to run over 10 files
 
-    delta_t = round((vehicle_record['time'].iloc[1]
-                     - vehicle_record['time'].iloc[0]), 2)
     vehicle_record['is_risk_positive'] = vehicle_record[risk_name] > 0
     all_ids = vehicle_record['veh_id'].unique()
     risky_data_list = [pd.DataFrame(
@@ -97,6 +95,9 @@ def extract_risky_maneuvers(vehicle_record: pd.DataFrame,
                                            == veh_id]
         if not any(single_veh_record['is_risk_positive']):
             continue
+        delta_t = round(single_veh_record['time'].iloc[1]
+                        - single_veh_record['time'].iloc[0], 2)
+
         # TODO: compare computation speeds
         risk_transition_idx = (single_veh_record['is_risk_positive'].diff()
                                != 0)
@@ -419,6 +420,8 @@ class DataPostProcessor:
                                 - front_x_vector[adjusted_idx]) ** 2
                                + (rear_y_vector[adjusted_leader_idx]
                                   - front_y_vector[adjusted_idx]) ** 2)
+            # Set gap to zero when there's no leader
+            distance[adjusted_idx == adjusted_leader_idx] = 0
 
         elif data_source == DataPostProcessor.NGSIM:
             length = np.zeros(n)
@@ -491,8 +494,8 @@ class DataPostProcessor:
         temp = 0
         print('Start of safety summary creation for network {}, vehicle type '
               '{}, percentage {}, and input(s) {}'.format(
-               network_name, vehicle_type.name.lower(),
-               controlled_percentage, vehicle_inputs))
+                network_name, vehicle_type.name.lower(),
+                controlled_percentage, vehicle_inputs))
         for (vehicle_records, file_number) in data_generator:
             vehicles_per_lane = int(
                 vehicle_records.iloc[0]['vehicles_per_lane'])
@@ -538,17 +541,6 @@ class DataPostProcessor:
                                      violation_writer],
                               [ssm_data, risky_maneuvers, violations_data],
                               controlled_percentage)
-            # print('Files with input ', temp, ' done. Saving to file...')
-            # ssm_writer.save_as_csv(pd.concat(ssm_data),
-            #                        controlled_percentage,
-            #                        temp)
-            # risky_maneuver_writer.save_as_csv(pd.concat(risky_maneuvers),
-            #                                   controlled_percentage,
-            #                                   temp)
-            # violation_writer.save_as_csv(pd.concat(violations_data),
-            #                              controlled_percentage,
-            #                              temp)
-            # print('Successfully saved.')
 
     @staticmethod
     def check_human_take_over(network_name: str,
@@ -976,6 +968,9 @@ class SSMEstimator:
         diff_to_safe_gap = safe_gap - gap
         self.veh_data['barrier_function_risk'] = diff_to_safe_gap
         self.veh_data.loc[diff_to_safe_gap < 0, 'barrier_function_risk'] = 0
+        # no leader cases
+        self.veh_data.loc[self.veh_data['veh_id'] == self.veh_data['leader_id'],
+                          'barrier_function_risk'] = 0
 
     def include_distance_based_ssm(self, ssm_name: str,
                                    same_type_gamma: float = 1,

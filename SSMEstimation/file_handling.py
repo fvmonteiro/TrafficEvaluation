@@ -5,11 +5,13 @@ _network_names_map = {'in_and_out': 'highway_in_and_out_lanes',
                       'in_and_merge': 'highway_in_and_merge',
                       'i710': 'I710-MultiSec-3mi',
                       'us101': 'US_101',
-                      'traffic_lights': 'traffic_lights_study'}
+                      'traffic_lights': 'traffic_lights_study',
+                      'platoon_lane_change': 'platoon_lane_change'}
 
 _network_relative_folders_map = {'in_and_out': '', 'in_and_merge': '',
                                  'i710': '', 'us101': '',
-                                 'traffic_lights': 'traffic_lights_study'}
+                                 'traffic_lights': 'traffic_lights_study',
+                                 'platoon_lane_change': 'platoon_lane_change'}
 
 
 def get_networks_folder():
