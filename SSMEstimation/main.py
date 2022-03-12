@@ -1,5 +1,5 @@
-import os
-from typing import List
+from collections import defaultdict
+from typing import List, Dict, Tuple
 from typing import Union
 
 import matplotlib.pyplot as plt
@@ -85,79 +85,37 @@ def test_safe_gap_computation():
 
 
 def run_simulations(network_name: str,
-                    vehicle_types: Union[VehicleType, List[VehicleType]],
-                    percentage: int,
-                    input_per_lane: int,
-                    percentage_increase: int = None,
-                    final_percentage: int = None,
-                    input_per_lane_increase: int = None,
-                    final_input_per_lane: int = None,
+                    percentage_per_vehicle_types: Dict[Tuple[VehicleType],
+                                                       List[int]],
+                    inputs_per_lane: List[int],
                     debugging: bool = False):
     """
     Runs sets of simulations in VISSIM.
 
     :param network_name: Options are i710, us-101, in_and_out, in_and_merge,
      and traffic_lights
-    :param vehicle_types: Type of controlled vehicle in the simulation
-    :param percentage: Percentage of controlled vehicles in the simulation
-    :param input_per_lane: Vehicles per hour entering the simulation on each
+    :param percentage_per_vehicle_types: Dictionary describing the desired
+     percentages for each tuple of vehicle types
+    :param inputs_per_lane: Vehicles per hour entering the simulation on each
      lane
-    :param percentage_increase: Percentage increase of controlled vehicles
-     between sets of runs. Optional; must be set together with
-     percentage_final
-    :param final_percentage: Percentage of controlled vehicles in the last
-     set of simulation runs. Optional; must be set together with
-     percentage_increase
-    :param input_per_lane_increase: Vehicle input per lane increase between
-     sets of simulation runs. Optional; must be set together with
-     final_input_per_lane
-    :param final_input_per_lane: Vehicle input per lane of the last set of
-     simulation runs. Optional; must be set together with
-     input_per_lane_increase
     :param debugging: If true, only runs 2 simulations per set
     :return: Nothing. Results are saved to files
     """
     # Set all parameters
-    if (percentage_increase is None) != (final_percentage is None):
-        raise ValueError("Either set both percentage_increase and "
-                         "percentage_final values or leave both as None.")
-    if (input_per_lane_increase is None) != (final_input_per_lane is None):
-        raise ValueError("Either set both input_per_lane_increase and "
-                         "final_input_per_lane values or leave both as None.")
-
-    if not isinstance(vehicle_types, list):
-        vehicle_types = [vehicle_types]
-
-    initial_percentage = percentage
-    initial_input_per_lane = input_per_lane
-    if percentage_increase is None:
-        # Choice that guarantees only the initial percentage is tested
-        percentage_increase = 150
-        final_percentage = initial_percentage
-    if input_per_lane_increase is None:
-        # Choice that guarantees only the initial input per lane is tested
-        input_per_lane_increase = 1000
-        final_input_per_lane = initial_input_per_lane
     runs_per_scenario = 2 if debugging else 10
 
     # Running
-    # network_file = file_handling.get_file_name_from_network_name(network_name)
     vi = VissimInterface()
     vi.load_simulation(network_name)
     if network_name == 'traffic_lights':
         vi.set_traffic_lights()
-    for vt in vehicle_types:
-        vi.run_with_increasing_controlled_vehicle_percentage(
-            vt,
-            percentage_increase=percentage_increase,
-            initial_percentage=initial_percentage,
-            final_percentage=final_percentage,
-            input_increase_per_lane=input_per_lane_increase,
-            initial_input_per_lane=initial_input_per_lane,
-            max_input_per_lane=final_input_per_lane,
-            runs_per_input=runs_per_scenario)
-        if initial_percentage == 0:  # we don't want to run zero percent twice
-            initial_percentage += percentage_increase
+
+    # for vt in vehicle_types:
+    vi.run_with_varying_controlled_percentage(percentage_per_vehicle_types,
+                                              inputs_per_lane,
+                                              runs_per_input=runs_per_scenario)
+    # if initial_percentage == 0:  # we don't want to run zero percent twice
+    #     initial_percentage += percentage_increase
     vi.close_vissim()
 
 
@@ -233,22 +191,43 @@ def plot_cav_varying_percentage_results(save_results=False):
     result_analyzer.get_flow_and_risk_plots(veh_inputs, percentages)
 
 
+# TODO: move this to some other file
+def create_vehicle_percentages_dictionary(
+        vehicle_types: List[VehicleType], percentages: List[int],
+        n_vehicle_types: int) -> Dict[Tuple[VehicleType], List[int]]:
+    """
+
+    :param vehicle_types:
+    :param percentages:
+    :param n_vehicle_types:
+    :return: Dictionary with tuple of VehicleType as key and list of
+     percentages as value
+    """
+    d = defaultdict(list)
+    # Single controlled vehicle cases
+    if n_vehicle_types == 1:
+        for vt in vehicle_types:
+            for p in percentages:
+                d[tuple([vt])].append([p])
+            if 0 in percentages:
+                percentages.remove(0)
+
+    # Mixed controlled vehicles: so far only works for 2 simultaneous
+    # controlled types
+    if n_vehicle_types == 2:
+        for p1 in percentages:
+            for p2 in percentages:
+                if p1 > 0 and p2 > 0 and p1 + p2 <= 100:
+                    d[tuple(vehicle_types)].append([p1, p2])
+    return d
+
+
 def main():
     # image_folder = "G:\\My Drive\\Safety in Mixed Traffic\\images"
 
-    # ============ Playing with Traffic Lights =========== #
-    # percentage = 0
-    # post_processor = post_processing.DataPostProcessor()
-    # post_processor.find_traffic_light_violations(
-    #     # network_name,
-    #     # vehicle_type,
-    #     percentage,
-    #     vehicle_inputs=[1000, 2000],
-    #     debugging=True
-    #     )
-
     # =============== Define data source =============== #
-    # Options: i710, us101, in_and_out, in_and_merge, traffic_lights
+    # Options: i710, us101, in_and_out, in_and_merge,
+    # platoon_lane_change, traffic_lights
     network_name = 'traffic_lights'
     vehicle_type = [
         # VehicleType.ACC,
@@ -257,6 +236,10 @@ def main():
         VehicleType.TRAFFIC_LIGHT_ACC,
         VehicleType.TRAFFIC_LIGHT_CACC
     ]
+
+    percentages = [25, 50, 75]
+    d = create_vehicle_percentages_dictionary(vehicle_type, percentages, 1)
+    run_simulations(network_name, d, [500, 1000])
 
     # =============== Running =============== #
     # run_simulations(network_name=network_name, vehicle_types=vehicle_type,
@@ -267,10 +250,18 @@ def main():
     #                 input_per_lane_increase=500,
     #                 final_input_per_lane=1000,
     #                 )
+    # vi = vissim_interface.VissimInterface()
+    # vi.load_simulation(network_name)
+    # vi.reset_saved_simulations(warning_active=False)
+    # vi.run_platoon_scenario()
 
     # =============== Post processing =============== #
-    post_process_results(network_name, vehicle_type,
-                         [500, 1000], 0, 100, 100)
+    # post_process_results(network_name, vehicle_type,
+    #                      input_per_lane=[500, 1000],
+    #                      initial_percentage=100,
+    #                      percentage_increment=100,
+    #                      final_percentage=100
+    #                      )
 
     # post_processor = post_processing.DataPostProcessor()
     # post_processor.create_ssm_summary(network_name,
@@ -283,80 +274,22 @@ def main():
     # )
 
     # =============== Check results numbers =============== #
-    # for percentage in range(100, 100+1, 25):
-    #     print('Percentage: ', percentage)
-    #     post_processor.check_human_take_over(network_file,
-    #                                          VehicleType.CONNECTED,
-    #                                          percentage, [2000])
 
     # =============== Check results graphically =============== #
     # plot_acc_av_and_cav_results(False)
     # plot_cav_varying_percentage_results(False)
-    percentage = [0, 100]
-    veh_inputs = [500, 1000]
-    result_analyzer = result_analysis.ResultAnalyzer(network_name,
-                                                     vehicle_type)
-    result_analyzer.box_plot_y_vs_controlled_percentage('flow', veh_inputs,
-                                                        percentage, 10)
-    result_analyzer.box_plot_y_vs_controlled_percentage(
-        'barrier_function_risk', veh_inputs, percentage, 10)
-    # result_analyzer.plot_risky_maneuver_histogram_per_vehicle_type(
-    #     percentage, veh_inputs)
-
-    # data_reader = readers.SSMDataReader('traffic_lights', vehicle_type[0])
-    # data = data_reader.load_data_with_controlled_vehicles_percentage(0)
-    # data.head()
+    # percentage = [0, 25, 50, 75, 100]
+    # veh_inputs = [500, 1000]
     # result_analyzer = result_analysis.ResultAnalyzer(network_name,
     #                                                  vehicle_type)
-    # result_analyzer.box_plot_y_vs_controlled_percentage('flow', [1000, 2000],
-    #                                                     0, 10)
+    # # result_analyzer.box_plot_y_vs_controlled_percentage('flow', veh_inputs,
+    # #                                                     percentage, 10)
     # result_analyzer.box_plot_y_vs_controlled_percentage(
-    #     'barrier_function_risk', [1000, 2000], 0, 10)
-
-    # for veh_input in [2000]:
-    #     result_analyzer.plot_y_vs_time('flow', veh_input, percentages,
-    #                                    warmup_time=5)
-    #     result_analyzer.plot_y_vs_time('risk', veh_input, percentages,
-    #                                    warmup_time=5)
-    #     # result_analyzer.plot_y_vs_time('risk_no_lane_change', veh_input,
-    #     #                                [100], warmup_time=5)
-
-    # =============== SSM computation check =============== #
-    # veh_rec_reader = readers.VehicleRecordReader('toy')
-    # veh_rec = veh_rec_reader.load_data(51, 100)
-    # pp = result_analysis.VehicleRecordPostProcessor('vissim', veh_rec)
-    # pp.post_process_data()
-    #
-    # ssm_estimator = result_analysis.SSMEstimator(veh_rec)
-    # ssm_estimator.include_collision_free_gap()
-
-    # Save all SSMs #
-    # ssm_names = ['TTC', 'DRAC', 'collision_free_gap',
-    #              'vehicle_following_gap', 'CPI',
-    #              'exact_risk', 'estimated_risk']
-    # ssm_names = ['CPI']
-    # create_ssm(data_source, network_file, ssm_names)
-
-    # =============== SSM tests =============== #
-    # reader = readers.VehicleRecordReader('toy')
-    # veh_record = reader.load_data(1, 'test')
-    # pp = result_analysis.VehicleRecordPostProcessor('vissim', veh_record)
-    # pp.post_process_data()
-    # ssm_estimator = result_analysis.SSMEstimator(veh_record)
-    # ssm_estimator.include_collision_free_gap()
-    # ssm_estimator.include_exact_risk()
-    # print('done')
-    # # ssm_estimator.plot_ssm('low_TTC')
-    # # ssm_estimator.plot_ssm('exact_risk')
-    # # ssm_estimator.plot_ssm('estimated_risk')
-    # # ssm_estimator.plot_ssm('vx')
-    # image_path = os.path.join(image_folder, network_file)
-    # ssm_estimator.plot_ssm_moving_average('low_TTC', 500, image_path)
-    # ssm_estimator.plot_ssm_moving_average('high_DRAC', 500, image_path)
-    # ssm_estimator.plot_ssm_moving_average('CPI', 500, image_path)
-    # ssm_estimator.plot_ssm_moving_average('exact_risk', 500, image_path)
-    # ssm_estimator.plot_ssm_moving_average('estimated_risk')
-    # ssm_estimator.plot_ssm_moving_average('vx')
+    #     'barrier_function_risk', veh_inputs, percentage, 10)
+    # result_analyzer.plot_risky_maneuver_histogram_per_vehicle_type(
+    #     percentage, veh_inputs)
+    # result_analyzer.plot_violations_per_control_percentage(
+    #     percentage, veh_inputs, 10)
 
 
 if __name__ == '__main__':

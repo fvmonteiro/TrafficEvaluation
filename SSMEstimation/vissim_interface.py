@@ -1,6 +1,7 @@
 import os
 import time
 # from typing import Union
+from typing import List, Dict, Tuple
 import warnings
 
 import pandas as pd
@@ -56,12 +57,8 @@ class VissimInterface:
         """
 
         self.network_name = network_name
-        # file_handling.get_file_name_from_network_name(
-        #     network_name)
         self.network_relative_address = (
             file_handling.get_relative_address_from_network_name(network_name))
-        # layout_file = (self.network_relative_address if layout_file is None else
-        #                layout_file)
         net_full_path = os.path.join(self.networks_folder,
                                      self.network_relative_address
                                      + self.vissim_net_ext)
@@ -112,7 +109,7 @@ class VissimInterface:
         if main_flow_input is not None:
             veh_volumes['main_flow'] = main_flow_input
         if len(veh_volumes) > 0:
-            self.set_vehicle_inputs_by_name(veh_volumes)
+            self.set_vehicle_inputs(veh_volumes)
 
         self.vissim.Evaluation.SetAttValue('VehRecFromTime', 0)
         # when simulation gets longer, ignore warm-up time
@@ -167,7 +164,7 @@ class VissimInterface:
         if speed_limit_per_lane is None:
             speed_limit_per_lane = [40, 30, 25, 25, 25]
 
-        self.set_vehicle_inputs_by_name(veh_inputs)
+        self.set_vehicle_inputs(veh_inputs)
 
         reduced_speed_areas = self.vissim.Net.ReducedSpeedAreas
         for i in range(len(reduced_speed_areas)):
@@ -215,7 +212,7 @@ class VissimInterface:
         if demand is not None:
             print('NOT YET TESTED')
             veh_inputs = {'main': demand}
-            self.set_vehicle_inputs_by_name(veh_inputs)
+            self.set_vehicle_inputs(veh_inputs)
 
         # Get link and vehicle objects
         net = self.vissim.Net
@@ -303,7 +300,7 @@ class VissimInterface:
         if not self.is_network_loaded('traffic_lights'):
             return
         if vehicle_input is not None:
-            self.set_vehicle_inputs_by_name({'main': vehicle_input})
+            self.set_vehicle_inputs({'main': vehicle_input})
         # Run
         print('Client: Simulation starting.')
         self.vissim.Simulation.RunContinuous()
@@ -382,18 +379,13 @@ class VissimInterface:
 
     # MULTIPLE SCENARIO RUN ---------------------------------------------------#
 
-    def run_with_increasing_demand(self, input_increase_per_lane: int,
-                                   initial_input_per_lane: int = 500,
-                                   max_input_per_lane: int = 2500,
+    def run_with_increasing_demand(self, inputs_per_lane: List[int],
                                    runs_per_input: int = 10,
                                    simulation_period: int = None):
         """ Runs a simulation several times with different seeds, then
         increases the input and reruns the simulation.
 
-        :param input_increase_per_lane: increased vehicle input per
-         lane per set of runs
-        :param initial_input_per_lane: first tested input per lane
-        :param max_input_per_lane: maximum value of input per lane
+        :param inputs_per_lane: vehicles per hour per lane
         :param runs_per_input: how many runs with the same input and varying
          seed
         :param simulation_period: Parameter used for debugging, when we want
@@ -423,10 +415,8 @@ class VissimInterface:
         self.vissim.SuspendUpdateGUI()
         n_inputs = 0
         start_time = time.perf_counter()
-        for input_per_lane in range(initial_input_per_lane,
-                                    max_input_per_lane + 1,
-                                    input_increase_per_lane):
-            self.set_uniform_vehicle_input_for_all_lanes(input_per_lane)
+        for ipl in inputs_per_lane:
+            self.set_uniform_vehicle_input_for_all_lanes(ipl)
 
             # For each input, we reset VISSIM's simulation count
             self.reset_saved_simulations(warning_active=False)
@@ -435,7 +425,7 @@ class VissimInterface:
             head, tail = os.path.split(current_folder)
             if 'percent' in tail or 'test' in tail:
                 head = os.path.join(head, tail)
-            veh_input_folder = str(input_per_lane) + '_vehs_per_lane'
+            veh_input_folder = str(ipl) + '_vehs_per_lane'
             results_folder = os.path.join(head, veh_input_folder)
             self.set_results_folder(results_folder)
 
@@ -460,26 +450,20 @@ class VissimInterface:
         self.vissim.ResumeUpdateGUI()
         self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode", 0)
 
-    def run_with_increasing_controlled_vehicle_percentage(
-            self, vehicle_type: VehicleType, percentage_increase: int,
-            initial_percentage: int, final_percentage: int,
-            input_increase_per_lane: int = 500,
-            initial_input_per_lane: int = 500,
-            max_input_per_lane: int = 2500,
+    def run_with_varying_controlled_percentage(
+            self,
+            percentages_per_vehicle_types: Dict,
+            inputs_per_lane: List[int],
             runs_per_input: int = 10,
             simulation_period: int = None,
             is_debugging: bool = False):
         """Runs scenarios with increasing demand for varying percentage
         values of controlled vehicles
 
-        :param vehicle_type: enum to indicate the vehicle (controller) type
-        :param percentage_increase: percentage increase between sets of runs
-        :param initial_percentage: initial controlled vehicle percentage
-        :param final_percentage: final controlled vehicle percentage (inclusive)
-        :param input_increase_per_lane: increased vehicle input per
-         lane per set of runs
-        :param initial_input_per_lane: first tested input per lane
-        :param max_input_per_lane: maximum value of input per lane
+        :param percentages_per_vehicle_types: Dictionary with a tuple of
+         vehicles types as key and the respective penetration percentages as
+         value
+        :param inputs_per_lane: vehicles per hour per lane
         :param runs_per_input: how many runs with the same input and varying
          seed
         :param simulation_period: Parameter used for debugging, when we want
@@ -507,38 +491,35 @@ class VissimInterface:
         results_base_folder = os.path.join(self.networks_folder,
                                            self.network_relative_address)
 
-        for percentage in range(initial_percentage,
-                                final_percentage + 1,
-                                percentage_increase):
-            if is_debugging:  # run 2 short simulations
-                print('Debug mode: running 2 short simulations with single '
-                      'input per lane value.')
-                self.use_debug_folder_for_results()
-                self.reset_saved_simulations(warning_active=False)
-                input_increase_per_lane = 100  # any value > 1
-                initial_input_per_lane = 1000
-                max_input_per_lane = initial_input_per_lane
-                runs_per_input = 2
-                simulation_period = 360
-            else:  # save all results in different folders
-                # For each percentage, we reset VISSIM's simulation count
-                self.reset_saved_simulations(warning_active=False)
-                # Then we set the proper folder to save the results
-                results_folder = os.path.join(
-                    results_base_folder,
-                    file_handling.create_percent_folder_name(
-                        percentage, vehicle_type.name.lower()))
-                self.set_results_folder(results_folder)
+        for vehicle_types, percentage_list in percentages_per_vehicle_types.items():
+            for percentages in percentage_list:
+                if is_debugging:  # run 2 short simulations
+                    print('Debug mode: running 2 short simulations with single '
+                          'input per lane value.')
+                    self.use_debug_folder_for_results()
+                    self.reset_saved_simulations(warning_active=False)
+                    input_increase_per_lane = 100  # any value > 1
+                    initial_input_per_lane = 1000
+                    max_input_per_lane = initial_input_per_lane
+                    runs_per_input = 2
+                    simulation_period = 360
+                else:  # save all results in different folders
+                    # For each percentage, we reset VISSIM's simulation count
+                    self.reset_saved_simulations(warning_active=False)
+                    # Then we set the proper folder to save the results
+                    results_folder = os.path.join(
+                        results_base_folder,
+                        file_handling.create_percent_folder_name(
+                            percentages, vehicle_types))
+                    self.set_results_folder(results_folder)
 
-            # Finally, we set the percentage and run the simulation
-            self.set_controlled_vehicles_percentage(percentage,
-                                                    vehicle_type)
-            self.run_with_increasing_demand(
-                input_increase_per_lane=input_increase_per_lane,
-                initial_input_per_lane=initial_input_per_lane,
-                max_input_per_lane=max_input_per_lane,
-                runs_per_input=runs_per_input,
-                simulation_period=simulation_period)
+                # Finally, we set the percentage and run the simulation
+                self.set_controlled_vehicles_percentage(percentages,
+                                                        list(vehicle_types))
+                self.run_with_increasing_demand(
+                    inputs_per_lane,
+                    runs_per_input=runs_per_input,
+                    simulation_period=simulation_period)
             # TODO: we can save DataCollectionResults from here. Get the
             #  container from INet.DataCollectionMeasurements. It looks like
             #  we'll have to read one time interval and one simulation result
@@ -647,8 +628,8 @@ class VissimInterface:
         self.set_simulation_parameters(sim_params)
 
     def set_results_folder(self, results_folder):
-        if not os.path.isdir(results_folder):
-            os.mkdir(results_folder)
+        if not os.path.exists(results_folder):
+            os.makedirs(results_folder)
         self.vissim.Evaluation.SetAttValue('EvalOutDir', results_folder)
 
     # def create_time_intervals(self, period):
@@ -682,7 +663,7 @@ class VissimInterface:
     #     # # Save
     #     # self.vissim.SaveNet()
 
-    def set_vehicle_inputs_by_name(self, new_veh_inputs: dict):
+    def set_vehicle_inputs(self, new_veh_inputs: dict):
         """
         Sets the several vehicle inputs in the simulation by name.
 
@@ -737,36 +718,27 @@ class VissimInterface:
                   format(veh_input.AttValue('Name'),
                          veh_input.AttValue('Volume(1)')))
 
-    def set_vehicle_inputs_composition(self, composition_name: str):
+    def set_vehicle_inputs_composition(self, composition_number: int):
         """Sets all the desired composition to all the vehicle inputs in the
         network. We prefer to work with the composition name (instead of its
         number) because its easier to keep the name constant over several
         networks.
 
-        :param composition_name: The name of the composition in VISSIM."""
+        :param composition_number: The number of the composition in VISSIM.
+        """
 
-        # Find the composition number based on its name
         veh_compositions_container = self.vissim.Net.VehicleCompositions
-        for veh_composition in veh_compositions_container:
-            # Find the right vehicle composition object
-            if veh_composition.AttValue('Name').lower() == composition_name:
-                vehicle_composition_number = veh_composition.AttValue('No')
-                break
-        else:  # no break
-            raise ValueError('Client: Composition name not found in {} '
-                             'network.'.format(self.network_name))
-
-        # Set the desired composition to all vehicle inputs in the simulation
         veh_input_container = self.vissim.Net.VehicleInputs
         for veh_input in veh_input_container:
-            veh_input.SetAttValue('VehComp(1)', vehicle_composition_number)
+            veh_input.SetAttValue('VehComp(1)', composition_number)
             print('Client: Composition of vehicle input {} set to {}'.
                   format(veh_input.AttValue('Name'),
                          veh_compositions_container.ItemByKey(
-                             vehicle_composition_number).AttValue('Name')))
+                             composition_number).AttValue('Name')))
+        # return composition_number
 
     def set_controlled_vehicles_percentage(
-            self, percentage: float, vehicle_type: VehicleType):
+            self, percentages: List[int], vehicle_types: List[VehicleType]):
         """
         Looks for the specified vehicle composition and sets the
         percentage of autonomous vehicles in it. The rest of the composition
@@ -775,42 +747,37 @@ class VissimInterface:
         exists and it contains two vehicle types: regular car and the
         controlled vehicle type
 
-        :param percentage: This should be expressed either as
-         an integer between 0 and 100 or as a float in the range [0, 1) . If a
-         percentage below 1 is desired, the user must pass it as a fraction
-         (example 0.005).
-        :param vehicle_type: enum to indicate the vehicle (controller) type
+        :param percentages: This should be expressed either as
+         an integer between 0 and 100.
+        :param vehicle_types: enum to indicate the vehicle (controller) type
         """
-        # Adjust from [0, 1) to [0, 100]
-        if percentage < 1:
-            percentage *= 100
+        # The percentage of non-controlled vehicles must be human
+        total_controlled_percentage = sum(percentages)
+        if total_controlled_percentage == 0:
+            vehicle_types = [VehicleType.HUMAN]
+            percentages = [100]
+        elif total_controlled_percentage < 100:
+            vehicle_types.append(VehicleType.HUMAN)
+            percentages.append(100 - total_controlled_percentage)
+        composition_number = self.find_matching_vehicle_composition(
+            vehicle_types)
+        self.set_vehicle_inputs_composition(composition_number)
 
-        if percentage <= 0:
-            self.set_vehicle_inputs_composition('all_human')
-        elif percentage >= 100:
-            composition_name = 'all_' + vehicle_type.name.lower()
-            self.set_vehicle_inputs_composition(composition_name)
-        else:
-            composition_name = 'with_' + vehicle_type.name.lower()
-            self.set_vehicle_inputs_composition(composition_name)
-            desired_flows = {
-                Vehicle.ENUM_TO_VISSIM_ID[VehicleType.HUMAN]: 100 - percentage,
-                Vehicle.ENUM_TO_VISSIM_ID[vehicle_type]: percentage}
-
-            veh_compositions_container = self.vissim.Net.VehicleCompositions
-            for veh_composition in veh_compositions_container:
-                # Find the right vehicle composition object
-                if veh_composition.AttValue('Name') == composition_name:
-                    # Modify the relative flows
-                    for relative_flow in veh_composition.VehCompRelFlows:
-                        flow_vehicle_type = int(
-                            relative_flow.AttValue('VehType'))
-                        if flow_vehicle_type in desired_flows:
-                            relative_flow.SetAttValue(
-                                'RelFlow', desired_flows[flow_vehicle_type])
-                            print('Client: veh type {} at {}%.'.
-                                  format(flow_vehicle_type,
-                                         relative_flow.AttValue('RelFlow')))
+        # Modify the relative flows
+        desired_flows = dict()
+        for i in range(len(vehicle_types)):
+            vehicle_type_id = Vehicle.ENUM_TO_VISSIM_ID[vehicle_types[i]]
+            desired_flows[vehicle_type_id] = percentages[i]
+        veh_composition = self.vissim.Net.VehicleCompositions.ItemByKey(
+            composition_number)
+        for relative_flow in veh_composition.VehCompRelFlows:
+            flow_vehicle_type = int(relative_flow.AttValue('VehType'))
+            if flow_vehicle_type in desired_flows:
+                relative_flow.SetAttValue('RelFlow',
+                                          desired_flows[flow_vehicle_type])
+                print('Client: veh type {} at {}%.'.
+                      format(flow_vehicle_type,
+                             relative_flow.AttValue('RelFlow')))
 
     def set_traffic_lights(self):
         """
@@ -965,6 +932,47 @@ class VissimInterface:
             position += added_vehicle.AttValue('Length') + safe_gap
 
     # HELPER FUNCTIONS --------------------------------------------------------#
+
+    def find_matching_vehicle_composition(
+            self, vehicle_types: List[VehicleType]) -> int:
+        """
+        Finds the vehicle composition that has exactly the same vehicle types
+        listed in the parameter
+
+        :param vehicle_types: List of VehicleType enums
+        :return: The vehicle composition number
+        """
+        vehicle_type_ids = set([Vehicle.ENUM_TO_VISSIM_ID[vt] for vt in
+                                vehicle_types])
+        veh_compositions_container = self.vissim.Net.VehicleCompositions
+        for veh_composition in veh_compositions_container:
+            counter = 0
+            relative_flows_container = veh_composition.VehCompRelFlows
+            # We can skip compositions with different number of relative flows
+            if len(relative_flows_container) != len(vehicle_types):
+                continue
+            for relative_flow in relative_flows_container:
+                flow_vehicle_type = int(relative_flow.AttValue('VehType'))
+                if flow_vehicle_type not in vehicle_type_ids:
+                    continue
+                counter += 1
+            if counter == len(vehicle_types):
+                return veh_composition.AttValue('No')
+        raise ValueError('Client: Composition not found in {} '
+                         'network.'.format(self.network_name))
+
+    def find_vehicle_composition_by_name(self, name) -> int:
+        """
+        Finds the vehicle composition name with the given name
+        :param name: Vehicle composition name
+        :return: Vehicle composition number
+        """
+        veh_compositions_container = self.vissim.Net.VehicleCompositions
+        for veh_composition in veh_compositions_container:
+            if veh_composition.AttValue('Name').lower() == name:
+                return veh_composition.AttValue('No')
+        raise ValueError('Client: Composition name not found in {} '
+                         'network.'.format(self.network_name))
 
     def is_some_network_loaded(self):
         if self.vissim.AttValue('InputFile') != '':
