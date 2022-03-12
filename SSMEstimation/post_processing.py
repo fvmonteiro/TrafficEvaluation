@@ -1,6 +1,5 @@
 import warnings
-from typing import List
-from typing import Union
+from typing import List, Union
 
 import numpy as np
 import pandas as pd
@@ -54,8 +53,7 @@ def create_ssm_dataframe(vehicle_record: pd.DataFrame,
     # Aggregate
     aggregation_period = 30  # [s]
     columns = ['time_interval'] + ssm_names
-    DataPostProcessor.create_time_bins_and_labels(aggregation_period,
-                                                  vehicle_record)
+    create_time_bins_and_labels(aggregation_period, vehicle_record)
     aggregated_data = vehicle_record[columns].groupby(
         'time_interval').sum()
     aggregated_data.reset_index(inplace=True)
@@ -85,6 +83,7 @@ def extract_risky_maneuvers(vehicle_record: pd.DataFrame,
     # take too long.
     # Spoiler alert: it takes some minutes to run over 10 files
 
+    risk_margin = 0.1  # ignore total risks below this margin
     vehicle_record['is_risk_positive'] = vehicle_record[risk_name] > 0
     all_ids = vehicle_record['veh_id'].unique()
     risky_data_list = [pd.DataFrame(
@@ -137,6 +136,8 @@ def extract_risky_maneuvers(vehicle_record: pd.DataFrame,
             end_indices].values
         temp_df['max_risk'] = cumulative_max_risk.shift().loc[
             end_indices].values
+        temp_df.drop(index=temp_df[temp_df < risk_margin].index,
+                     inplace=True)
         risky_data_list.append(temp_df)
     risky_data = pd.concat(risky_data_list)
     if risky_data.empty:
@@ -201,6 +202,229 @@ def save_safety_files(vehicle_input: int,
     print('Successfully saved.')
 
 
+def check_human_take_over(network_name: str,
+                          vehicle_type: VehicleType,
+                          controlled_vehicle_percentage: int,
+                          vehicle_inputs: List[int] = None):
+    """Reads multiple vehicle record data files to check how often the
+    autonomous vehicles gave control back to VISSIM
+
+    :param network_name: Network name. Either the actual file name or the
+     network nickname. Currently available: in_and_out, in_and_merge, i710,
+     us101
+    :param vehicle_type: Enum to indicate the vehicle (controller) type
+    :param controlled_vehicle_percentage: Percentage of controlled vehicles
+     present in the simulation.
+    :param vehicle_inputs: simulation vehicle inputs to be checked
+    :return: Nothing.
+    """
+
+    vehicle_record_reader = readers.VehicleRecordReader(network_name)
+    data_generator = vehicle_record_reader.generate_data(
+        vehicle_type, controlled_vehicle_percentage, vehicle_inputs)
+    n_blocked_vehs = []
+    for (vehicle_records, file_number) in data_generator:
+        blocked_vehs = vehicle_records.loc[
+            (vehicle_records['vissim_control'] == 1)
+            & (vehicle_records['veh_type'] != Vehicle.VISSIM_CAR_ID),
+            'veh_id'].unique()
+        n_blocked_vehs.append(blocked_vehs.shape[0])
+        print('Total blocked vehicles: ', blocked_vehs.shape[0])
+    print('Mean blocked vehicles:', np.mean(n_blocked_vehs))
+
+
+def find_traffic_light_violations_all(network_name: str,
+                                      vehicle_type: VehicleType,
+                                      controlled_vehicle_percentage: int,
+                                      vehicle_inputs: List[int] = None,
+                                      debugging: bool = False):
+    """
+    Reads multiple vehicle record data files, looks for cases of
+    traffic light violation, and records them in a new csv file
+
+    :param network_name: only network with traffic lights is traffic_lights
+    :param vehicle_type: Vehicle type enum. Choose between
+    TRAFFIC_LIGHT_ACC or TRAFFIC_LIGHT_CACC
+    :param controlled_vehicle_percentage: Percentage of controlled vehicles
+     present in the simulation.
+    :param vehicle_inputs: Vehicle inputs for which we want SSMs
+     computed. If None (default), computes SSMs for all simulated vehicle
+     inputs.
+    :param debugging: If true, we load only 10^5 samples from the vehicle
+     records and do not save results.
+    :return: Nothing. Violation results are saved to as csv files"""
+
+    traffic_light_reader = readers.TrafficLightSourceReader(network_name)
+    try:
+        traffic_light_data = traffic_light_reader.load_data()
+    except FileNotFoundError:
+        print('No traffic light source file, so no violations.')
+        return
+
+    if 'starts_red' not in traffic_light_data.columns:
+        traffic_light_data['starts_red'] = True
+    traffic_light_data['cycle_time'] = (
+            traffic_light_data['red duration']
+            + traffic_light_data['green duration']
+            + traffic_light_data['amber duration'])
+
+    violations_list = []
+    vehicle_record_reader = readers.VehicleRecordReader(network_name)
+    n_rows = 10 ** 6 if debugging else None
+    data_generator = vehicle_record_reader.generate_data(
+        vehicle_type, controlled_vehicle_percentage, vehicle_inputs,
+        n_rows)
+    for (vehicle_records, file_number) in data_generator:
+        violations_list.append(
+            find_traffic_light_violations(vehicle_records, traffic_light_data))
+    violations = pd.concat(violations_list)
+    tf_violation_writer = data_writer.TrafficLightViolationWriter(
+        network_name, vehicle_type)
+    tf_violation_writer.save_as_csv(violations,
+                                    controlled_vehicle_percentage, 0)
+
+
+def find_traffic_light_violations(vehicle_record: pd.DataFrame,
+                                  traffic_light_data: pd.DataFrame):
+    """
+    Finds red light running violations in a single simulation.
+
+    :param vehicle_record: dataframe with step by step vehicle data
+    :param traffic_light_data: dataframe where each row describes a
+     traffic light
+    :return: dataframe where each row represents one traffic light violation
+    """
+
+    violations_list = []
+    warmup_time = vehicle_record['time'].iloc[0]
+    for _, tf in traffic_light_data.iterrows():
+        vehicle_record['dist_to_tf'] = (vehicle_record['x']
+                                        - tf['position'])
+        after_tf = vehicle_record[vehicle_record['dist_to_tf'] > 0]
+        crossing_time = after_tf.loc[
+            after_tf.groupby('veh_id').dist_to_tf.idxmin(),
+            'time']
+        crossing_time = crossing_time[crossing_time > warmup_time]
+        tf_cycle = tf['cycle_time']
+        violation_idx = crossing_time[(crossing_time % tf_cycle) <
+                                      tf['red duration']].index
+        violations_per_tf = vehicle_record.loc[
+            violation_idx, ['simulation_number', 'veh_id', 'time',
+                            'vehicles_per_lane']]
+        violations_per_tf['traffic_light'] = tf['id']
+        violations_list.append(violations_per_tf)
+    return pd.concat(violations_list)
+
+
+def add_main_ssms(vehicle_records: pd.DataFrame, ssm_names: List[str]):
+    ssm_estimator = SSMEstimator(vehicle_records)
+    for ssm in ssm_names:
+        ssm_estimator.include_ssm_by_name(ssm)
+    # if network_name in ['in_and_out', 'i710', 'us101']:
+    #     ssm_estimator.include_ttc()
+    #     ssm_estimator.include_drac()
+    #     for choice in [False, True]:
+    #         ssm_estimator.include_collision_free_gap(
+    #             consider_lane_change=choice)
+    #         ssm_estimator.include_risk(consider_lane_change=choice)
+    # elif network_name in ['traffic_lights']:
+    #     ssm_estimator.include_barrier_function_risk()
+
+
+def create_time_bins_and_labels(period, vehicle_records):
+    """Creates equally spaced time intervals, generates labels
+    that go with them and includes a time_interval column to the
+    dataframe.
+
+    :param vehicle_records: vehicle records data loaded from VISSIM
+    :param period: time interval length
+    :return: None; alters the data in place"""
+    final_time = int(vehicle_records['time'].iloc[-1])
+    interval_limits = []
+    interval_labels = []
+    for i in range(period, final_time + period,
+                   period):
+        interval_limits.append(i)
+        interval_labels.append(str(i) + '-'
+                               + str(i + period))
+    vehicle_records['time_interval'] = pd.cut(
+        x=vehicle_records['time'], bins=interval_limits,
+        labels=interval_labels[:-1])
+
+
+def check_already_processed_vehicle_inputs(network_name: str,
+                                           vehicle_type: VehicleType,
+                                           controlled_vehicle_percentage: int,
+                                           vehicle_inputs: List[int]):
+    """
+    Checks if the scenario being post processed was processed before.
+    Prints a message if yes.
+    :param network_name: Currently available: in_and_out, in_and_merge,
+     i710, us101, traffic_lights
+    :param vehicle_type: Enum to indicate the vehicle (controller) type
+    :param controlled_vehicle_percentage: Percentage of controlled vehicles
+     present in the simulation
+    :param vehicle_inputs: number of vehicles entering the simulation per
+     hour
+    :return: nothing. Just prints a message on the console.
+    """
+    ssm_reader = readers.SSMDataReader(network_name)
+    try:
+        ssm_data = ssm_reader.load_data_with_controlled_percentage(
+            vehicle_type, controlled_vehicle_percentage, vehicle_inputs)
+    except OSError:
+        return
+    # if not ssm_data.empty:
+    processed_vehicle_inputs = ssm_data['vehicles_per_lane'].unique()
+    for v_i in (set(vehicle_inputs) & set(processed_vehicle_inputs)):
+        print('FYI: SSM results for network {}, vehicle type {}, '
+              'percentage {}, and input {} already exist. They are '
+              'being recomputed.'.
+              format(network_name, vehicle_type.name,
+                     controlled_vehicle_percentage, v_i))
+
+
+def compute_distance_to_leader(data_source: str, veh_data: pd.DataFrame,
+                               adjusted_idx: np.array,
+                               adjusted_leader_idx: np.array):
+    """
+    Computes the longitudinal distance between a vehicle's front
+    bumper to the rear bumper of the leading vehicle
+    :param data_source: vissim, ngsim or synthetic
+    :param veh_data: vehicle data during a single time step
+    :param adjusted_idx: vehicle indices starting from zero
+    :param adjusted_leader_idx: leader indices starting from zero
+    """
+    n = np.max(adjusted_idx) + 1
+    if data_source == DataPostProcessor.VISSIM:
+
+        front_x_vector = np.zeros(n)
+        front_y_vector = np.zeros(n)
+        rear_x_vector = np.zeros(n)
+        rear_y_vector = np.zeros(n)
+
+        front_x_vector[adjusted_idx] = veh_data['front_x']
+        rear_x_vector[adjusted_idx] = veh_data['rear_x']
+        front_y_vector[adjusted_idx] = veh_data['front_y']
+        rear_y_vector[adjusted_idx] = veh_data['rear_y']
+        distance = np.sqrt((rear_x_vector[adjusted_leader_idx]
+                            - front_x_vector[adjusted_idx]) ** 2
+                           + (rear_y_vector[adjusted_leader_idx]
+                              - front_y_vector[adjusted_idx]) ** 2)
+        # Set gap to zero when there's no leader
+        distance[adjusted_idx == adjusted_leader_idx] = 0
+
+    elif data_source == DataPostProcessor.NGSIM:
+        length = np.zeros(n)
+        length[adjusted_idx] = veh_data['length']
+        leader_length = length[adjusted_leader_idx]
+        distance = veh_data['delta_x'] - leader_length
+    else:
+        distance = veh_data['delta_x']
+
+    return distance
+
+
 class DataPostProcessor:
     """Class grouping different post processing methods."""
 
@@ -238,8 +462,8 @@ class DataPostProcessor:
         elif data_source == DataPostProcessor.SYNTHETIC:
             DataPostProcessor.post_process_synthetic_data(vehicle_records)
         else:
-            print('[{}] Trying to process data from unknown data source'.
-                  format(self.__class__.__name__))
+            print('[DataPostProcessor] Trying to process data from unknown '
+                  'data source.')
             return
 
     @staticmethod
@@ -373,9 +597,8 @@ class DataPostProcessor:
                 type_vector[adjusted_leader_idx])
 
             distance[counter:counter + current_data.shape[0]] = (
-                DataPostProcessor.compute_distance_to_leader(
-                    data_source, current_data, adjusted_idx,
-                    adjusted_leader_idx))
+                compute_distance_to_leader(data_source, current_data,
+                                           adjusted_idx, adjusted_leader_idx))
             counter += current_data.shape[0]
 
             if counter >= percent * total_samples:
@@ -391,47 +614,6 @@ class DataPostProcessor:
                 vehicle_records.loc[out_of_bounds_idx, 'veh_id'])
             print('Found {} instances of leaders outside the simulation'.
                   format(len(out_of_bounds_idx)))
-
-    @staticmethod
-    def compute_distance_to_leader(data_source: str, veh_data: pd.DataFrame,
-                                   adjusted_idx: np.array,
-                                   adjusted_leader_idx: np.array):
-        """
-        Computes the longitudinal distance between a vehicle's front
-        bumper to the rear bumper of the leading vehicle
-        :param data_source: vissim, ngsim or synthetic
-        :param veh_data: vehicle data during a single time step
-        :param adjusted_idx: vehicle indices starting from zero
-        :param adjusted_leader_idx: leader indices starting from zero
-        """
-        n = np.max(adjusted_idx) + 1
-        if data_source == DataPostProcessor.VISSIM:
-
-            front_x_vector = np.zeros(n)
-            front_y_vector = np.zeros(n)
-            rear_x_vector = np.zeros(n)
-            rear_y_vector = np.zeros(n)
-
-            front_x_vector[adjusted_idx] = veh_data['front_x']
-            rear_x_vector[adjusted_idx] = veh_data['rear_x']
-            front_y_vector[adjusted_idx] = veh_data['front_y']
-            rear_y_vector[adjusted_idx] = veh_data['rear_y']
-            distance = np.sqrt((rear_x_vector[adjusted_leader_idx]
-                                - front_x_vector[adjusted_idx]) ** 2
-                               + (rear_y_vector[adjusted_leader_idx]
-                                  - front_y_vector[adjusted_idx]) ** 2)
-            # Set gap to zero when there's no leader
-            distance[adjusted_idx == adjusted_leader_idx] = 0
-
-        elif data_source == DataPostProcessor.NGSIM:
-            length = np.zeros(n)
-            length[adjusted_idx] = veh_data['length']
-            leader_length = length[adjusted_leader_idx]
-            distance = veh_data['delta_x'] - leader_length
-        else:
-            distance = veh_data['delta_x']
-
-        return distance
 
     def create_safety_summary(self, network_name: str,
                               vehicle_type: VehicleType,
@@ -455,7 +637,7 @@ class DataPostProcessor:
          records and do not save results.
         :return: Nothing. SSM results are saved to as csv files"""
 
-        DataPostProcessor.check_already_processed_vehicle_inputs(
+        check_already_processed_vehicle_inputs(
             network_name, vehicle_type, controlled_percentage,
             vehicle_inputs)
 
@@ -481,217 +663,42 @@ class DataPostProcessor:
         risky_maneuver_writer = RiskyManeuverWriter(network_name, vehicle_type)
         violation_writer = data_writer.TrafficLightViolationWriter(
             network_name, vehicle_type)
-        # writers = [ssm_writer, risky_maneuver_writer, violation_writer]
 
         vehicle_record_reader = readers.VehicleRecordReader(network_name)
         n_rows = 10 ** 6 if debugging else None
-        data_generator = vehicle_record_reader.generate_data(
-            vehicle_type, controlled_percentage, vehicle_inputs,
-            n_rows)
-        ssm_data = []
-        risky_maneuvers = []
-        violations_data = []
-        temp = 0
-        print('Start of safety summary creation for network {}, vehicle type '
-              '{}, percentage {}, and input(s) {}'.format(
-                network_name, vehicle_type.name.lower(),
-                controlled_percentage, vehicle_inputs))
-        for (vehicle_records, file_number) in data_generator:
-            vehicles_per_lane = int(
-                vehicle_records.iloc[0]['vehicles_per_lane'])
-            # We save once per vehicle_per_lane value
-            if 0 < temp != vehicles_per_lane:  # and not debugging:
-                save_safety_files(temp, [ssm_writer, risky_maneuver_writer,
-                                         violation_writer],
-                                  [ssm_data, risky_maneuvers, violations_data],
-                                  controlled_percentage)
-                # print('Files with input ', temp, ' done. Saving to file...')
-                # ssm_writer.save_as_csv(pd.concat(ssm_data),
-                #                        controlled_percentage,
-                #                        temp)
-                # risky_maneuver_writer.save_as_csv(pd.concat(risky_maneuvers),
-                #                                   controlled_percentage,
-                #                                   temp)
-                # violation_writer.save_as_csv(pd.concat(violations_data),
-                #                              controlled_percentage,
-                #                              temp)
-                # print('Successfully saved.')
-                ssm_data = []  # pd.DataFrame(columns=column_titles)
-                risky_maneuvers = []
-                violations_data = []
-            temp = vehicles_per_lane
-
-            self.post_process_data(DataPostProcessor.VISSIM, vehicle_records)
-            print('Computing SSMs')
-            aggregated_data = create_ssm_dataframe(vehicle_records, ssm_names)
-            aggregated_data.insert(0, 'simulation_number', file_number)
-            # aggregated_data['vehicles_per_lane'] = vehicles_per_lane
-            ssm_data.append(aggregated_data)
-            print('Extracting risky maneuvers')
-            risky_maneuvers.append(extract_risky_maneuvers(
-                vehicle_records, risk_name))
-            if not traffic_light_data.empty:
-                print('Looking for traffic light violations')
-                violations_data.append(self.find_traffic_light_violations(
-                    vehicle_records, traffic_light_data))
-            print('-' * 79)
-
-        if True:  # not debugging:
-            save_safety_files(temp, [ssm_writer, risky_maneuver_writer,
-                                     violation_writer],
-                              [ssm_data, risky_maneuvers, violations_data],
+        for vi in vehicle_inputs:
+            print('Start of safety summary creation for network {}, vehicle '
+                  'type {}, percentage {}, and input {}'.format(
+                    network_name, vehicle_type.name.lower(),
+                    controlled_percentage, vi))
+            data_generator = vehicle_record_reader.generate_data(
+                vehicle_type, controlled_percentage, [vi],
+                n_rows)
+            ssm_data = []
+            risky_maneuvers = []
+            violations_data = []
+            for (vehicle_records, file_number) in data_generator:
+                self.post_process_data(DataPostProcessor.VISSIM, vehicle_records)
+                print('Computing SSMs')
+                aggregated_data = create_ssm_dataframe(vehicle_records,
+                                                       ssm_names)
+                aggregated_data.insert(0, 'simulation_number', file_number)
+                aggregated_data['vehicles_per_lane'] = vi
+                ssm_data.append(aggregated_data)
+                print('Extracting risky maneuvers')
+                risky_maneuvers.append(extract_risky_maneuvers(
+                    vehicle_records, risk_name))
+                if not traffic_light_data.empty:
+                    print('Looking for traffic light violations')
+                    violations_data.append(find_traffic_light_violations(
+                        vehicle_records, traffic_light_data))
+                print('-' * 79)
+            save_safety_files(vi,
+                              [ssm_writer, risky_maneuver_writer,
+                               violation_writer],
+                              [ssm_data, risky_maneuvers,
+                               violations_data],
                               controlled_percentage)
-
-    @staticmethod
-    def check_human_take_over(network_name: str,
-                              vehicle_type: VehicleType,
-                              controlled_vehicle_percentage: int,
-                              vehicle_inputs: List[int] = None):
-        """Reads multiple vehicle record data files to check how often the
-        autonomous vehicles gave control back to VISSIM
-
-        :param network_name: Network name. Either the actual file name or the
-         network nickname. Currently available: in_and_out, in_and_merge, i710,
-         us101
-        :param vehicle_type: Enum to indicate the vehicle (controller) type
-        :param controlled_vehicle_percentage: Percentage of controlled vehicles
-         present in the simulation.
-        :param vehicle_inputs: simulation vehicle inputs to be checked
-        :return: Nothing.
-        """
-
-        vehicle_record_reader = readers.VehicleRecordReader(network_name)
-        data_generator = vehicle_record_reader.generate_data(
-            vehicle_type, controlled_vehicle_percentage, vehicle_inputs)
-        n_blocked_vehs = []
-        for (vehicle_records, file_number) in data_generator:
-            blocked_vehs = vehicle_records.loc[
-                (vehicle_records['vissim_control'] == 1)
-                & (vehicle_records['veh_type'] != Vehicle.VISSIM_CAR_ID),
-                'veh_id'].unique()
-            n_blocked_vehs.append(blocked_vehs.shape[0])
-            print('Total blocked vehicles: ', blocked_vehs.shape[0])
-        print('Mean blocked vehicles:', np.mean(n_blocked_vehs))
-
-    @staticmethod
-    def find_traffic_light_violations_all(network_name: str,
-                                          vehicle_type: VehicleType,
-                                          controlled_vehicle_percentage: int,
-                                          vehicle_inputs: List[int] = None,
-                                          debugging: bool = False):
-        """
-        Reads multiple vehicle record data files, looks for cases of
-        traffic light violation, and records them in a new csv file
-
-        :param network_name: only network with traffic lights is traffic_lights
-        :param vehicle_type: Vehicle type enum. Choose between
-        TRAFFIC_LIGHT_ACC or TRAFFIC_LIGHT_CACC
-        :param controlled_vehicle_percentage: Percentage of controlled vehicles
-         present in the simulation.
-        :param vehicle_inputs: Vehicle inputs for which we want SSMs
-         computed. If None (default), computes SSMs for all simulated vehicle
-         inputs.
-        :param debugging: If true, we load only 10^5 samples from the vehicle
-         records and do not save results.
-        :return: Nothing. Violation results are saved to as csv files"""
-
-        traffic_light_reader = readers.TrafficLightSourceReader(network_name)
-        try:
-            traffic_light_data = traffic_light_reader.load_data()
-        except FileNotFoundError:
-            print('No traffic light source file, so no violations.')
-            return
-
-        if 'starts_red' not in traffic_light_data.columns:
-            traffic_light_data['starts_red'] = True
-        traffic_light_data['cycle_time'] = (
-                traffic_light_data['red duration']
-                + traffic_light_data['green duration']
-                + traffic_light_data['amber duration'])
-
-        violations_list = []
-        vehicle_record_reader = readers.VehicleRecordReader(network_name)
-        n_rows = 10 ** 6 if debugging else None
-        data_generator = vehicle_record_reader.generate_data(
-            vehicle_type, controlled_vehicle_percentage, vehicle_inputs,
-            n_rows)
-        for (vehicle_records, file_number) in data_generator:
-            violations_list.append(
-                DataPostProcessor.find_traffic_light_violations(
-                    vehicle_records, traffic_light_data))
-        violations = pd.concat(violations_list)
-        tf_violation_writer = data_writer.TrafficLightViolationWriter(
-            network_name, vehicle_type)
-        tf_violation_writer.save_as_csv(violations,
-                                        controlled_vehicle_percentage, 0)
-
-    @staticmethod
-    def find_traffic_light_violations(vehicle_record: pd.DataFrame,
-                                      traffic_light_data: pd.DataFrame):
-        """
-        Finds red light running violations in a single simulation.
-
-        :param vehicle_record: dataframe with step by step vehicle data
-        :param traffic_light_data: dataframe where each row describes a
-         traffic light
-        :return: dataframe where each row represents one traffic light violation
-        """
-
-        violations_list = []
-        warmup_time = vehicle_record['time'].iloc[0]
-        for _, tf in traffic_light_data.iterrows():
-            vehicle_record['dist_to_tf'] = (vehicle_record['x']
-                                            - tf['position'])
-            after_tf = vehicle_record[vehicle_record['dist_to_tf'] > 0]
-            crossing_time = after_tf.loc[
-                after_tf.groupby('veh_id').dist_to_tf.idxmin(),
-                'time']
-            crossing_time = crossing_time[crossing_time > warmup_time]
-            tf_cycle = tf['cycle_time']
-            violation_idx = crossing_time[(crossing_time % tf_cycle) <
-                                          tf['red duration']].index
-            violations_per_tf = vehicle_record.loc[
-                violation_idx, ['simulation_number', 'veh_id', 'time',
-                                'vehicles_per_lane']]
-            violations_per_tf['traffic_light'] = tf['id']
-            violations_list.append(violations_per_tf)
-        return pd.concat(violations_list)
-
-    @staticmethod
-    def add_main_ssms(vehicle_records: pd.DataFrame, ssm_names: List[str]):
-        ssm_estimator = SSMEstimator(vehicle_records)
-        for ssm in ssm_names:
-            ssm_estimator.include_ssm_by_name(ssm)
-        # if network_name in ['in_and_out', 'i710', 'us101']:
-        #     ssm_estimator.include_ttc()
-        #     ssm_estimator.include_drac()
-        #     for choice in [False, True]:
-        #         ssm_estimator.include_collision_free_gap(
-        #             consider_lane_change=choice)
-        #         ssm_estimator.include_risk(consider_lane_change=choice)
-        # elif network_name in ['traffic_lights']:
-        #     ssm_estimator.include_barrier_function_risk()
-
-    @staticmethod
-    def create_time_bins_and_labels(period, vehicle_records):
-        """Creates equally spaced time intervals, generates labels
-        that go with them and includes a time_interval column to the
-        dataframe.
-
-        :param vehicle_records: vehicle records data loaded from VISSIM
-        :param period: time interval length
-        :return: None; alters the data in place"""
-        final_time = int(vehicle_records['time'].iloc[-1])
-        interval_limits = []
-        interval_labels = []
-        for i in range(period, final_time + period,
-                       period):
-            interval_limits.append(i)
-            interval_labels.append(str(i) + '-'
-                                   + str(i + period))
-        vehicle_records['time_interval'] = pd.cut(
-            x=vehicle_records['time'], bins=interval_limits,
-            labels=interval_labels[:-1])
 
     # @staticmethod
     # def clean_headers(data: pd.DataFrame):
@@ -703,37 +710,6 @@ class DataPostProcessor:
     #     # Some column names contain (ALL). We can remove that information
     #     column_names = [name.split('(')[0] for name in data.columns]
     #     data.columns = column_names
-
-    @staticmethod
-    def check_already_processed_vehicle_inputs(
-            network_name: str, vehicle_type: VehicleType,
-            controlled_vehicle_percentage: int, vehicle_inputs: List[int]):
-        """
-        Checks if the scenario being post processed was processed before.
-        Prints a message if yes.
-        :param network_name: Currently available: in_and_out, in_and_merge,
-         i710, us101, traffic_lights
-        :param vehicle_type: Enum to indicate the vehicle (controller) type
-        :param controlled_vehicle_percentage: Percentage of controlled vehicles
-         present in the simulation
-        :param vehicle_inputs: number of vehicles entering the simulation per
-         hour
-        :return: nothing. Just prints a message on the console.
-        """
-        ssm_reader = readers.SSMDataReader(network_name)
-        try:
-            ssm_data = ssm_reader.load_data_with_controlled_percentage(
-                vehicle_type, controlled_vehicle_percentage, vehicle_inputs)
-        except OSError:
-            return
-        # if not ssm_data.empty:
-        processed_vehicle_inputs = ssm_data['vehicles_per_lane'].unique()
-        for v_i in (set(vehicle_inputs) & set(processed_vehicle_inputs)):
-            print('FYI: SSM results for network {}, vehicle type {}, '
-                  'percentage {}, and input {} already exist. They are '
-                  'being recomputed.'.
-                  format(network_name, vehicle_type.name,
-                         controlled_vehicle_percentage, v_i))
 
 
 class SSMEstimator:
