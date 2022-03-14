@@ -23,7 +23,8 @@ class DataWriter:
         self.network_data_dir = os.path.join(
             file_handling.get_networks_folder(), network_relative_address)
         self.file_extension = file_extension
-        self.vehicle_type = [vt.name.lower() for vt in vehicle_type]
+        self.vehicle_type = vehicle_type
+        #  [vt.name.lower() for vt in vehicle_type]
 
     @staticmethod
     def _save_as_csv(data: pd.DataFrame, folder_path: str,
@@ -79,12 +80,15 @@ class TrafficLightViolationWriter(SSMDataWriter):
                             self._file_extension, network_name,
                             vehicle_type)
 
-    # def save_as_csv(self, data: pd.DataFrame,
-    #                 controlled_vehicles_percentage: int,
-    #                 vehicles_per_lane: int):
-    #     if not data.empty:
-    #         super().save_as_csv(data, controlled_vehicles_percentage,
-    #                             vehicles_per_lane)
+
+class DiscomfortWriter(SSMDataWriter):
+    _data_type_identifier = 'Discomfort'
+    _file_extension = '.csv'
+
+    def __init__(self, network_name: str, vehicle_type: List[VehicleType]):
+        DataWriter.__init__(self, self._data_type_identifier,
+                            self._file_extension, network_name,
+                            vehicle_type)
 
 
 class MergedDataWriter(DataWriter):

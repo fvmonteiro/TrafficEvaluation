@@ -93,8 +93,7 @@ def run_simulations(network_name: str,
 
     :param network_name: Options are i710, us-101, in_and_out, in_and_merge,
      and traffic_lights
-    :param percentage_per_vehicle_types: Dictionary describing the desired
-     percentages for each tuple of vehicle types
+    :param percentage_per_vehicle_types: TODO
     :param inputs_per_lane: Vehicles per hour entering the simulation on each
      lane
     :param debugging: If true, only runs 2 simulations per set
@@ -119,51 +118,33 @@ def run_simulations(network_name: str,
 
 
 def post_process_results(network_name: str,
-                         vehicle_types: Union[VehicleType, List[VehicleType]],
+                         percentage_per_vehicle_types: List[Dict[VehicleType,
+                                                                 int]],
                          input_per_lane: Union[int, List[int]],
-                         initial_percentage: int,
-                         percentage_increment: int = None,
-                         final_percentage: int = None,
                          debugging: bool = False):
     """
     Creates files with safety and flow measurements for the highway
     scenario in_and_out
     :param network_name: Options are i710, us-101, in_and_out, in_and_merge,
      and traffic_lights
-    :param vehicle_types: Type of controlled vehicle in the simulation
+    :param percentage_per_vehicle_types: TODO
     :param input_per_lane: Vehicles per hour entering the simulation on each
      lane
-    :param initial_percentage: Percentage of controlled vehicles in the
-     simulation
-    :param percentage_increment: (optional) Percentage increase of controlled
-     vehicles between sets of runs. Must be set together with
-     percentage_final
-    :param final_percentage: (optional) Percentage of controlled vehicles in
-     the last set of simulation runs. Must be set together with
-     percentage_increment
     :param debugging: If true, loads fewer samples from vehicle records and
      does not save results.
     :return:
     """
-    if (percentage_increment is None) != (final_percentage is None):
-        raise ValueError("Either set both percentage_increment and "
-                         "percentage_final values or leave both as None.")
-    if not percentage_increment:
-        final_percentage = initial_percentage
-        percentage_increment = 100
     if not isinstance(input_per_lane, list):
         input_per_lane = [input_per_lane]
 
     post_processor = post_processing.DataPostProcessor()
-    for vt in vehicle_types:
-        for percentage in range(initial_percentage,
-                                final_percentage + 1, percentage_increment):
-            post_processor.create_safety_summary(network_name, vt, percentage,
+    for item in percentage_per_vehicle_types:
+        vehicle_types = list(item.keys())
+        percentages = list(item.values())
+        post_processor.create_simulation_summary(network_name, vehicle_types,
+                                                 percentages,
                                                  vehicle_inputs=input_per_lane,
                                                  debugging=debugging)
-            # post_processor.merge_data(network_name, vt, percentage)
-        if initial_percentage == 0:
-            initial_percentage += percentage_increment
 
 
 def plot_acc_av_and_cav_results(save_results=False):
@@ -247,7 +228,7 @@ def main():
         VehicleType.TRAFFIC_LIGHT_CACC
     ]
 
-    percentages = [0, 25, 50, 75, 100]
+    percentages = [100]
     simulation_percentages = create_vehicle_percentages_dictionary(
         vehicle_type, percentages, 1)
     # run_simulations(network_name, simulation_percentages, [500, 1000])
@@ -267,12 +248,9 @@ def main():
     # vi.run_platoon_scenario()
 
     # =============== Post processing =============== #
-    # post_process_results(network_name, vehicle_type,
-    #                      input_per_lane=[500, 1000],
-    #                      initial_percentage=100,
-    #                      percentage_increment=100,
-    #                      final_percentage=100
-    #                      )
+    post_process_results(network_name,
+                         simulation_percentages,
+                         input_per_lane=[500, 1000])
 
     # post_processor = post_processing.DataPostProcessor()
     # post_processor.create_ssm_summary(network_name,

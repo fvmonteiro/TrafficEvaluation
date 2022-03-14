@@ -738,6 +738,13 @@ class ViolationsReader(SafetyDataReader):
         SafetyDataReader.__init__(self, network_name, self._data_identifier)
 
 
+class DiscomfortReader(SafetyDataReader):
+    _data_identifier = 'Discomfort'
+
+    def __init__(self, network_name):
+        SafetyDataReader.__init__(self, network_name, self._data_identifier)
+
+
 class MergedDataReader(SafetyDataReader):
     _data_identifier = '_Merged Data'
 
