@@ -147,8 +147,8 @@ def extract_risky_maneuvers(vehicle_record: pd.DataFrame,
     return risky_data
 
 
-def merge_data(network_name: str, vehicle_type: VehicleType,
-               controlled_vehicle_percentage: Union[int, List[int]]):
+def merge_data(network_name: str, vehicle_type: List[VehicleType],
+               controlled_vehicle_percentage: List[int]):
     """Loads data collections, link evaluation and SSM data, merges them
     and saves the merged dataframe to a file
     If there is more than one link evaluation segment or more than one
@@ -162,13 +162,14 @@ def merge_data(network_name: str, vehicle_type: VehicleType,
         readers.DataCollectionReader(network_name),
         readers.SSMDataReader(network_name)
     )
+    percentage_columns = [vt.name.lower() + '_percentage' for vt in
+                          vehicle_type]
     shared_cols = ['vehicles_per_lane', 'time_interval',
-                   'random_seed', 'simulation_number',
-                   vehicle_type.name.lower() + '_percentage']
+                   'random_seed', 'simulation_number'] + percentage_columns
     merged_data = pd.DataFrame()
     for reader in data_readers:
         data = reader.load_data_with_controlled_percentage(
-            vehicle_type, controlled_vehicle_percentage)
+            [vehicle_type], [controlled_vehicle_percentage])
         if merged_data.empty:
             merged_data = data
         else:
@@ -186,7 +187,7 @@ def merge_data(network_name: str, vehicle_type: VehicleType,
 def save_safety_files(vehicle_input: int,
                       writers: List[data_writer.SSMDataWriter],
                       data: List[List[pd.DataFrame]],
-                      controlled_percentage: int):
+                      controlled_percentage: List[int]):
     """
 
     :param vehicle_input:
@@ -203,8 +204,8 @@ def save_safety_files(vehicle_input: int,
 
 
 def check_human_take_over(network_name: str,
-                          vehicle_type: VehicleType,
-                          controlled_vehicle_percentage: int,
+                          vehicle_type: List[VehicleType],
+                          controlled_vehicle_percentage: List[int],
                           vehicle_inputs: List[int] = None):
     """Reads multiple vehicle record data files to check how often the
     autonomous vehicles gave control back to VISSIM
@@ -234,8 +235,8 @@ def check_human_take_over(network_name: str,
 
 
 def find_traffic_light_violations_all(network_name: str,
-                                      vehicle_type: VehicleType,
-                                      controlled_vehicle_percentage: int,
+                                      vehicle_type: List[VehicleType],
+                                      controlled_vehicle_percentage: List[int],
                                       vehicle_inputs: List[int] = None,
                                       debugging: bool = False):
     """
@@ -244,7 +245,7 @@ def find_traffic_light_violations_all(network_name: str,
 
     :param network_name: only network with traffic lights is traffic_lights
     :param vehicle_type: Vehicle type enum. Choose between
-    TRAFFIC_LIGHT_ACC or TRAFFIC_LIGHT_CACC
+     TRAFFIC_LIGHT_ACC or TRAFFIC_LIGHT_CACC
     :param controlled_vehicle_percentage: Percentage of controlled vehicles
      present in the simulation.
     :param vehicle_inputs: Vehicle inputs for which we want SSMs
@@ -352,10 +353,9 @@ def create_time_bins_and_labels(period, vehicle_records):
         labels=interval_labels[:-1])
 
 
-def check_already_processed_vehicle_inputs(network_name: str,
-                                           vehicle_type: VehicleType,
-                                           controlled_vehicle_percentage: int,
-                                           vehicle_inputs: List[int]):
+def check_already_processed_vehicle_inputs(
+        network_name: str, vehicle_type: List[VehicleType],
+        controlled_vehicle_percentage: List[int], vehicle_inputs: List[int]):
     """
     Checks if the scenario being post processed was processed before.
     Prints a message if yes.
@@ -371,7 +371,7 @@ def check_already_processed_vehicle_inputs(network_name: str,
     ssm_reader = readers.SSMDataReader(network_name)
     try:
         ssm_data = ssm_reader.load_data_with_controlled_percentage(
-            vehicle_type, controlled_vehicle_percentage, vehicle_inputs)
+            [vehicle_type], [controlled_vehicle_percentage], vehicle_inputs)
     except OSError:
         return
     # if not ssm_data.empty:
@@ -380,7 +380,7 @@ def check_already_processed_vehicle_inputs(network_name: str,
         print('FYI: SSM results for network {}, vehicle type {}, '
               'percentage {}, and input {} already exist. They are '
               'being recomputed.'.
-              format(network_name, vehicle_type.name,
+              format(network_name, [vt.name for vt in vehicle_type],
                      controlled_vehicle_percentage, v_i))
 
 
@@ -616,8 +616,8 @@ class DataPostProcessor:
                   format(len(out_of_bounds_idx)))
 
     def create_safety_summary(self, network_name: str,
-                              vehicle_type: VehicleType,
-                              controlled_percentage: int,
+                              vehicle_type: List[VehicleType],
+                              controlled_percentage: List[int],
                               vehicle_inputs: List[int] = None,
                               debugging: bool = False):
         """Reads multiple vehicle record data files, postprocesses them,
@@ -669,7 +669,7 @@ class DataPostProcessor:
         for vi in vehicle_inputs:
             print('Start of safety summary creation for network {}, vehicle '
                   'type {}, percentage {}, and input {}'.format(
-                    network_name, vehicle_type.name.lower(),
+                    network_name, [vt.name.lower() for vt in vehicle_type],
                     controlled_percentage, vi))
             data_generator = vehicle_record_reader.generate_data(
                 vehicle_type, controlled_percentage, [vi],

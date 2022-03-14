@@ -100,6 +100,11 @@ def create_percent_folder_name(percentage: List[int],
                                vehicle_type: List[VehicleType]) -> str:
     """Creates the name of the folder which contains results for the
     given percentage of controlled vehicles (not the full path)"""
+    # if not isinstance(percentage, list):
+    #     percentage = [percentage]
+    # if not isinstance(vehicle_type, list):
+    #     vehicle_type = [vehicle_type]
+
     if sum(percentage) == 0:
         return '0_percent_'
     vehicle_type_names = [v.name.lower() for v in vehicle_type]

@@ -85,8 +85,7 @@ def test_safe_gap_computation():
 
 
 def run_simulations(network_name: str,
-                    percentage_per_vehicle_types: Dict[Tuple[VehicleType],
-                                                       List[int]],
+                    percentage_per_vehicle_types: List[Dict[VehicleType, int]],
                     inputs_per_lane: List[int],
                     debugging: bool = False):
     """
@@ -176,9 +175,9 @@ def plot_acc_av_and_cav_results(save_results=False):
     ]
     percentage = [0, 100]
     veh_inputs = [1000, 2000]
-    result_analyzer = result_analysis.ResultAnalyzer(network_name,
-                                                     vehicle_types)
-    result_analyzer.get_flow_and_risk_plots(veh_inputs, percentage)
+    d_list = create_vehicle_percentages_dictionary(vehicle_types, percentage, 1)
+    result_analyzer = result_analysis.ResultAnalyzer(network_name)
+    result_analyzer.get_flow_and_risk_plots(veh_inputs, d_list, save_results)
 
 
 def plot_cav_varying_percentage_results(save_results=False):
@@ -186,15 +185,29 @@ def plot_cav_varying_percentage_results(save_results=False):
     vehicle_types = [VehicleType.CONNECTED]
     percentages = [i for i in range(0, 101, 25)]
     veh_inputs = [1000, 2000]
-    result_analyzer = result_analysis.ResultAnalyzer(network_name,
-                                                     vehicle_types)
-    result_analyzer.get_flow_and_risk_plots(veh_inputs, percentages)
+    d_list = create_vehicle_percentages_dictionary(vehicle_types,
+                                                   percentages, 1)
+    result_analyzer = result_analysis.ResultAnalyzer(network_name)
+    result_analyzer.get_flow_and_risk_plots(veh_inputs, d_list, save_results)
+
+
+def plot_traffic_lights_results(save_results=False):
+    network_name = 'traffic_lights'
+    vehicle_types = [VehicleType.TRAFFIC_LIGHT_ACC,
+                     VehicleType.TRAFFIC_LIGHT_CACC]
+    percentages = [i for i in range(0, 101, 25)]
+    veh_inputs = [500, 1000]
+    percentages_per_vehicle_type = create_vehicle_percentages_dictionary(
+        vehicle_types, percentages, 1)
+    result_analyzer = result_analysis.ResultAnalyzer(network_name)
+    result_analyzer.box_plot_y_vs_controlled_percentage(
+        'flow', veh_inputs, percentages_per_vehicle_type, 10, False)
 
 
 # TODO: move this to some other file
 def create_vehicle_percentages_dictionary(
         vehicle_types: List[VehicleType], percentages: List[int],
-        n_vehicle_types: int) -> Dict[Tuple[VehicleType], List[int]]:
+        n_vehicle_types: int) -> List[Dict[VehicleType, int]]:
     """
 
     :param vehicle_types:
@@ -203,23 +216,20 @@ def create_vehicle_percentages_dictionary(
     :return: Dictionary with tuple of VehicleType as key and list of
      percentages as value
     """
-    d = defaultdict(list)
-    # Single controlled vehicle cases
+    percentages_list = []
     if n_vehicle_types == 1:
         for vt in vehicle_types:
             for p in percentages:
-                d[tuple([vt])].append([p])
+                percentages_list.append({vt: p})
             if 0 in percentages:
                 percentages.remove(0)
-
-    # Mixed controlled vehicles: so far only works for 2 simultaneous
-    # controlled types
     if n_vehicle_types == 2:
         for p1 in percentages:
             for p2 in percentages:
                 if p1 > 0 and p2 > 0 and p1 + p2 <= 100:
-                    d[tuple(vehicle_types)].append([p1, p2])
-    return d
+                    percentages_list.append({vehicle_types[0]: p1,
+                                             vehicle_types[1]: p2})
+    return percentages_list
 
 
 def main():
@@ -237,9 +247,10 @@ def main():
         VehicleType.TRAFFIC_LIGHT_CACC
     ]
 
-    percentages = [25, 50, 75]
-    d = create_vehicle_percentages_dictionary(vehicle_type, percentages, 1)
-    run_simulations(network_name, d, [500, 1000])
+    percentages = [0, 25, 50, 75, 100]
+    simulation_percentages = create_vehicle_percentages_dictionary(
+        vehicle_type, percentages, 1)
+    # run_simulations(network_name, simulation_percentages, [500, 1000])
 
     # =============== Running =============== #
     # run_simulations(network_name=network_name, vehicle_types=vehicle_type,
@@ -278,12 +289,14 @@ def main():
     # =============== Check results graphically =============== #
     # plot_acc_av_and_cav_results(False)
     # plot_cav_varying_percentage_results(False)
-    # percentage = [0, 25, 50, 75, 100]
-    # veh_inputs = [500, 1000]
-    # result_analyzer = result_analysis.ResultAnalyzer(network_name,
-    #                                                  vehicle_type)
-    # # result_analyzer.box_plot_y_vs_controlled_percentage('flow', veh_inputs,
-    # #                                                     percentage, 10)
+    # plot_traffic_lights_results(False)
+    # percentage = [0, 100]
+    ra = result_analysis.ResultAnalyzer('traffic_lights')
+    ra.plot_color_map('vehicle_count', simulation_percentages, [500], 10)
+    # veh_inputs = [1000, 2000]
+    # result_analyzer = result_analysis.ResultAnalyzer(network_name)
+    # result_analyzer.box_plot_y_vs_controlled_percentage('flow', veh_inputs,
+    #                                                     percentage, 10)
     # result_analyzer.box_plot_y_vs_controlled_percentage(
     #     'barrier_function_risk', veh_inputs, percentage, 10)
     # result_analyzer.plot_risky_maneuver_histogram_per_vehicle_type(

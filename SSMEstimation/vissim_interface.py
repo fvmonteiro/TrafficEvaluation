@@ -1,7 +1,7 @@
 import os
 import time
 # from typing import Union
-from typing import List, Dict, Tuple
+from typing import List, Dict
 import warnings
 
 import pandas as pd
@@ -452,7 +452,7 @@ class VissimInterface:
 
     def run_with_varying_controlled_percentage(
             self,
-            percentages_per_vehicle_types: Dict,
+            percentages_per_vehicle_types: List[Dict[VehicleType, int]],
             inputs_per_lane: List[int],
             runs_per_input: int = 10,
             simulation_period: int = None,
@@ -460,9 +460,9 @@ class VissimInterface:
         """Runs scenarios with increasing demand for varying percentage
         values of controlled vehicles
 
-        :param percentages_per_vehicle_types: Dictionary with a tuple of
-         vehicles types as key and the respective penetration percentages as
-         value
+        :param percentages_per_vehicle_types: List of dictionaries. Each
+         dictionary should define the percentages of controlled vehicles as
+         VehicleType: int.
         :param inputs_per_lane: vehicles per hour per lane
         :param runs_per_input: how many runs with the same input and varying
          seed
@@ -491,35 +491,35 @@ class VissimInterface:
         results_base_folder = os.path.join(self.networks_folder,
                                            self.network_relative_address)
 
-        for vehicle_types, percentage_list in percentages_per_vehicle_types.items():
-            for percentages in percentage_list:
-                if is_debugging:  # run 2 short simulations
-                    print('Debug mode: running 2 short simulations with single '
-                          'input per lane value.')
-                    self.use_debug_folder_for_results()
-                    self.reset_saved_simulations(warning_active=False)
-                    input_increase_per_lane = 100  # any value > 1
-                    initial_input_per_lane = 1000
-                    max_input_per_lane = initial_input_per_lane
-                    runs_per_input = 2
-                    simulation_period = 360
-                else:  # save all results in different folders
-                    # For each percentage, we reset VISSIM's simulation count
-                    self.reset_saved_simulations(warning_active=False)
-                    # Then we set the proper folder to save the results
-                    results_folder = os.path.join(
-                        results_base_folder,
-                        file_handling.create_percent_folder_name(
-                            percentages, vehicle_types))
-                    self.set_results_folder(results_folder)
-
-                # Finally, we set the percentage and run the simulation
-                self.set_controlled_vehicles_percentage(percentages,
-                                                        list(vehicle_types))
-                self.run_with_increasing_demand(
-                    inputs_per_lane,
-                    runs_per_input=runs_per_input,
-                    simulation_period=simulation_period)
+        for item in percentages_per_vehicle_types:
+            vehicle_types = list(item.keys())
+            percentages = list(item.values())
+            if is_debugging:  # run 2 short simulations
+                print('Debug mode: running 2 short simulations with single '
+                      'input per lane value.')
+                self.use_debug_folder_for_results()
+                self.reset_saved_simulations(warning_active=False)
+                input_increase_per_lane = 100  # any value > 1
+                initial_input_per_lane = 1000
+                max_input_per_lane = initial_input_per_lane
+                runs_per_input = 2
+                simulation_period = 360
+            else:  # save all results in different folders
+                # For each percentage, we reset VISSIM's simulation count
+                self.reset_saved_simulations(warning_active=False)
+                # Then we set the proper folder to save the results
+                results_folder = os.path.join(
+                    results_base_folder,
+                    file_handling.create_percent_folder_name(
+                        percentages, vehicle_types))
+                self.set_results_folder(results_folder)
+            # Finally, we set the percentage and run the simulation
+            self.set_controlled_vehicles_percentage(percentages,
+                                                    list(vehicle_types))
+            self.run_with_increasing_demand(
+                inputs_per_lane,
+                runs_per_input=runs_per_input,
+                simulation_period=simulation_period)
             # TODO: we can save DataCollectionResults from here. Get the
             #  container from INet.DataCollectionMeasurements. It looks like
             #  we'll have to read one time interval and one simulation result
@@ -772,7 +772,8 @@ class VissimInterface:
             composition_number)
         for relative_flow in veh_composition.VehCompRelFlows:
             flow_vehicle_type = int(relative_flow.AttValue('VehType'))
-            if flow_vehicle_type in desired_flows:
+            if (flow_vehicle_type in desired_flows
+                    and desired_flows[flow_vehicle_type] > 0):
                 relative_flow.SetAttValue('RelFlow',
                                           desired_flows[flow_vehicle_type])
                 print('Client: veh type {} at {}%.'.

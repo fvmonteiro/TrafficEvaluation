@@ -1,4 +1,5 @@
 import os
+from typing import List
 
 import numpy as np
 import pandas as pd
@@ -9,20 +10,20 @@ import file_handling
 
 
 class DataWriter:
-    _file_extension = '.csv'
+    # file_extension = '.csv'
 
-    def __init__(self, data_type_identifier: str, network_name: str,
-                 vehicle_type: VehicleType):
+    def __init__(self, data_type_identifier: str, file_extension: str,
+                 network_name: str, vehicle_type: List[VehicleType]):
         network_file = file_handling.get_file_name_from_network_name(
             network_name)
-        network_relative_address = (file_handling.
-            get_relative_address_from_network_name(
-            network_name))
+        network_relative_address = (
+            file_handling.get_relative_address_from_network_name(network_name))
         self.file_base_name = (network_file + '_'
                                + data_type_identifier)
         self.network_data_dir = os.path.join(
             file_handling.get_networks_folder(), network_relative_address)
-        self.vehicle_type = vehicle_type.name.lower()
+        self.file_extension = file_extension
+        self.vehicle_type = [vt.name.lower() for vt in vehicle_type]
 
     @staticmethod
     def _save_as_csv(data: pd.DataFrame, folder_path: str,
@@ -32,7 +33,7 @@ class DataWriter:
         try:
             data.to_csv(full_address, index=False)
         except FileNotFoundError:
-            print('Couldn''t save at', full_address, '. Saving at: ',
+            print('Could not save at', full_address, '. Saving at: ',
                   file_handling.get_networks_folder(), 'instead.')
             data.to_csv(os.path.join(file_handling.get_networks_folder(),
                                      file_name), index=False)
@@ -41,18 +42,16 @@ class DataWriter:
 class SSMDataWriter(DataWriter):
     """Helps saving aggregated SSM results to files"""
     _data_type_identifier = 'SSM Results'
+    _file_extension = '.csv'
 
-    def __init__(self, network_name: str, vehicle_type: VehicleType):
-        DataWriter.__init__(self, self._data_type_identifier, network_name,
-                            vehicle_type)
+    def __init__(self, network_name: str, vehicle_type: List[VehicleType]):
+        DataWriter.__init__(self, self._data_type_identifier,
+                            self._file_extension, network_name, vehicle_type)
 
     def save_as_csv(self, data: pd.DataFrame,
-                    controlled_vehicles_percentage: int,
+                    controlled_vehicles_percentage: List[int],
                     vehicles_per_lane: int):
-        # max_sim_number = data['simulation_number'].iloc[-1]
-        # num_str = '_' + str(max_sim_number).rjust(3, '0')
-        # file_name = self.file_base_name + num_str + self._file_extension
-        file_name = self.file_base_name + self._file_extension
+        file_name = self.file_base_name + self.file_extension
         percentage_folder = file_handling.create_percent_folder_name(
             controlled_vehicles_percentage, self.vehicle_type)
         vehicles_per_lane_folder = (
@@ -66,36 +65,40 @@ class SSMDataWriter(DataWriter):
 class RiskyManeuverWriter(SSMDataWriter):
     _data_type_identifier = 'Risky Maneuvers'
 
-    def __init__(self, network_name: str, vehicle_type: VehicleType):
-        DataWriter.__init__(self, self._data_type_identifier, network_name,
-                            vehicle_type)
+    def __init__(self, network_name: str, vehicle_type: List[VehicleType]):
+        DataWriter.__init__(self, self._data_type_identifier,
+                            self._file_extension, network_name, vehicle_type)
 
 
 class TrafficLightViolationWriter(SSMDataWriter):
     _data_type_identifier = 'Traffic Light Violations'
+    _file_extension = '.csv'
 
-    def __init__(self, network_name: str, vehicle_type: VehicleType):
-        DataWriter.__init__(self, self._data_type_identifier, network_name,
+    def __init__(self, network_name: str, vehicle_type: List[VehicleType]):
+        DataWriter.__init__(self, self._data_type_identifier,
+                            self._file_extension, network_name,
                             vehicle_type)
 
-    def save_as_csv(self, data: pd.DataFrame,
-                    controlled_vehicles_percentage: int,
-                    vehicles_per_lane: int):
-        if not data.empty:
-            super().save_as_csv(data, controlled_vehicles_percentage,
-                                vehicles_per_lane)
+    # def save_as_csv(self, data: pd.DataFrame,
+    #                 controlled_vehicles_percentage: int,
+    #                 vehicles_per_lane: int):
+    #     if not data.empty:
+    #         super().save_as_csv(data, controlled_vehicles_percentage,
+    #                             vehicles_per_lane)
 
 
 class MergedDataWriter(DataWriter):
     _data_type_identifier = 'Merged Data'
+    _file_extension = '.csv'
 
-    def __init__(self, network_name: str, vehicle_type: VehicleType):
-        DataWriter.__init__(self, self._data_type_identifier, network_name,
+    def __init__(self, network_name: str, vehicle_type: List[VehicleType]):
+        DataWriter.__init__(self, self._data_type_identifier,
+                            self._file_extension, network_name,
                             vehicle_type)
 
     def save_as_csv(self, data: pd.DataFrame,
-                    controlled_vehicles_percentage: int):
-        file_name = self.file_base_name + self._file_extension
+                    controlled_vehicles_percentage: List[int]):
+        file_name = self.file_base_name + self.file_extension
         percentage_folder = file_handling.create_percent_folder_name(
             controlled_vehicles_percentage, self.vehicle_type)
         folder_path = os.path.join(self.network_data_dir, percentage_folder)
