@@ -1,3 +1,4 @@
+from collections import defaultdict
 import warnings
 from typing import List, Union
 
@@ -53,10 +54,12 @@ def create_ssm_dataframe(vehicle_record: pd.DataFrame,
     aggregation_period = 30  # [s]
     columns = ['time_interval'] + ssm_names
     create_time_bins_and_labels(aggregation_period, vehicle_record)
-    aggregated_data = vehicle_record[columns].groupby(
+    aggregated_ssm = vehicle_record[columns].groupby(
         'time_interval').sum()
-    aggregated_data.reset_index(inplace=True)
-    return aggregated_data
+    aggregated_ssm.reset_index(inplace=True)
+    aggregated_ssm.insert(0, 'simulation_number', vehicle_record[
+        'simulation_number'].iloc[0])
+    return aggregated_ssm
 
 
 def extract_risky_maneuvers(vehicle_record: pd.DataFrame,
@@ -309,7 +312,7 @@ def find_traffic_light_violations(vehicle_record: pd.DataFrame,
         violation_idx = crossing_time[(crossing_time % tf_cycle) <
                                       tf['red duration']].index
         violations_per_tf = vehicle_record.loc[
-            violation_idx, ['simulation_number', 'veh_id', 'time',
+            violation_idx, ['simulation_number', 'veh_id', 'veh_type', 'time',
                             'vehicles_per_lane']]
         violations_per_tf['traffic_light'] = tf['id']
         violations_list.append(violations_per_tf)
@@ -331,29 +334,35 @@ def add_main_ssms(vehicle_records: pd.DataFrame, ssm_names: List[str]):
     #     ssm_estimator.include_barrier_function_risk()
 
 
-def compute_discomfort(vehicle_records: pd.DataFrame):
+def compute_discomfort(vehicle_records: pd.DataFrame,
+                       comfortable_brake: float):
     """
     Computes discomfort as the integral of |a(t) - a_comf| if |a(t)| > a_comf.
 
     :param vehicle_records: vehicle records data loaded from VISSIM
+    :param comfortable_brake: accelerations with absolute value greater than
+     this are considered uncomfortable
     :return: Dataframe with values of discomfort for all vehicles every
     'aggregation period' seconds
     """
-    comfortable_brake = -4
     discomfort_idx = vehicle_records['ax'] < comfortable_brake
     vehicle_records['discomfort'] = 0
     vehicle_records.loc[discomfort_idx, 'discomfort'] = (
-        comfortable_brake - vehicle_records.loc[discomfort_idx, 'ax'])
+            comfortable_brake - vehicle_records.loc[discomfort_idx, 'ax'])
     try:
-        aggregated_acceleration_data = vehicle_records[[
-            'time_interval', 'discomfort']].groupby('time_interval').sum()
+        aggregated_acceleration = vehicle_records[[
+            'veh_type', 'time_interval', 'discomfort']].groupby(
+            ['veh_type', 'time_interval']).sum()
     except KeyError:
         aggregation_period = 30
         create_time_bins_and_labels(aggregation_period, vehicle_records)
-        aggregated_acceleration_data = vehicle_records[[
-            'time_interval', 'discomfort']].groupby('time_interval').sum()
-    aggregated_acceleration_data.reset_index(inplace=True)
-    return aggregated_acceleration_data
+        aggregated_acceleration = vehicle_records[[
+            'veh_type', 'time_interval', 'discomfort']].groupby(
+            ['veh_type', 'time_interval']).sum()
+    aggregated_acceleration.reset_index(inplace=True)
+    aggregated_acceleration.insert(0, 'simulation_number',
+                                   vehicle_records['simulation_number'].iloc[0])
+    return aggregated_acceleration
 
 
 def create_time_bins_and_labels(period, vehicle_records):
@@ -506,8 +515,8 @@ class DataPostProcessor:
 
         # When the vehicle is stopping due to a traffic light, we consider it
         # has no leader
-        if 'leader_type' in vehicle_records.columns:
-            signal_ahead_idx = vehicle_records['leader_type'] == 'Signal head'
+        if 'target_type' in vehicle_records.columns:
+            signal_ahead_idx = vehicle_records['target_type'] == 'Signal head'
             vehicle_records.loc[signal_ahead_idx, 'leader_id'] = np.nan
         # By convention, if vehicle has no leader, we set it as its own leader
         vehicle_records['leader_id'].fillna(vehicle_records['veh_id'],
@@ -675,62 +684,86 @@ class DataPostProcessor:
         else:
             raise ValueError('Unknown network name.')
 
+        pp = [
+            SinglePostProcessor(network_name, vehicle_type, 'ssm', ssm_names),
+            SinglePostProcessor(network_name, vehicle_type, 'risky_maneuvers',
+                                risk_name)
+        ]
+
         traffic_light_reader = readers.TrafficLightSourceReader(
             network_name)
         try:
             traffic_light_data = traffic_light_reader.load_data()
+            comfortable_brake = -4
+            pp += [
+                SinglePostProcessor(network_name, vehicle_type, 'violations',
+                                    traffic_light_data),
+                SinglePostProcessor(network_name, vehicle_type, 'discomfort',
+                                    comfortable_brake)
+            ]
         except FileNotFoundError:
-            traffic_light_data = pd.DataFrame()
+            # traffic_light_data = pd.DataFrame()
             print('No traffic light data found -> no violations')
 
-        ssm_writer = data_writer.SSMDataWriter(network_name, vehicle_type)
-        risky_maneuver_writer = data_writer.RiskyManeuverWriter(network_name,
-                                                                vehicle_type)
-        violation_writer = data_writer.TrafficLightViolationWriter(
-            network_name, vehicle_type)
-        discomfort_writer = data_writer.DiscomfortWriter(network_name,
-                                                         vehicle_type)
+        # ssm_writer = data_writer.SSMDataWriter(network_name, vehicle_type)
+        # risky_maneuver_writer = data_writer.RiskyManeuverWriter(network_name,
+        #                                                         vehicle_type)
+        # violation_writer = data_writer.TrafficLightViolationWriter(
+        #     network_name, vehicle_type)
+        # discomfort_writer = data_writer.DiscomfortWriter(network_name,
+        #                                                  vehicle_type)
         vehicle_record_reader = readers.VehicleRecordReader(network_name)
-        n_rows = 10 ** 6 if debugging else None
+        n_rows = 10 ** 5 if debugging else None
         for vi in vehicle_inputs:
             print('Start of safety summary creation for network {}, vehicle '
                   'type {}, percentage {}, and input {}'.format(
-                    network_name, [vt.name.lower() for vt in vehicle_type],
-                    controlled_percentage, vi))
+                   network_name, [vt.name.lower() for vt in vehicle_type],
+                   controlled_percentage, vi))
             data_generator = vehicle_record_reader.generate_data(
                 vehicle_type, controlled_percentage, [vi],
                 n_rows)
+            data = defaultdict(list)
             ssm_data = []
             risky_maneuvers = []
             violations_data = []
             discomfort_data = []
             for (vehicle_records, file_number) in data_generator:
-                # self.post_process_data(DataPostProcessor.VISSIM, vehicle_records)
+                self.post_process_data(DataPostProcessor.VISSIM,
+                                       vehicle_records)
+                for single_pp in pp:
+                    print('Computing', single_pp.data_name)
+                    data[single_pp.data_name].append(single_pp.post_process(
+                        vehicle_records))
+
                 # print('Computing SSMs')
-                # aggregated_data = create_ssm_dataframe(vehicle_records,
-                #                                        ssm_names)
-                # aggregated_data.insert(0, 'simulation_number', file_number)
-                # aggregated_data['vehicles_per_lane'] = vi
-                # ssm_data.append(aggregated_data)
+                # ssm_data.append(create_ssm_dataframe(
+                #     vehicle_records, ssm_names))
                 # print('Extracting risky maneuvers')
                 # risky_maneuvers.append(extract_risky_maneuvers(
                 #     vehicle_records, risk_name))
-                if not traffic_light_data.empty:
-                    print('Measuring discomfort')  # so far only used in
-                    # traffic light simulations
-                    discomfort_data.append(compute_discomfort(vehicle_records))
-                    # print('Looking for traffic light violations')
-                    # violations_data.append(find_traffic_light_violations(
-                    #     vehicle_records, traffic_light_data))
+                # if not traffic_light_data.empty:
+                #     print('Looking for traffic light violations')
+                #     violations_data.append(find_traffic_light_violations(
+                #         vehicle_records, traffic_light_data))
+                #     print('Measuring discomfort')  # so far only used in
+                #     # traffic light simulations
+                #     discomfort_data.append(compute_discomfort(vehicle_records))
                 print('-' * 79)
 
-            writers = [ssm_writer, risky_maneuver_writer]
-            data = [ssm_data, risky_maneuvers]
-            if not traffic_light_data.empty:
-                writers += [violation_writer, discomfort_writer]
-                data += [violations_data, discomfort_data]
-            save_safety_files(vi, [discomfort_writer], [discomfort_data],
-                              controlled_percentage)
+            for single_pp in pp:
+                if not debugging:
+                    print('Saving ', single_pp.data_name)
+                    all_simulations_data = pd.concat(data[single_pp.data_name])
+                    all_simulations_data['vehicles_per_lane'] = vi
+                    single_pp.writer.save_as_csv(all_simulations_data,
+                                                 controlled_percentage, vi)
+            # writers = [ssm_writer, risky_maneuver_writer]
+            # data = [ssm_data, risky_maneuvers]
+            # if not traffic_light_data.empty:
+            #     writers += [violation_writer, discomfort_writer]
+            #     data += [violations_data, discomfort_data]
+            # save_safety_files(vi, writers, data,
+            #                   controlled_percentage)
 
     # @staticmethod
     # def clean_headers(data: pd.DataFrame):
@@ -884,7 +917,7 @@ class SSMEstimator:
          assuming a reduced max brake during lane changes.
         """
 
-        ssm_1 = 'collision_free_gap'
+        ssm_1 = 'safe_gap'
         ssm_2 = 'DTSG'
         self.include_distance_based_ssm(
             ssm_1, same_type_gamma, consider_lane_change=consider_lane_change)
@@ -1347,3 +1380,44 @@ class SSMEstimator:
         return (vehicle_effective_max_brake,
                 vehicle_effective_lambda1,
                 vehicle_effective_tau_j)
+
+
+class SinglePostProcessor:
+    """[Probably change name] Class contains a name, a writer and function
+    pointer to make creating and saving postprocessed data more easy to
+    handle"""
+
+    data_name = ''
+    writer = None
+    post_processing_function = None
+    secondary_parameter = None
+    _mapping = {
+        'ssm': {'writer': data_writer.SSMDataWriter,
+                'function': create_ssm_dataframe},
+        'risky_maneuvers': {'writer': data_writer.RiskyManeuverWriter,
+                            'function': extract_risky_maneuvers},
+        'violations': {'writer': data_writer.TrafficLightViolationWriter,
+                       'function': find_traffic_light_violations},
+        'discomfort': {'writer': data_writer.DiscomfortWriter,
+                       'function': compute_discomfort},
+    }
+
+    def __init__(self, network_name, vehicle_type, data_name,
+                 secondary_parameter=None):
+        """
+
+        :param network_name:
+        :param vehicle_type:
+        :param data_name:
+        :param secondary_parameter: some post-processing functions require an
+         argument beyond just the data which is known beforehand
+        """
+        self.data_name = data_name
+        self.writer = self._mapping[data_name]['writer'](network_name,
+                                                         vehicle_type)
+        self.post_processing_function = self._mapping[data_name]['function']
+        self.secondary_parameter = secondary_parameter
+
+    def post_process(self, data):
+        return self.post_processing_function(data, self.secondary_parameter)
+

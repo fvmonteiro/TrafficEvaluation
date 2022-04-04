@@ -21,7 +21,7 @@ def match_sim_number_to_random_seed(data):
     # These variables are needed because we only save the simulation number,
     # which doesn't mean much unless all percentages had the
     # exact same number of simulations.
-    _first_simulation_number = 2  # TODO: depends on the scenario
+    _first_simulation_number = 1  # TODO: depends on the scenario
     _runs_per_input = 10
     _initial_random_seed = 7
     _random_seed_increment = 1
@@ -235,8 +235,6 @@ class VissimDataReader(DataReader):
         for i in range(len(vehicle_type)):
             vt = vehicle_type[i]
             percentage = percentage_copy[i]
-        # for vt in vehicle_type:
-        #     for percentage in percentage_copy:
             percent_folder = file_handling.create_percent_folder_name(
                 percentage, vt)
             percentage_path = os.path.join(self.data_dir, percent_folder)
@@ -359,7 +357,7 @@ class VehicleRecordReader(VissimDataReader):
         'COORDREARX': 'rear_x', 'COORDREARY': 'rear_y',
         'SPEEDDIFF': 'vissim_delta_v', 'LENGTH': 'length',
         'LNCHG': 'lane_change', 'GIVECONTROLTOVISSIM': 'vissim_control',
-        'LEADTARGTYPE': 'leader_type'
+        'LEADTARGTYPE': 'target_type'
     }
 
     # Note: we don't necessarily want all the variables listed in each of the
@@ -643,38 +641,35 @@ class SafetyDataReader(DataReader):
         :param vehicle_input: TODO
         :return: pandas dataframe with the data
         """
-        if isinstance(vehicle_percentage, list):
-            percentage_copy = vehicle_percentage[:]
-        else:
-            percentage_copy = [vehicle_percentage]
-        # if not isinstance(vehicle_type, list):
-        #     vehicle_type = [vehicle_type]
-        # TODO: deal with None vehicle_input (which means get all available
-        #  inputs)
+        percentage_copy = vehicle_percentage[:]
+
         if not isinstance(vehicle_input, list):
             vehicle_input = [vehicle_input]
         desired_folders = set([str(vi) + '_vehs_per_lane'
                                for vi in vehicle_input])
 
         data_per_folder = []
-        for vt in vehicle_type:
-            for percentage in percentage_copy:
-                percent_folder = file_handling.create_percent_folder_name(
-                    percentage, vt)
-                percentage_path = os.path.join(self.data_dir, percent_folder)
+        # for vt in vehicle_type:
+        #     for percentage in percentage_copy:
+        for i in range(len(vehicle_type)):
+            vt = vehicle_type[i]
+            percentage = percentage_copy[i]
+            percent_folder = file_handling.create_percent_folder_name(
+                percentage, vt)
+            percentage_path = os.path.join(self.data_dir, percent_folder)
 
-                # Check all the *_vehs_per_lane folders in the percentage folder
-                for folder in os.listdir(percentage_path):
-                    if (os.path.isdir(os.path.join(percentage_path, folder))
-                            and folder in desired_folders):
-                        veh_input = int(folder.split('_')[0])
-                        data_per_folder.append(self.load_data(
-                            vt, percentage, veh_input))
+            # Check all the *_vehs_per_lane folders in the percentage folder
+            for folder in os.listdir(percentage_path):
+                if (os.path.isdir(os.path.join(percentage_path, folder))
+                        and folder in desired_folders):
+                    veh_input = int(folder.split('_')[0])
+                    data_per_folder.append(self.load_data(
+                        vt, percentage, veh_input))
             # We only need to load data without any controlled vehicles once
-            if [0] in percentage_copy:
-                percentage_copy.remove([0])
+            # if [0] in percentage_copy:
+            #     percentage_copy.remove([0])
         data = pd.concat(data_per_folder, ignore_index=True)
-        match_sim_number_to_random_seed(data)
+        # match_sim_number_to_random_seed(data)
         return data
 
     def _load_file_starting_with_name(self, network_file, data_folder):
@@ -739,7 +734,7 @@ class ViolationsReader(SafetyDataReader):
 
 
 class DiscomfortReader(SafetyDataReader):
-    _data_identifier = 'Discomfort'
+    _data_identifier = '_Discomfort'
 
     def __init__(self, network_name):
         SafetyDataReader.__init__(self, network_name, self._data_identifier)

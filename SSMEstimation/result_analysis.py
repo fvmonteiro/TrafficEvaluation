@@ -3,6 +3,7 @@ from typing import List, Dict
 from typing import Union
 
 import matplotlib.pyplot as plt
+from matplotlib import ticker
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -177,7 +178,7 @@ class ResultAnalyzer:
             print('Veh input: ', veh_input)
             veh_input_idx = relevant_data['vehicles_per_lane'] == veh_input
             for control_percentage in relevant_data[
-                                      'control_percentages'].unique():
+                'control_percentages'].unique():
                 control_percentage_idx = (relevant_data['control_percentages']
                                           == control_percentage)
                 print('{}, Median {}: {}'.
@@ -234,7 +235,7 @@ class ResultAnalyzer:
         plt.show()
 
     def plot_risky_maneuver_histogram_per_vehicle_type(
-            self, #  controlled_percentage: List[List[int]],
+            self,  # controlled_percentage: List[List[int]],
             percentages_per_vehicle_types: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int],
             warmup_time: int = 10,
@@ -310,15 +311,13 @@ class ResultAnalyzer:
                               mean_count, mean_simulation_risk))
 
     def plot_violations_per_control_percentage(
-            self, #  controlled_percentage: List[List[int]],
+            self,  # controlled_percentage: List[List[int]],
             percentages_per_vehicle_types: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int],
             warmup_time: int = 10):
         """
         Plots number of violations .
 
-        :param controlled_percentage: Percentage of controlled vehicles
-         in the simulation. If this is a list, generates one plot per input.
         :param vehicles_per_lane: input per lane used to generate the data.
          If this is a list, a single plot with different colors for each
          value is drawn.
@@ -349,21 +348,147 @@ class ResultAnalyzer:
         results['mean violations'] = results['violations count'] / n_simulations
         print(results)
 
-    def plot_color_map(self, y: str,
-                       percentages_per_vehicle_types: List[Dict[VehicleType,
-                                                                int]],
-                       vehicles_per_lane: List[int],
-                       warmup_time: int = 10):
-        data = self._load_data(y, percentages_per_vehicle_types,
-                               vehicles_per_lane)
-        self._prepare_data_for_plotting(data, warmup_time)
-        table = pd.pivot_table(
-            data[[y, 'traffic_light_acc_percentage',
-                  'traffic_light_cacc_percentage']], values=y,
-            index=['traffic_light_acc_percentage'],
-            columns=['traffic_light_cacc_percentage'], aggfunc=np.sum)
-        sns.heatmap(table, annot=True, cmap='???')
+    def plot_heatmap(self, y: str,
+                     percentages_per_vehicle_types: List[Dict[VehicleType,
+                                                               int]],
+                     vehicles_per_lane: List[int],
+                     warmup_time: int = 10,
+                     should_save_fig: bool = False):
+        n_simulations = 10
+        plt.rc('font', size=17)
+        for vpl in vehicles_per_lane:
+            data = self._load_data(y, percentages_per_vehicle_types, [vpl])
+            self._prepare_data_for_plotting(data, warmup_time)
+            table = pd.pivot_table(
+                data[[y, 'traffic_light_acc_percentage',
+                      'traffic_light_cacc_percentage']], values=y,
+                index=['traffic_light_cacc_percentage'],
+                columns=['traffic_light_acc_percentage'], aggfunc=np.sum)
+            if y == 'vehicle_count':
+                table_norm = (table / n_simulations
+                              * 3 / 2)  # 60min / 20min / 2 lanes
+                format = '.0f'
+            else:
+                table_norm = table / table[0].iloc[0]
+                format = '.2g'
+            max_table_value = np.round(np.nanmax(table_norm.to_numpy()))
+            sns.heatmap(table_norm.sort_index(axis=0, ascending=False),
+                        annot=True, fmt=format,
+                        vmin=0, vmax=max(1, int(max_table_value)))
+            plt.xlabel('% of CAVs without V2V', fontsize=22)
+            plt.ylabel('% of CAVs with V2V', fontsize=22)
+            title_map = {'vehicle_count': 'Output Flow', 'discomfort':
+                         'Discomfort', 'barrier_function_risk': 'Risk'}
+            plt.title(title_map[y] + ' at ' + str(vpl) + ' vehs/h/lane',
+                      fontsize=22)
+            if should_save_fig:
+                fig = plt.gcf()
+                self.save_fig(fig, 'heatmap', y, vpl,
+                              percentages_per_vehicle_types)
+            plt.tight_layout()
+            plt.show()
 
+    def plot_violations_heatmap(self,
+                                percentages_per_vehicle_types: List[
+                                    Dict[VehicleType,int]],
+                                vehicles_per_lane: List[int],
+                                warmup_time: int = 10,
+                                should_save_fig: bool = False):
+        n_simulations = 10
+        plt.rc('font', size=17)
+        for vpl in vehicles_per_lane:
+            data = self._load_data('violations', percentages_per_vehicle_types,
+                                   [vpl])
+            self._prepare_data_for_plotting(data, warmup_time)
+            table = pd.pivot_table(
+                data[['veh_id', 'traffic_light_acc_percentage',
+                      'traffic_light_cacc_percentage']], values='veh_id',
+                index=['traffic_light_cacc_percentage'],
+                columns=['traffic_light_acc_percentage'],
+                aggfunc=np.count_nonzero)
+            # Create results for 100% controlled vehicles
+            if 100 not in table.columns and 100 not in table.index:
+                table[100] = np.nan
+                table.loc[100] = np.nan
+                for i in table.index:
+                    table.loc[i, 100-i] = 0
+            table_norm = table / n_simulations
+            # max_table_value = np.round(np.nanmax(table_norm.to_numpy()))
+            sns.heatmap(table_norm.sort_index(axis=0, ascending=False),
+                        annot=True,
+                        vmin=0)
+            plt.xlabel('% of CAVs without V2V', fontsize=22)
+            plt.ylabel('% of CAVs with V2V', fontsize=22)
+            plt.title('Violations at ' + str(vpl) + ' vehs/h/lane',
+                      fontsize=22)
+            if should_save_fig:
+                fig = plt.gcf()
+                self.save_fig(fig, 'heatmap', 'violations', vpl,
+                              percentages_per_vehicle_types)
+            plt.show()
+
+    def accel_vs_time_for_different_vehicle_pairs(self, should_save_fig=False):
+        """
+        Plots acceleration vs time for human following CAV and CAV following
+        human. This requires very specific knowledge of the simulation being
+        loaded. Currently this function plots a result for the traffic_lights
+        scenario with 25% CACC-equipped vehicles.
+        :return:
+        """
+        network_name = 'traffic_lights'
+        vehicle_type = [VehicleType.TRAFFIC_LIGHT_CACC]
+        percentage = [25]
+        vehicles_per_lane = 500
+        cases = [
+            {'follower': 'human', 'leader': 'human', 'id': 202},
+            {'follower': 'human', 'leader': 'CAV', 'id': 203},
+            {'follower': 'CAV', 'leader': 'human', 'id': 201},
+            # {'follower': 'CAV', 'leader': 'CAV', 'id': 152},
+            # {'follower': 'CAV', 'leader': 'CAV', 'id': 196},
+            # {'follower': 'CAV', 'leader': 'CAV', 'id': 208},
+            # {'follower': 'CAV', 'leader': 'CAV', 'id': 234},
+            # {'follower': 'CAV', 'leader': 'CAV', 'id': 239}
+        ]
+        time = [910, 950]
+        reader = readers.VehicleRecordReader(network_name)
+        veh_record = reader.load_data(1, vehicle_type, percentage,
+                                      vehicles_per_lane)
+        sns.set_style('whitegrid')
+        # fig, axes = plt.subplots(len(cases), 1)
+        # fig.set_size_inches(12, 16)
+        plt.rc('font', size=20)
+        full_data = []
+        for i in range(len(cases)):
+            case_dict = cases[i]
+            veh_id = case_dict['id']
+            follower_data = veh_record.loc[veh_record['veh_id'] == veh_id]
+            leader_id = follower_data.iloc[0]['leader_id']
+            leader_data = veh_record.loc[veh_record['veh_id'] == leader_id]
+            data = pd.concat([follower_data, leader_data])
+            full_data.append(data)
+            sns.lineplot(data=data.loc[(data['time'] > time[0]) & (data[
+                'time'] < time[1])], x='time', y='ax', hue='veh_id',
+                         palette='tab10', linewidth=3)
+            plt.legend(labels=[case_dict['leader'] + ' leader',
+                               case_dict['follower'] + ' follower'],
+                       fontsize=22, loc='upper center',
+                       bbox_to_anchor=(0.45, 1.3), ncol=2,
+                       frameon=False
+                       )
+            plt.xlabel('t [s]', fontsize=24)
+            plt.ylabel('a(t) [m/s^2]', fontsize=24)
+            plt.tight_layout()
+            if should_save_fig:
+                fig = plt.gcf()
+                fig.set_dpi(600)
+                fig_name = ('accel_vs_time_'
+                            + case_dict['follower'] + '_follower_'
+                            + case_dict['leader'] + '_leader')
+                # fig.set_size_inches(12, 4)
+                plt.tight_layout()
+                fig.savefig(os.path.join(self._figure_folder, fig_name))
+            plt.show()
+        full_data = pd.concat(full_data)
 
     def plot_double_y_axes(self,  # controlled_percentage: int,
                            percentages_per_vehicle_types: List[Dict[
@@ -410,7 +535,7 @@ class ResultAnalyzer:
     def speed_color_map(self, vehicles_per_lane: int,
                         percentages_per_vehicle_types: List[
                             Dict[VehicleType, int]]):
-                        # controlled_percentage: Union[int, List[int]]):
+        # controlled_percentage: Union[int, List[int]]):
         """
 
         :param vehicles_per_lane:
@@ -494,6 +619,10 @@ class ResultAnalyzer:
             return readers.LinkEvaluationReader(self.network_name)
         elif 'risk' in variable:
             return readers.SSMDataReader(self.network_name)
+        elif variable == 'discomfort':
+            return readers.DiscomfortReader(self.network_name)
+        elif variable == 'violations':
+            return readers.ViolationsReader(self.network_name)
         else:
             raise ValueError('not ready to plot ', variable)
 
@@ -532,14 +661,9 @@ class ResultAnalyzer:
         data['control_percentages'] = ''
         for ps in percentage_strings:
             idx = data[ps] > 0
+            data[ps] = data[ps].astype('int')
             data.loc[idx, 'control_percentages'] += data.loc[idx, ps].apply(
-                int).apply(str) + ps.replace('_percentage', '')
-        # for vt in self._vehicle_types:
-        #     vt_str = vt.name.lower() + '_percentage'
-        #     idx = data[vt_str] > 0
-        #     data.loc[idx, 'control_percentages'] += (
-        #             data.loc[idx, vt_str].apply(int).apply(str) + '% ' +
-        #             vt.name.lower())
+                str) + ps.replace('_percentage', '')
         data.loc[data['control_percentages'] == '',
                  'control_percentages'] = 'no control'
         data['control_percentages'] = data['control_percentages'].str.replace(
@@ -632,7 +756,7 @@ class ResultAnalyzer:
                  ):
         # Making the figure nice for inclusion in documents
         # self.widen_fig(fig, controlled_percentage)
-
+        # plt.rc('font', size=20)
         if not isinstance(vehicles_per_lane, list):
             vehicles_per_lane = [vehicles_per_lane]
         # if not isinstance(controlled_percentage, list):
@@ -642,26 +766,22 @@ class ResultAnalyzer:
 
         fig.set_dpi(200)
         axes = fig.axes
-        for ax in axes:
-            ax.ticklabel_format(style='sci', axis='y', scilimits=(0, 3),
-                                useMathText=True)
-        #     for item in ([ax.title, ax.xaxis.label, ax.yaxis.label] +
-        #                  ax.get_yticklabels() + ax.get_legend().get_texts()):
-        #         item.set_fontsize(15)
-        #     for item in ax.get_xticklabels():
-        #         item.set_fontsize(15)
-        # plt.rcParams.update({'font.size': 13})
-        # plt.rcParams.update({'xtick.labelsize': 12})
+        if plot_type != 'heatmap':
+            for ax in axes:
+                ax.ticklabel_format(style='sci', axis='y', scilimits=(0, 3),
+                                    useMathText=True)
         plt.tight_layout()
-        fig_name = (plot_type + '_' + measurement_name + '_'
-                    + self.network_name + '_'
-                    + '_'.join(str(v) for v in vehicles_per_lane) + '_'
-                    + 'vehs_per_lane' + '_'
-                    + '_'.join(vt.name.lower() for vt in set(vehicles_types))
-                    )
-                    # + '_'.join(str(c) for c in controlled_percentage) + '_'
-                    # + '_'.join(str(vt.name).lower() for vt in
-                    #            self._vehicle_types))
+        vehicle_type_strings = [vt.name.lower() for vt in set(vehicles_types)]
+        fig_name = (
+                plot_type + '_' + measurement_name + '_'
+                + self.network_name + '_'
+                + '_'.join(str(v) for v in sorted(vehicles_per_lane)) + '_'
+                + 'vehs_per_lane' + '_'
+                + '_'.join(sorted(vehicle_type_strings))
+            )
+        # + '_'.join(str(c) for c in controlled_percentage) + '_'
+        # + '_'.join(str(vt.name).lower() for vt in
+        #            self._vehicle_types))
         # plt.show()
         fig.savefig(os.path.join(self._figure_folder, fig_name))
 
