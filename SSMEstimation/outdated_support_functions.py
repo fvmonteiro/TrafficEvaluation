@@ -64,7 +64,7 @@ def save_post_processed_data(data, data_source, simulation_name):
     :param simulation_name: string with file name (no .csv needed)
     """
     # TODO: shouldn't the PostProcessedDataReader contain a saving function?
-    post_processed_dir = readers.PostProcessedDataReader.post_processed_dir
+    post_processed_dir = readers.PostProcessedDataReader_OLD.post_processed_dir
     data_dir = os.path.join(post_processed_dir, data_source)
     data.to_csv(os.path.join(data_dir, simulation_name + '.csv'), index=False)
     print('Data saved at: \n\tFolder: {:s}\n\tName:: {:s}'.
@@ -86,7 +86,7 @@ def post_process_and_save(data_source, network_name, vehicle_type):
           format(data_source, network_name))
     data = data_reader.load_data()
     print('Raw data shape: ', data.shape)
-    data_pp = post_processing.DataPostProcessor(data_source)
+    data_pp = post_processing
     data_pp.post_process_data(data)
     print('Post processed data shape: ', data.shape)
     save_post_processed_data(data, data_source,
@@ -97,7 +97,7 @@ def create_ssm(data_source, network_name, ssm_names):
     if isinstance(ssm_names, str):
         ssm_names = [ssm_names]
 
-    data_reader = readers.PostProcessedDataReader(data_source, network_name)
+    data_reader = readers.PostProcessedDataReader_OLD(data_source, network_name)
     data = data_reader.load_data()
     ssm_estimator = post_processing.SSMEstimator(data)
 
@@ -142,7 +142,7 @@ def explore_issues():
                                                 vehicle_type=
                                                 VehicleType.CONNECTED)
     veh_record = vissim_reader.load_data(2)
-    pp = post_processing.DataPostProcessor('vissim')
+    pp = post_processing
     pp.post_process_data(veh_record)
     ssm_estimator = post_processing.SSMEstimator(veh_record)
     ssm_estimator.include_ttc()

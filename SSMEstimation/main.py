@@ -1,14 +1,17 @@
 from collections import defaultdict
-from typing import List, Dict, Tuple
+from typing import List, Dict
 from typing import Union
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 
+import data_writer
 import post_processing
 import result_analysis
+import vehicle
 from data_writer import SyntheticDataWriter
 import readers
-from vehicle import VehicleType
+from vehicle import VehicleType, Vehicle
 from vissim_interface import VissimInterface
 
 
@@ -18,7 +21,7 @@ def run_toy_example():
     vi = VissimInterface()
     if not vi.load_simulation(network_file):
         return
-    vi.set_evaluation_outputs(False, False, False, False)
+    vi.set_evaluation_outputs()  # save nothing
     vi.set_simulation_parameters(sim_params)
     vi.run_in_and_out_scenario()
     vi.close_vissim()
@@ -31,8 +34,11 @@ def run_i170_scenario(save_results=False):
     vi = VissimInterface()
     if not vi.load_simulation(network_file):
         return
-    vi.set_evaluation_outputs(save_results, save_results,
-                              save_results, save_results)
+    vi.set_evaluation_outputs(save_vehicle_record=save_results,
+                              save_ssam_file=False,
+                              activate_data_collections=save_results,
+                              activate_link_evaluation=save_results,
+                              save_lane_changes=save_results)
     idx_scenario = 2  # 0: No block, 1: All time block, 2: Temporary block
     demands = [5500, ]
     # Vehicle Composition ID
@@ -47,19 +53,38 @@ def run_i170_scenario(save_results=False):
         vi.run_i710_simulation(idx_scenario, demand)
 
 
-def create_and_save_synthetic_data():
-    vx = 20
-    delta_v = 0
-    writer = SyntheticDataWriter()
-    data = writer.create_data(vx, delta_v)
-    writer.write_data(data)
+def test_risk_computation():
+    data_source = 'synthetic'
+    follower_v0 = 20
+    leader_v0 = 10
+    follower_type = Vehicle.VISSIM_CAR_ID
+    leader_type = Vehicle.VISSIM_CAR_ID
+    is_lane_changing = True
+    veh_data = data_writer.SyntheticDataWriter.create_single_veh_data(
+        follower_v0, leader_v0, is_lane_changing, follower_type, leader_type)
+    post_processing.post_process_data(data_source, veh_data)
+    ssm_estimator = post_processing.SSMEstimator(veh_data)
+    ssm_estimator.include_ssms(['risk'])
+    veh1 = veh_data[veh_data['veh_id'] == 1]
+
+    # Numerical risk computation
+    g0 = veh1['delta_x'].to_numpy()
+    tc, severity = vehicle.find_collision_time_and_severity(
+        g0, follower_v0, leader_v0, is_lane_changing,
+        follower_type, leader_type)
+
+    plt.plot(g0, veh1['risk'], 'b-', label='risk')
+    plt.plot(g0, severity, 'r--', label='numerical')
+
+    plt.legend()
+    plt.show()
 
 
 def test_safe_gap_computation():
     # create_and_save_synthetic_data()
     data_source = 'synthetic'
     # post_process_and_save('synthetic_data', network_file)
-    data_reader = readers.PostProcessedDataReader(data_source)
+    data_reader = readers.PostProcessedDataReader_OLD(data_source)
     data = data_reader.load_data()
 
     gamma = 1 / 0.8
@@ -137,14 +162,13 @@ def post_process_results(network_name: str,
     if not isinstance(input_per_lane, list):
         input_per_lane = [input_per_lane]
 
-    post_processor = post_processing.DataPostProcessor()
     for item in percentage_per_vehicle_types:
         vehicle_types = list(item.keys())
         percentages = list(item.values())
-        post_processor.create_simulation_summary(network_name, vehicle_types,
-                                                 percentages,
-                                                 vehicle_inputs=input_per_lane,
-                                                 debugging=debugging)
+        post_processing.create_simulation_summary(network_name, vehicle_types,
+                                                  percentages,
+                                                  vehicle_inputs=input_per_lane,
+                                                  debugging=debugging)
 
 
 def plot_acc_av_and_cav_results(save_results=False):
@@ -219,7 +243,7 @@ def main():
     # =============== Define data source =============== #
     # Options: i710, us101, in_and_out, in_and_merge,
     # platoon_lane_change, traffic_lights
-    network_name = 'traffic_lights'
+    network_name = 'in_and_out'
     vehicle_type = [
         # VehicleType.ACC,
         # VehicleType.AUTONOMOUS,
@@ -228,49 +252,56 @@ def main():
         VehicleType.TRAFFIC_LIGHT_CACC
     ]
 
-    percentages = [100]
+    percentages = [0]
     simulation_percentages = create_vehicle_percentages_dictionary(
         vehicle_type, percentages, 1)
-    # run_simulations(network_name, simulation_percentages, [500, 1000])
+
+    # =============== Tests ================= #
+    lc_reader = readers.LaneChangeReader(network_name)
+    veh_reader = readers.VehicleRecordReader(network_name)
+    lc_data = lc_reader.load_test_data()
+    veh_data = veh_reader.load_test_data()
+    post_processing.compute_lane_change_risk(veh_data, lc_data.iloc[0])
 
     # =============== Running =============== #
-    # run_simulations(network_name=network_name, vehicle_types=vehicle_type,
-    #                 percentage=0,
-    #                 percentage_increase=100,
-    #                 final_percentage=100,
-    #                 input_per_lane=500,
-    #                 input_per_lane_increase=500,
-    #                 final_input_per_lane=1000,
-    #                 )
+    # run_simulations(network_name, simulation_percentages, [500, 1000])
     # vi = vissim_interface.VissimInterface()
     # vi.load_simulation(network_name)
     # vi.reset_saved_simulations(warning_active=False)
     # vi.run_platoon_scenario()
 
     # =============== Post processing =============== #
-    post_process_results(network_name,
-                         simulation_percentages,
-                         input_per_lane=[500, 1000])
+    # post_process_results(network_name,
+    #                      simulation_percentages,
+    #                      input_per_lane=[500, 1000])
+    # pp = post_processing
+    # pp.create_simulation_summary('in_and_out', [VehicleType.CONNECTED],
+    #                              [25], [1000], True)
 
-    # post_processor = post_processing.DataPostProcessor()
-    # post_processor.create_ssm_summary(network_name,
-    #                                   vehicle_type[0],
-    #                                   0, [1000],
-    #                                   debugging)
-    # post_processor.merge_data(network_name, vehicle_type[0], 0)
-    # post_processing.DataPostProcessor.find_traffic_light_violations_all(
-    #     network_name, vehicle_type[0], 0, [1000], debugging=True
-    # )
-
-    # =============== Check results numbers =============== #
+    # =============== Checking risk computations =============== #
+    test_risk_computation()
 
     # =============== Check results graphically =============== #
     # plot_acc_av_and_cav_results(False)
     # plot_cav_varying_percentage_results(False)
     # plot_traffic_lights_results(False)
-    # percentage = [0, 100]
-    ra = result_analysis.ResultAnalyzer('traffic_lights')
-    ra.plot_color_map('vehicle_count', simulation_percentages, [500], 10)
+    # percentages = [0, 25, 50, 75, 100]
+    # simulation_percentages = create_vehicle_percentages_dictionary(
+    #     vehicle_type, percentages, 1)
+    # simulation_percentages += create_vehicle_percentages_dictionary(
+    #     vehicle_type, percentages, 2)
+    # ra = result_analysis.ResultAnalyzer('traffic_lights')
+    # veh_inputs = [500, 1000]
+    # ra.accel_vs_time_for_different_vehicle_pairs(should_save_fig=True)
+    # save_fig = False
+    # ra.plot_heatmap('vehicle_count', simulation_percentages, veh_inputs, 10,
+    #                 save_fig=save_fig)
+    # ra.plot_heatmap('barrier_function_risk', simulation_percentages,
+    #                 veh_inputs, 10, save_fig=save_fig)
+    # ra.plot_heatmap('discomfort', simulation_percentages, veh_inputs, 10,
+    #                 save_fig=save_fig)
+    # ra.plot_violations_heatmap(simulation_percentages, veh_inputs, 10,
+    #                            save_fig=True)
     # veh_inputs = [1000, 2000]
     # result_analyzer = result_analysis.ResultAnalyzer(network_name)
     # result_analyzer.box_plot_y_vs_controlled_percentage('flow', veh_inputs,
@@ -279,8 +310,8 @@ def main():
     #     'barrier_function_risk', veh_inputs, percentage, 10)
     # result_analyzer.plot_risky_maneuver_histogram_per_vehicle_type(
     #     percentage, veh_inputs)
-    # result_analyzer.plot_violations_per_control_percentage(
-    #     percentage, veh_inputs, 10)
+    # ra.plot_violations_per_control_percentage(
+    #     simulation_percentages, veh_inputs, 10)
 
 
 if __name__ == '__main__':

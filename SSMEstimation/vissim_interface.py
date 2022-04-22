@@ -352,7 +352,7 @@ class VissimInterface:
 
         if not self.load_simulation('i710'):
             return
-        self.set_evaluation_outputs(False, False, False, False)
+        self.set_evaluation_outputs()  # all false by default
 
         simulation_time_sec = 150
         current_time = 0
@@ -482,7 +482,7 @@ class VissimInterface:
         else:
             raise ValueError('Warm up time not set for network ',
                              self.network_name)
-        self.set_evaluation_outputs(True, save_ssam, True, True,
+        self.set_evaluation_outputs(True, save_ssam, True, True, True,
                                     warm_up_minutes * 60, 30)
         # Any values for initial random seed and increment are good, as long
         # as they are the same over each set of simulations.
@@ -551,20 +551,24 @@ class VissimInterface:
                                save_ssam_file: bool = False,
                                activate_data_collections: bool = False,
                                activate_link_evaluation: bool = False,
+                               save_lane_changes: bool = False,
                                warm_up_time: int = 0,
                                data_frequency: int = 30):
-        """ Sets evaluation output options for various possible VISSIM outputs
+        """
+        Sets evaluation output options for various possible VISSIM outputs.
+        If no arguments are defined, assumes all are false.
 
-        :param save_vehicle_record: Defines if VISSIM should save a vehicle
+        :param save_vehicle_record: Defines if VISSIM saves the vehicle
          record file
-        :param save_ssam_file: Defines if VISSIM should save the file to use
+        :param save_ssam_file: Defines if VISSIM saves the file to use
          with the SSAM software
         :param activate_data_collections: Tells VISSIM whether to activate
-         measurements from data collection points. Note that the autosave
+         measurements from data collection points. Note that the auto save
          option must be manually selected in VISSIM
         :param activate_link_evaluation: Tells VISSIM whether to activate
          measurements in links. Note that the auto save option must be
          manually selected in VISSIM
+        :param save_lane_changes: Defines if VISSIM saves lane changing data
         :param warm_up_time: simulation second in which the vehicle records,
         data collections and link evaluation start
         :param data_frequency: Duration of the evaluation intervals in which
@@ -587,6 +591,8 @@ class VissimInterface:
                                activate_link_evaluation)
         evaluation.SetAttValue('LinkResFromTime', warm_up_time)
         evaluation.SetAttValue('LinkResInterval', data_frequency)
+        evaluation.SetAttValue('LaneChangesWriteFile', save_lane_changes)
+        evaluation.SetAttValue('LaneChangesFromTime', warm_up_time)
 
     def set_simulation_parameters(self, sim_params: dict):
         """
@@ -754,10 +760,10 @@ class VissimInterface:
         # The percentage of non-controlled vehicles must be human
         total_controlled_percentage = sum(percentages)
         if total_controlled_percentage == 0:
-            vehicle_types = [VehicleType.HUMAN]
+            vehicle_types = [VehicleType.HUMAN_DRIVEN]
             percentages = [100]
         elif total_controlled_percentage < 100:
-            vehicle_types.append(VehicleType.HUMAN)
+            vehicle_types.append(VehicleType.HUMAN_DRIVEN)
             percentages.append(100 - total_controlled_percentage)
         composition_number = self.find_matching_vehicle_composition(
             vehicle_types)

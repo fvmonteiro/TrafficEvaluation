@@ -49,6 +49,8 @@ class DataReader:
                         controlled_percentage: List[int],
                         vehicles_per_lane: int) -> str:
         """
+        Creates a string with the full path of the simulation results data
+        folder. If all parameters are None, returns the test data folder
 
         :param vehicle_type: Enum to indicate the vehicle (controller) type
         :param controlled_percentage: Percentage of autonomous vehicles
@@ -57,6 +59,10 @@ class DataReader:
          values depend on the controlled_vehicles_percentage: 500:500:2500
         :return: string with the folder where the data is
         """
+        if (vehicle_type is None and controlled_percentage is None
+                and vehicles_per_lane is None):
+            return os.path.join(self.data_dir, 'test')
+
         percent_folder = file_handling.create_percent_folder_name(
             controlled_percentage, vehicle_type)
         vehicle_input_folder = file_handling.create_vehs_per_lane_folder_name(
@@ -184,7 +190,8 @@ class VissimDataReader(DataReader):
                             variable_name[opening_idx:closing_idx + 1])
                         variable_name = variable_name[:opening_idx]
                     try:
-                        column_names.append(self.header_map[variable_name]
+                        column_names.append(self.header_map[
+                                                variable_name.lstrip(' ')]
                                             + extra_info)
                     except KeyError:
                         column_names.append(variable_name.lower())
@@ -199,11 +206,21 @@ class VissimDataReader(DataReader):
                                      vehicles_per_lane, file_identifier))
 
         data.dropna(axis='columns', how='all', inplace=True)
-        for i in range(len(vehicle_type)):
-            data[vehicle_type[i].name.lower() + '_percentage'] = (
-                controlled_vehicles_percentage[i])
-        data['vehicles_per_lane'] = int(vehicles_per_lane)
+
+        # Accept None vehicle_type and vehicles_per_lane during testing phase
+        if vehicle_type is not None:
+            for i in range(len(vehicle_type)):
+                data[vehicle_type[i].name.lower() + '_percentage'] = (
+                    controlled_vehicles_percentage[i])
+        if vehicles_per_lane is not None:
+            data['vehicles_per_lane'] = int(vehicles_per_lane)
         return data
+
+    def load_test_data(self):
+        """
+        Loads data inside the 'test' folder
+        """
+        return self.load_data(1)
 
     def load_data_with_controlled_percentage(
             self, vehicle_type: List[List[VehicleType]],
@@ -495,7 +512,7 @@ class DataCollectionReader(VissimDataReader):
                                   self._header_identifier, self._header_map)
 
     def load_data(self, file_identifier, vehicle_type: List[VehicleType] = None,
-                  controlled_vehicles_percentage: List[int] = 0,
+                  controlled_vehicles_percentage: List[int] = None,
                   vehicles_per_lane: int = None,
                   n_rows: int = None) -> pd.DataFrame:
         data = super().load_data(file_identifier, vehicle_type,
@@ -572,7 +589,34 @@ class VehicleInputReader(VissimDataReader):
     #         percentage)
 
 
-class SafetyDataReader(DataReader):
+class LaneChangeReader(VissimDataReader):
+    """Reads lane change data"""
+
+    _file_format = '.spw'
+    _separator = ';'
+    _data_identifier = ''
+    _header_identifier = 't; VehNo;'
+    _header_map = {
+        't': 'start_time', 'VehNo': 'veh_id', 'v [m/s]': 'vx',
+        'Link No.': 'link', 'Lane': 'origin_lane', 'New Lane': 'dest_lane',
+        'VF': 'lo_id', 'v VF [m/s]': 'lo_vx',
+        'dv VF [m/s]': 'lo_delta_vx', 'dx VF [m]': 'lo_gap',
+        'VB': 'fo_id', 'v VB': 'fo_vx',
+        'dv VB [m/s]': 'fo_delta_vx', 'dx VB': 'fo_gap',
+        'new VF': 'ld_id', 'v new VF [m/s]': 'ld_vx',
+        'dv new VF [m/s]': 'ld_delta_vx', 'dx new VF [m]': 'ld_gap',
+        'new VB': 'fd_id', 'v new VB [m/s]': 'fd_vx',
+        'dv new VB [m/s]': 'fd_delta_vx', 'dx new VB [m]': 'fd_gap',
+    }
+
+    def __init__(self, network_name):
+        VissimDataReader.__init__(self, network_name,
+                                  self._file_format, self._separator,
+                                  self._data_identifier,
+                                  self._header_identifier, self._header_map)
+
+
+class PostProcessedDataReader(DataReader):
     """
     Base class to read safety data extracted from vissim simulations
     """
@@ -689,14 +733,15 @@ class SafetyDataReader(DataReader):
         return file_with_longer_name[0]
 
 
-class SSMDataReader(SafetyDataReader):
+class SSMDataReader(PostProcessedDataReader):
     """Reads aggregated SSM data obtained after processing vehicle record
     data"""
 
     _data_identifier = '_SSM Results'
 
     def __init__(self, network_name):
-        SafetyDataReader.__init__(self, network_name, self._data_identifier)
+        PostProcessedDataReader.__init__(self, network_name,
+                                         self._data_identifier)
 
     def load_data(self, file_identifier,
                   controlled_vehicles_percentage: int = None,
@@ -719,32 +764,36 @@ class SSMDataReader(SafetyDataReader):
         return data
 
 
-class RiskyManeuverReader(SafetyDataReader):
+class RiskyManeuverReader(PostProcessedDataReader):
     _data_identifier = '_Risky Maneuvers'
 
     def __init__(self, network_name):
-        SafetyDataReader.__init__(self, network_name, self._data_identifier)
+        PostProcessedDataReader.__init__(self, network_name,
+                                         self._data_identifier)
 
 
-class ViolationsReader(SafetyDataReader):
+class ViolationsReader(PostProcessedDataReader):
     _data_identifier = '_Traffic Light Violations'
 
     def __init__(self, network_name):
-        SafetyDataReader.__init__(self, network_name, self._data_identifier)
+        PostProcessedDataReader.__init__(self, network_name,
+                                         self._data_identifier)
 
 
-class DiscomfortReader(SafetyDataReader):
+class DiscomfortReader(PostProcessedDataReader):
     _data_identifier = '_Discomfort'
 
     def __init__(self, network_name):
-        SafetyDataReader.__init__(self, network_name, self._data_identifier)
+        PostProcessedDataReader.__init__(self, network_name,
+                                         self._data_identifier)
 
 
-class MergedDataReader(SafetyDataReader):
+class MergedDataReader(PostProcessedDataReader):
     _data_identifier = '_Merged Data'
 
     def __init__(self, network_name: str):
-        SafetyDataReader.__init__(self, network_name, self._data_identifier)
+        PostProcessedDataReader.__init__(self, network_name,
+                                         self._data_identifier)
         # network_file = file_handling.get_file_name_from_network_name(
         #     network_name)
         # network_relative_address = (file_handling.
@@ -859,7 +908,80 @@ class NGSIMDataReader(DataReader):
     #     return self.interval_switch[self.interval]
 
 
-class PostProcessedDataReader(DataReader):
+class SyntheticDataReader(DataReader):
+    file_extension = '.csv'
+    synthetic_dir = ('C:\\Users\\fvall\\Documents\\Research\\TrafficSimulation'
+                     '\\synthetic_data\\')
+    synthetic_sim_name = 'synthetic_data'
+
+    def __init__(self):
+        self.sim_number = 0
+        self.column_names = ['time', 'veh_id', 'veh_type', 'link', 'lane', 'x',
+                             'vx', 'y', 'leader_id', 'delta_x']
+        DataReader.__init__(self, self.synthetic_dir, self.synthetic_sim_name)
+        self.data_source = 'synthetic'
+
+    def load_data(self, file_identifier=None):
+        file_name = self.network_name
+        full_address = os.path.join(self.data_dir,
+                                    file_name + self.file_extension)
+        with open(full_address, 'r') as file:
+            data = pd.read_csv(file)
+        self._select_relevant_columns(data)
+        return data
+
+    def load_test_data(self):
+        return self.load_data()
+
+
+class TrafficLightSourceReader:
+    _file_extension = '.csv'
+    _data_identifier = '_source_times'
+
+    def __init__(self, network_name: str):
+        file = (file_handling.get_relative_address_from_network_name(
+            network_name) + self._data_identifier + self._file_extension)
+        self._file_address = os.path.join(vissim_networks_folder,
+                                          file)
+
+    def load_data(self) -> pd.DataFrame:
+        tl_data = pd.read_csv(self._file_address)
+        if 'starts_red' not in tl_data.columns:
+            tl_data['starts_red'] = True
+        tl_data['cycle_time'] = (
+                tl_data['red duration']
+                + tl_data['green duration']
+                + tl_data['amber duration'])
+        return tl_data
+
+
+class SignalControllerFileReader(DataReader):
+    _file_extension = '.sig'
+
+    def __init__(self, network_name):
+        DataReader.__init__(self, vissim_networks_folder, network_name)
+
+    def load_data(self, file_identifier: int) -> ET.ElementTree:
+        """
+
+        :param file_identifier: Indicates the id of the signal controller
+        :return:
+        """
+        relative_address = (
+            file_handling.get_relative_address_from_network_name(
+                self.network_name))
+        full_address = os.path.join(self.data_dir, relative_address
+                                    + str(file_identifier)
+                                    + self._file_extension)
+        try:
+            with open(full_address, 'r') as file:
+                return ET.parse(file)
+        except OSError:
+            raise ValueError('File {} not found'.format(full_address))
+
+
+# DEPRECATED CLASSES #
+class PostProcessedDataReader_OLD(DataReader):
     file_extension = '.csv'
     post_processed_dir = ('C:\\Users\\fvall\\Documents\\Research'
                           '\\TrafficSimulation\\post_processed_data')
@@ -941,72 +1063,3 @@ class OnLineDataReader(DataReader):
     #     results_df = pd.DataFrame.from_records(results)
     #
     #     return results_df
-
-
-class SyntheticDataReader(DataReader):
-    file_extension = '.csv'
-    synthetic_dir = ('C:\\Users\\fvall\\Documents\\Research\\TrafficSimulation'
-                     '\\synthetic_data\\')
-    synthetic_sim_name = 'synthetic_data'
-
-    def __init__(self):
-        self.sim_number = 0
-        self.column_names = ['time', 'veh_id', 'veh_type', 'link', 'lane', 'x',
-                             'vx', 'y', 'leader_id', 'delta_x']
-        DataReader.__init__(self, self.synthetic_dir, self.synthetic_sim_name)
-        self.data_source = 'synthetic'
-
-    def load_data(self, file_identifier=None):
-        file_name = self.network_name
-        full_address = os.path.join(self.data_dir,
-                                    file_name + self.file_extension)
-        with open(full_address, 'r') as file:
-            data = pd.read_csv(file)
-        self._select_relevant_columns(data)
-        return data
-
-
-class TrafficLightSourceReader:
-    _file_extension = '.csv'
-    _data_identifier = '_source_times'
-
-    def __init__(self, network_name: str):
-        file = (file_handling.get_relative_address_from_network_name(
-            network_name) + self._data_identifier + self._file_extension)
-        self._file_address = os.path.join(vissim_networks_folder,
-                                          file)
-
-    def load_data(self) -> pd.DataFrame:
-        tl_data = pd.read_csv(self._file_address)
-        if 'starts_red' not in tl_data.columns:
-            tl_data['starts_red'] = True
-        tl_data['cycle_time'] = (
-                tl_data['red duration']
-                + tl_data['green duration']
-                + tl_data['amber duration'])
-        return tl_data
-
-
-class SignalControllerFileReader(DataReader):
-    _file_extension = '.sig'
-
-    def __init__(self, network_name):
-        DataReader.__init__(self, vissim_networks_folder, network_name)
-
-    def load_data(self, file_identifier: int) -> ET.ElementTree:
-        """
-
-        :param file_identifier: Indicates the id of the signal controller
-        :return:
-        """
-        relative_address = (
-            file_handling.get_relative_address_from_network_name(
-                self.network_name))
-        full_address = os.path.join(self.data_dir, relative_address
-                                    + str(file_identifier)
-                                    + self._file_extension)
-        try:
-            with open(full_address, 'r') as file:
-                return ET.parse(file)
-        except OSError:
-            raise ValueError('File {} not found'.format(full_address))

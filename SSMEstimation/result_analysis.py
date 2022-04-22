@@ -96,11 +96,9 @@ class ResultAnalyzer:
         versus time.
         
         :param y: name of the variable being plotted.
-        :param percentages_per_vehicle_types: TODO
+        :param percentages_per_vehicle_types: each dictionary in the list must
+         define the percentage of different vehicles type in the simulation
         :param vehicles_per_lane: input per lane used to generate the data
-        :param controlled_percentage: Percentage of controlled vehicles
-         present in the simulation. If this is a list, a single plot with
-         different colors for each percentage is drawn.
         :param warmup_time: must be given in minutes. Samples before start_time 
          are ignored.
         :param should_save_fig: determines whether to save the resulting
@@ -135,11 +133,8 @@ class ResultAnalyzer:
 
         :param y: name of the variable being plotted.
         :param vehicles_per_lane: input per lane used to generate the data
-        :param controlled_percentage: Percentage of controlled vehicles
-         present in the simulation. If this is a list, a single plot with
-         different colors for each percentage is drawn. [No more] We expect an
-         int,but, for debugging purposes, a string with the folder name is also
-         accepted.
+        :param percentages_per_vehicle_types: each dictionary in the list must
+         define the percentage of different vehicles type in the simulation
         :param warmup_time: must be given in minutes. Samples before
          start_time are ignored.
         :param should_save_fig: determines whether to save the resulting
@@ -177,8 +172,9 @@ class ResultAnalyzer:
         for veh_input in vehicles_per_lane:
             print('Veh input: ', veh_input)
             veh_input_idx = relevant_data['vehicles_per_lane'] == veh_input
-            for control_percentage in relevant_data[
-                'control_percentages'].unique():
+            all_control_percentages = relevant_data[
+                'control_percentages'].unique()
+            for control_percentage in all_control_percentages:
                 control_percentage_idx = (relevant_data['control_percentages']
                                           == control_percentage)
                 print('{}, Median {}: {}'.
@@ -199,9 +195,8 @@ class ResultAnalyzer:
 
         :param y: name of the variable being plotted.
         :param vehicles_per_lane: input per lane used to generate the data
-        :param controlled_percentage: Percentage of controlled vehicles
-         present in the simulation. If this is a list, a single plot with
-         different colors for each percentage is drawn.
+        :param percentages_per_vehicle_types: each dictionary in the list must
+         define the percentage of different vehicles type in the simulation
         :param warmup_time: must be given in minutes. Samples before
          start_time are ignored.
         :param should_save_fig: determines whether to save the resulting
@@ -244,8 +239,8 @@ class ResultAnalyzer:
         """
         Plots histograms of risky maneuvers' total risk.
 
-        :param controlled_percentage: Percentage of controlled vehicles
-         in the simulation.
+        :param percentages_per_vehicle_types: each dictionary in the list must
+         define the percentage of different vehicles type in the simulation
         :param vehicles_per_lane: input per lane used to generate the data.
          If this is a list, a single plot with different colors for each
          value is drawn.
@@ -318,12 +313,13 @@ class ResultAnalyzer:
         """
         Plots number of violations .
 
+        :param percentages_per_vehicle_types: each dictionary in the list must
+         define the percentage of different vehicles type in the simulation
         :param vehicles_per_lane: input per lane used to generate the data.
          If this is a list, a single plot with different colors for each
          value is drawn.
         :param warmup_time: must be given in minutes. Samples before
          warmup_time are ignored.
-        :param should_save_fig: If true, figures are saved to file.
         :return: Nothing, just plots figures
         """
         # if not isinstance(vehicles_per_lane, list):
@@ -350,7 +346,7 @@ class ResultAnalyzer:
 
     def plot_heatmap(self, y: str,
                      percentages_per_vehicle_types: List[Dict[VehicleType,
-                                                               int]],
+                                                              int]],
                      vehicles_per_lane: List[int],
                      warmup_time: int = 10,
                      should_save_fig: bool = False):
@@ -367,18 +363,18 @@ class ResultAnalyzer:
             if y == 'vehicle_count':
                 table_norm = (table / n_simulations
                               * 3 / 2)  # 60min / 20min / 2 lanes
-                format = '.0f'
+                value_format = '.0f'
             else:
                 table_norm = table / table[0].iloc[0]
-                format = '.2g'
+                value_format = '.2g'
             max_table_value = np.round(np.nanmax(table_norm.to_numpy()))
             sns.heatmap(table_norm.sort_index(axis=0, ascending=False),
-                        annot=True, fmt=format,
+                        annot=True, fmt=value_format,
                         vmin=0, vmax=max(1, int(max_table_value)))
             plt.xlabel('% of CAVs without V2V', fontsize=22)
             plt.ylabel('% of CAVs with V2V', fontsize=22)
             title_map = {'vehicle_count': 'Output Flow', 'discomfort':
-                         'Discomfort', 'barrier_function_risk': 'Risk'}
+                'Discomfort', 'barrier_function_risk': 'Risk'}
             plt.title(title_map[y] + ' at ' + str(vpl) + ' vehs/h/lane',
                       fontsize=22)
             if should_save_fig:
@@ -390,7 +386,7 @@ class ResultAnalyzer:
 
     def plot_violations_heatmap(self,
                                 percentages_per_vehicle_types: List[
-                                    Dict[VehicleType,int]],
+                                    Dict[VehicleType, int]],
                                 vehicles_per_lane: List[int],
                                 warmup_time: int = 10,
                                 should_save_fig: bool = False):
@@ -411,7 +407,7 @@ class ResultAnalyzer:
                 table[100] = np.nan
                 table.loc[100] = np.nan
                 for i in table.index:
-                    table.loc[i, 100-i] = 0
+                    table.loc[i, 100 - i] = 0
             table_norm = table / n_simulations
             # max_table_value = np.round(np.nanmax(table_norm.to_numpy()))
             sns.heatmap(table_norm.sort_index(axis=0, ascending=False),
@@ -467,7 +463,9 @@ class ResultAnalyzer:
             data = pd.concat([follower_data, leader_data])
             full_data.append(data)
             sns.lineplot(data=data.loc[(data['time'] > time[0]) & (data[
-                'time'] < time[1])], x='time', y='ax', hue='veh_id',
+                                                                       'time'] <
+                                                                   time[1])],
+                         x='time', y='ax', hue='veh_id',
                          palette='tab10', linewidth=3)
             plt.legend(labels=[case_dict['leader'] + ' leader',
                                case_dict['follower'] + ' follower'],
@@ -488,7 +486,7 @@ class ResultAnalyzer:
                 plt.tight_layout()
                 fig.savefig(os.path.join(self._figure_folder, fig_name))
             plt.show()
-        full_data = pd.concat(full_data)
+        # full_data = pd.concat(full_data)
 
     def plot_double_y_axes(self,  # controlled_percentage: int,
                            percentages_per_vehicle_types: List[Dict[
@@ -498,8 +496,8 @@ class ResultAnalyzer:
         """Loads data from the simulation with the indicated controlled vehicles
         percentage and plots two variables against the same x axis
 
-        :param controlled_percentage: Percentage of controlled vehicles
-         present in the simulation.
+        :param percentages_per_vehicle_types: each dictionary in the list must
+         define the percentage of different vehicles type in the simulation
         :param x: Options: flow, density, or any of the surrogate safety
          measures, namely, risk, low_TTC, high_DRAC
         :param y: Must be a two-element list. Options: flow, density, or any of
@@ -539,7 +537,8 @@ class ResultAnalyzer:
         """
 
         :param vehicles_per_lane:
-        :param controlled_percentage:
+       :param percentages_per_vehicle_types: each dictionary in the list must
+         define the percentage of different vehicles type in the simulation
         :return:
         """
         raise NotImplementedError
@@ -637,19 +636,19 @@ class ResultAnalyzer:
         3. [Optional] Removes samples before warm-up time
         4. [Optional] Filter out certain sensor groups
 
-        :param data: Dataframe with data from all sources (link evaluation,
-         data collection, and ssm)
+        :param data: data aggregated over time
         :param warmup_time: Samples earlier than warmup_time are dropped
         :param flow_sensor_number: if plotting flow, we can determine choose
          which data collection measurement will be shown
         """
         self._create_single_control_percentage_column(data)
         if 'time' not in data.columns:
-            post_processing.create_time_in_minutes(data)
+            post_processing.create_time_in_minutes_from_intervals(data)
         if 'flow' in data.columns:
             data.drop(data[data['sensor_number'] != flow_sensor_number].index,
                       inplace=True)
         data.drop(index=data[data['time'] < warmup_time].index, inplace=True)
+
 
     def _create_single_control_percentage_column(self, data: pd.DataFrame):
         """
@@ -778,7 +777,7 @@ class ResultAnalyzer:
                 + '_'.join(str(v) for v in sorted(vehicles_per_lane)) + '_'
                 + 'vehs_per_lane' + '_'
                 + '_'.join(sorted(vehicle_type_strings))
-            )
+        )
         # + '_'.join(str(c) for c in controlled_percentage) + '_'
         # + '_'.join(str(vt.name).lower() for vt in
         #            self._vehicle_types))
