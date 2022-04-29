@@ -23,7 +23,7 @@ def list_of_dicts_to_2d_lists(dict_list: List[Dict]):
 
 
 def list_of_dicts_to_1d_list(dict_list: List[Dict]):
-    # TODO: slow solution because of the summing of lists, but shouldn't
+    # Note: slow solution because of the summing of lists, but shouldn't
     #  impact performance
     keys = []
     values = []
@@ -45,38 +45,26 @@ class ResultAnalyzer:
                            'CPI': 'CPI',
                            'risk': 'CRI'}
 
-    def __init__(self, network_name: str,
-                 # vehicle_types: List[List[VehicleType]]
-                 ):
+    def __init__(self, network_name: str, should_save_fig:bool = False):
         if os.environ['COMPUTERNAME'] == 'DESKTOP-626HHGI':
             self._figure_folder = ('C:\\Users\\fvall\\Google Drive\\Safety in '
                                    'Mixed Traffic\\images')
         else:
             self._figure_folder = ('G:\\My Drive\\Safety in Mixed Traffic'
                                    '\\images')
-        # if not isinstance(vehicle_types, list):
-        #     vehicle_types = [vehicle_types]
         self.network_name = network_name
-        # self._vehicle_types = vehicle_types
-        # link_evaluation_reader = [readers.LinkEvaluationReader(
-        #     network_name, vt) for vt in vehicle_types]
-        # data_collections_reader = [readers.DataCollectionReader(
-        #     network_name, vt) for vt in vehicle_types]
-        # ssm_data_reader = [readers.SSMDataReader(
-        #     network_name, vt) for vt in vehicle_types]
-        # self._data_readers = [
-        #     link_evaluation_reader,
-        #     data_collections_reader,
-        #     ssm_data_reader
-        # ]
+        self.should_save_fig = should_save_fig
 
     # Plots aggregating results from multiple simulations ==================== #
     def plot_xy(self, x: str, y: str,
-                controlled_vehicles_percentage: Union[int, List[int]],
+                percentages_per_vehicle_types: List[Dict[VehicleType, int]],
+                vehicles_per_lane: int,
                 warmup_time: int = 0):
-        if not isinstance(controlled_vehicles_percentage, list):
-            controlled_vehicles_percentage = [controlled_vehicles_percentage]
-        data = self._load_all_merged_data(controlled_vehicles_percentage)
+
+        if not isinstance(percentages_per_vehicle_types, list):
+            percentages_per_vehicle_types = [percentages_per_vehicle_types]
+        data = self._load_data(y, percentages_per_vehicle_types,
+                               [vehicles_per_lane])
         self._prepare_data_for_plotting(data, warmup_time)
         # self.remove_deadlock_simulations(relevant_data)
 
@@ -91,7 +79,7 @@ class ResultAnalyzer:
                            Dict[VehicleType, int]],
                        vehicles_per_lane: int,
                        # controlled_percentage: Union[int, List[int]],
-                       warmup_time: int = 0, should_save_fig: bool = False):
+                       warmup_time: int = 0):
         """Plots averaged y over several runs with the same vehicle input 
         versus time.
         
@@ -101,8 +89,6 @@ class ResultAnalyzer:
         :param vehicles_per_lane: input per lane used to generate the data
         :param warmup_time: must be given in minutes. Samples before start_time 
          are ignored.
-        :param should_save_fig: determines whether to save the resulting
-         figure to a file
          """
 
         data = self._load_data(y, percentages_per_vehicle_types,
@@ -117,17 +103,15 @@ class ResultAnalyzer:
         ax = sns.lineplot(data=relevant_data, x='time', y=y,
                           hue='control_percentages', ci='sd')
         ax.set_title('Input: ' + str(vehicles_per_lane) + ' vehs per lane')
-        if should_save_fig:
+        if self.should_save_fig:
             self.save_fig(plt.gcf(), 'time_plot', y, [vehicles_per_lane],
                           percentages_per_vehicle_types)
         plt.show()
 
     def box_plot_y_vs_controlled_percentage(
             self, y: str, vehicles_per_lane: Union[int, List[int]],
-            # controlled_percentage: Union[int, List[int]],
             percentages_per_vehicle_types: List[Dict[VehicleType, int]],
-            warmup_time: int = 0, should_save_fig: bool = False,
-            flow_sensor_number: int = 1):
+            warmup_time: int = 0, flow_sensor_number: int = 1):
         """Plots averaged y over several runs with the same vehicle input
         versus controlled vehicles percentage as a box plot.
 
@@ -137,8 +121,6 @@ class ResultAnalyzer:
          define the percentage of different vehicles type in the simulation
         :param warmup_time: must be given in minutes. Samples before
          start_time are ignored.
-        :param should_save_fig: determines whether to save the resulting
-         figure to a file
         :param flow_sensor_number: if plotting flow, we can determine choose
          which data collection measurement will be shown
         """
@@ -161,7 +143,7 @@ class ResultAnalyzer:
         else:
             sns.boxplot(data=relevant_data,  # orient='h',
                         x='control_percentages', y=y)
-        if should_save_fig:
+        if self.should_save_fig:
             self.save_fig(plt.gcf(), 'box_plot', y, vehicles_per_lane,
                           percentages_per_vehicle_types)
         # self.widen_fig(plt.gcf(), controlled_percentage)
@@ -186,8 +168,7 @@ class ResultAnalyzer:
     def box_plot_y_vs_vehicle_type(
             self, y: str, vehicles_per_lane: int,
             percentages_per_vehicle_types: List[Dict[VehicleType, int]],
-            # controlled_percentage: Union[int, List[int]],
-            warmup_time: int = 0, should_save_fig: bool = False):
+            warmup_time: int = 0):
         """
         Plots averaged y over several runs with the same vehicle input
         versus vehicles type as a box plot. The control percentages are used
@@ -222,7 +203,7 @@ class ResultAnalyzer:
         sns.boxplot(data=relevant_data,  # orient='h',
                     x='control_type', y=y,
                     hue='percentage')
-        if should_save_fig:
+        if self.should_save_fig:
             self.save_fig(plt.gcf(), 'box_plot', y, [vehicles_per_lane],
                           percentages_per_vehicle_types)
         self.widen_fig(plt.gcf(), len(percentages_per_vehicle_types))
@@ -230,12 +211,9 @@ class ResultAnalyzer:
         plt.show()
 
     def plot_risky_maneuver_histogram_per_vehicle_type(
-            self,  # controlled_percentage: List[List[int]],
-            percentages_per_vehicle_types: List[Dict[VehicleType, int]],
+            self, percentages_per_vehicle_types: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int],
-            warmup_time: int = 10,
-            min_total_risk: float = 1,
-            should_save_fig: bool = False):
+            warmup_time: int = 10, min_total_risk: float = 1):
         """
         Plots histograms of risky maneuvers' total risk.
 
@@ -248,7 +226,6 @@ class ResultAnalyzer:
          warmup_time are ignored.
         :param min_total_risk: risky maneuvers with total risk below this
          value are ignored.
-        :param should_save_fig: If true, figures are saved to file.
         :return: Nothing, just plots figures
         """
         # if not isinstance(vehicles_per_lane, list):
@@ -282,7 +259,7 @@ class ResultAnalyzer:
                          stat='count', hue='vehicles_per_lane',
                          palette='tab10', bins=bins)
             plt.tight_layout()
-            if should_save_fig:
+            if self.should_save_fig:
                 fig = plt.gcf()
                 fig.set_dpi(200)
                 fig_name = ('risky_intervals_'
@@ -305,9 +282,55 @@ class ResultAnalyzer:
                       .format(control_percentage, veh_input,
                               mean_count, mean_simulation_risk))
 
+    def plot_lane_change_risks(
+            self, percentages_per_vehicle_types: List[Dict[VehicleType, int]],
+            vehicles_per_lane: List[int],
+            warmup_time: int = 0):
+        """
+
+        :param percentages_per_vehicle_types:
+        :param vehicles_per_lane:
+        :param warmup_time:
+        :return:
+        """
+        lane_change_reader = readers.LaneChangeReader(self.network_name)
+        if percentages_per_vehicle_types is None and vehicles_per_lane is None:
+            data = lane_change_reader.load_test_data()
+        else:
+            vehicle_types, percentages = list_of_dicts_to_2d_lists(
+                percentages_per_vehicle_types)
+            data = lane_change_reader.load_data_with_controlled_percentage(
+                vehicle_types, percentages, vehicles_per_lane)
+        warmup_time *= 60  # minutes to seconds
+        self._create_single_control_percentage_column(data)
+        data.drop(index=data[data['start_time'] < warmup_time].index,
+                  inplace=True)
+
+        for control_percentage in data['control_percentages'].unique():
+            data_to_plot = data[data['control_percentages']
+                                == control_percentage]
+            plt.rc('font', size=15)
+            # min_bin = int(np.floor(min_total_risk))
+            # max_bin = int(np.ceil(data_to_plot['total_risk'].max()))
+            # interval = max_bin // 200 + 1
+            # bins = [i for i in range(min_bin, max_bin, interval)]
+            for veh_name in ['lo', 'ld', 'fd']:
+                sns.histplot(data=data_to_plot, x='initial_risk_to_' + veh_name,
+                             stat='percent',  hue='mandatory',
+                             palette='tab10')
+                plt.tight_layout()
+                if self.should_save_fig:
+                    fig = plt.gcf()
+                    fig.set_dpi(200)
+                    fig_name = ('lane_change_risks_'
+                                + '_'.join(str(v) for v in vehicles_per_lane)
+                                + '_vehs_per_lane' + '_'
+                                + control_percentage.replace('% ', '_'))
+                    fig.savefig(os.path.join(self._figure_folder, fig_name))
+                plt.show()
+
     def plot_violations_per_control_percentage(
-            self,  # controlled_percentage: List[List[int]],
-            percentages_per_vehicle_types: List[Dict[VehicleType, int]],
+            self, percentages_per_vehicle_types: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int],
             warmup_time: int = 10):
         """
@@ -348,8 +371,7 @@ class ResultAnalyzer:
                      percentages_per_vehicle_types: List[Dict[VehicleType,
                                                               int]],
                      vehicles_per_lane: List[int],
-                     warmup_time: int = 10,
-                     should_save_fig: bool = False):
+                     warmup_time: int = 10):
         n_simulations = 10
         plt.rc('font', size=17)
         for vpl in vehicles_per_lane:
@@ -377,7 +399,7 @@ class ResultAnalyzer:
                 'Discomfort', 'barrier_function_risk': 'Risk'}
             plt.title(title_map[y] + ' at ' + str(vpl) + ' vehs/h/lane',
                       fontsize=22)
-            if should_save_fig:
+            if self.should_save_fig:
                 fig = plt.gcf()
                 self.save_fig(fig, 'heatmap', y, vpl,
                               percentages_per_vehicle_types)
@@ -388,8 +410,7 @@ class ResultAnalyzer:
                                 percentages_per_vehicle_types: List[
                                     Dict[VehicleType, int]],
                                 vehicles_per_lane: List[int],
-                                warmup_time: int = 10,
-                                should_save_fig: bool = False):
+                                warmup_time: int = 10):
         n_simulations = 10
         plt.rc('font', size=17)
         for vpl in vehicles_per_lane:
@@ -417,13 +438,13 @@ class ResultAnalyzer:
             plt.ylabel('% of CAVs with V2V', fontsize=22)
             plt.title('Violations at ' + str(vpl) + ' vehs/h/lane',
                       fontsize=22)
-            if should_save_fig:
+            if self.should_save_fig:
                 fig = plt.gcf()
                 self.save_fig(fig, 'heatmap', 'violations', vpl,
                               percentages_per_vehicle_types)
             plt.show()
 
-    def accel_vs_time_for_different_vehicle_pairs(self, should_save_fig=False):
+    def accel_vs_time_for_different_vehicle_pairs(self):
         """
         Plots acceleration vs time for human following CAV and CAV following
         human. This requires very specific knowledge of the simulation being
@@ -476,7 +497,7 @@ class ResultAnalyzer:
             plt.xlabel('t [s]', fontsize=24)
             plt.ylabel('a(t) [m/s^2]', fontsize=24)
             plt.tight_layout()
-            if should_save_fig:
+            if self.should_save_fig:
                 fig = plt.gcf()
                 fig.set_dpi(600)
                 fig_name = ('accel_vs_time_'
@@ -584,21 +605,18 @@ class ResultAnalyzer:
 
     def get_flow_and_risk_plots(self, veh_inputs: List[int],
                                 percentages_per_vehicle_types: List[
-                                    Dict[VehicleType, int]],
-                                save_results=False):
+                                    Dict[VehicleType, int]]):
         """Generates the plots used in the Safe Lane Changes paper."""
 
         self.box_plot_y_vs_controlled_percentage(
-            'flow', veh_inputs, percentages_per_vehicle_types, warmup_time=10,
-            should_save_fig=save_results
+            'flow', veh_inputs, percentages_per_vehicle_types, warmup_time=10
         )
         self.box_plot_y_vs_controlled_percentage(
-            'risk', veh_inputs, percentages_per_vehicle_types, warmup_time=10,
-            should_save_fig=save_results
+            'risk', veh_inputs, percentages_per_vehicle_types, warmup_time=10
         )
         self.plot_risky_maneuver_histogram_per_vehicle_type(
-            percentages_per_vehicle_types, veh_inputs, min_total_risk=1,
-            should_save_fig=save_results)
+            percentages_per_vehicle_types, veh_inputs, min_total_risk=1
+        )
 
     # Support methods ======================================================== #
     def _load_data(self, y: str,
@@ -649,10 +667,9 @@ class ResultAnalyzer:
                       inplace=True)
         data.drop(index=data[data['time'] < warmup_time].index, inplace=True)
 
-
     def _create_single_control_percentage_column(self, data: pd.DataFrame):
         """
-        Create single columns with all controlled vehicles' percentages info
+        Create single column with all controlled vehicles' percentages info
         """
         percentage_strings = [col for col in data.columns
                               if 'percentage' in col]
@@ -671,33 +688,6 @@ class ResultAnalyzer:
         data['control_percentages'] = data['control_percentages'].str.replace(
             'connected', 'CAV'
         )
-
-    # def _load_all_merged_data(self,
-    #                           controlled_percentage: Union[int, List[int]]):
-    #     """Loads the necessary data, merges it all under a single dataframe,
-    #     computes the flow and returns the dataframe
-    #
-    #     :param controlled_percentage: Percentage of controlled
-    #      vehicles in the simulation. If this is a list, a single plot with
-    #      different colors for each percentage is drawn. [No more] We expect an
-    #      int, but, for debugging purposes, a string with the folder name is also
-    #      accepted.
-    #     :return: Merged dataframe with link evaluation, data collection
-    #     results and surrogate safety measurement data"""
-    #
-    #     if isinstance(controlled_percentage, list):
-    #         percentage_copy = controlled_percentage[:]
-    #     else:
-    #         percentage_copy = [controlled_percentage]
-    #     data_per_vehicle_type = []
-    #     for vt in self._vehicle_types:
-    #         data_reader = readers.MergedDataReader(self.network_name)
-    #         new_data = data_reader.load_multiple_data(vt, percentage_copy)
-    #         data_per_vehicle_type.append(new_data)
-    #         # We only need to load data without any controlled vehicles once
-    #         if 0 in percentage_copy:
-    #             percentage_copy.remove(0)
-    #     return pd.concat(data_per_vehicle_type, ignore_index=True)
 
     @staticmethod
     def _ensure_data_source_is_uniform(data: pd.DataFrame,

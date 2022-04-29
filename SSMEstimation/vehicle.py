@@ -1,7 +1,6 @@
 from enum import Enum
 from typing import Union
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 
@@ -21,13 +20,13 @@ def find_collision_time_and_severity(initial_gaps,
         time = tf
         delta_xl = np.append(delta_xl, np.ones(time_steps_diff) * delta_xl[-1])
         vl = np.append(vl, np.zeros(time_steps_diff))
-        al = np.append(al, np.zeros(time_steps_diff))
+        # al = np.append(al, np.zeros(time_steps_diff))
     else:
         time_steps_diff = -time_steps_diff
         time = tl
         delta_xf = np.append(delta_xf, np.ones(time_steps_diff) * delta_xf[-1])
         vf = np.append(vf, np.zeros(time_steps_diff))
-        af = np.append(af, np.zeros(time_steps_diff))
+        # af = np.append(af, np.zeros(time_steps_diff))
 
     # _, axes = plt.subplots(2, 1)
     # axes[0].plot(time, delta_xf)
@@ -50,9 +49,10 @@ def find_collision_time_and_severity(initial_gaps,
             time_index = temp[0][0]
             tc[i] = time[time_index]
             severity[i] = (vf - vl)[time_index]
-        if follower.brake_delay < tc[i] < follower.brake_delay + follower.tau_j:
-            jerk_i.append(i)
-            jerk_time_idx.append(time_index)
+        # if (follower.brake_delay < tc[i]
+        #         < follower.brake_delay + follower.tau_j):
+        #     jerk_i.append(i)
+        #     jerk_time_idx.append(time_index)
     return tc, severity
 
 

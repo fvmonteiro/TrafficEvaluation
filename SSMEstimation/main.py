@@ -1,4 +1,4 @@
-from collections import defaultdict
+import time
 from typing import List, Dict
 from typing import Union
 
@@ -181,8 +181,8 @@ def plot_acc_av_and_cav_results(save_results=False):
     percentage = [0, 100]
     veh_inputs = [1000, 2000]
     d_list = create_vehicle_percentages_dictionary(vehicle_types, percentage, 1)
-    result_analyzer = result_analysis.ResultAnalyzer(network_name)
-    result_analyzer.get_flow_and_risk_plots(veh_inputs, d_list, save_results)
+    result_analyzer = result_analysis.ResultAnalyzer(network_name, save_results)
+    result_analyzer.get_flow_and_risk_plots(veh_inputs, d_list)
 
 
 def plot_cav_varying_percentage_results(save_results=False):
@@ -192,8 +192,8 @@ def plot_cav_varying_percentage_results(save_results=False):
     veh_inputs = [1000, 2000]
     d_list = create_vehicle_percentages_dictionary(vehicle_types,
                                                    percentages, 1)
-    result_analyzer = result_analysis.ResultAnalyzer(network_name)
-    result_analyzer.get_flow_and_risk_plots(veh_inputs, d_list, save_results)
+    result_analyzer = result_analysis.ResultAnalyzer(network_name, save_results)
+    result_analyzer.get_flow_and_risk_plots(veh_inputs, d_list)
 
 
 def plot_traffic_lights_results(save_results=False):
@@ -204,9 +204,18 @@ def plot_traffic_lights_results(save_results=False):
     veh_inputs = [500, 1000]
     percentages_per_vehicle_type = create_vehicle_percentages_dictionary(
         vehicle_types, percentages, 1)
-    result_analyzer = result_analysis.ResultAnalyzer(network_name)
+    result_analyzer = result_analysis.ResultAnalyzer(network_name, save_results)
     result_analyzer.box_plot_y_vs_controlled_percentage(
-        'flow', veh_inputs, percentages_per_vehicle_type, 10, False)
+        'flow', veh_inputs, percentages_per_vehicle_type, 10)
+
+    ra = result_analysis.ResultAnalyzer(network_name, save_results)
+    ra.accel_vs_time_for_different_vehicle_pairs()
+    ra.plot_heatmap('vehicle_count', percentages_per_vehicle_type,
+                    veh_inputs, 10)
+    ra.plot_heatmap('barrier_function_risk', percentages_per_vehicle_type,
+                    veh_inputs, 10)
+    ra.plot_heatmap('discomfort', percentages_per_vehicle_type, veh_inputs, 10)
+    ra.plot_violations_heatmap(percentages_per_vehicle_type, veh_inputs, 10)
 
 
 # TODO: move this to some other file
@@ -247,9 +256,9 @@ def main():
     vehicle_type = [
         # VehicleType.ACC,
         # VehicleType.AUTONOMOUS,
-        # VehicleType.CONNECTED,
-        VehicleType.TRAFFIC_LIGHT_ACC,
-        VehicleType.TRAFFIC_LIGHT_CACC
+        VehicleType.CONNECTED,
+        # VehicleType.TRAFFIC_LIGHT_ACC,
+        # VehicleType.TRAFFIC_LIGHT_CACC
     ]
 
     percentages = [0]
@@ -257,11 +266,23 @@ def main():
         vehicle_type, percentages, 1)
 
     # =============== Tests ================= #
-    lc_reader = readers.LaneChangeReader(network_name)
-    veh_reader = readers.VehicleRecordReader(network_name)
-    lc_data = lc_reader.load_test_data()
-    veh_data = veh_reader.load_test_data()
-    post_processing.compute_lane_change_risk(veh_data, lc_data.iloc[0])
+    # post_processing.create_simulation_summary_test(network_name)
+
+    # lc_reader = readers.LaneChangeReader(network_name)
+    # veh_reader = readers.VehicleRecordReader(network_name)
+    # risky_maneuver_reader = readers.RiskyManeuverReader(network_name)
+    # lc_data = lc_reader.load_test_data()
+    # veh_data = veh_reader.load_test_data()
+    # risky_maneuver_data = risky_maneuver_reader.load_test_data()
+    #
+    # # start_time = time.perf_counter()
+    # post_processing.complement_lane_change_data(veh_data, lc_data,
+    #                                             risky_maneuver_data)
+    # # end_time = time.perf_counter()
+    # # print('time: ', end_time - start_time)
+    # post_processing.label_lane_changes(network_name, veh_data, lc_data)
+    # writer = data_writer.LaneChangeWriter(network_name, None)
+    # writer.save_as_csv(lc_data, None, None)
 
     # =============== Running =============== #
     # run_simulations(network_name, simulation_percentages, [500, 1000])
@@ -279,7 +300,7 @@ def main():
     #                              [25], [1000], True)
 
     # =============== Checking risk computations =============== #
-    test_risk_computation()
+    # test_risk_computation()
 
     # =============== Check results graphically =============== #
     # plot_acc_av_and_cav_results(False)
@@ -290,28 +311,10 @@ def main():
     #     vehicle_type, percentages, 1)
     # simulation_percentages += create_vehicle_percentages_dictionary(
     #     vehicle_type, percentages, 2)
-    # ra = result_analysis.ResultAnalyzer('traffic_lights')
-    # veh_inputs = [500, 1000]
-    # ra.accel_vs_time_for_different_vehicle_pairs(should_save_fig=True)
-    # save_fig = False
-    # ra.plot_heatmap('vehicle_count', simulation_percentages, veh_inputs, 10,
-    #                 save_fig=save_fig)
-    # ra.plot_heatmap('barrier_function_risk', simulation_percentages,
-    #                 veh_inputs, 10, save_fig=save_fig)
-    # ra.plot_heatmap('discomfort', simulation_percentages, veh_inputs, 10,
-    #                 save_fig=save_fig)
-    # ra.plot_violations_heatmap(simulation_percentages, veh_inputs, 10,
-    #                            save_fig=True)
-    # veh_inputs = [1000, 2000]
-    # result_analyzer = result_analysis.ResultAnalyzer(network_name)
-    # result_analyzer.box_plot_y_vs_controlled_percentage('flow', veh_inputs,
-    #                                                     percentage, 10)
-    # result_analyzer.box_plot_y_vs_controlled_percentage(
-    #     'barrier_function_risk', veh_inputs, percentage, 10)
-    # result_analyzer.plot_risky_maneuver_histogram_per_vehicle_type(
-    #     percentage, veh_inputs)
-    # ra.plot_violations_per_control_percentage(
-    #     simulation_percentages, veh_inputs, 10)
+
+    save_fig = False
+    ra = result_analysis.ResultAnalyzer(network_name, save_fig)
+    ra.plot_lane_change_risks(None, None, 0)
 
 
 if __name__ == '__main__':

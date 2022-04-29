@@ -1,37 +1,69 @@
+from dataclasses import dataclass
 import os
 import shutil
 from typing import List, Union
 
 from vehicle import VehicleType
 
-_network_names_map = {'in_and_out': 'highway_in_and_out_lanes',
-                      'in_and_merge': 'highway_in_and_merge',
-                      'i710': 'I710-MultiSec-3mi',
-                      'us101': 'US_101',
-                      'traffic_lights': 'traffic_lights_study',
-                      'platoon_lane_change': 'platoon_lane_change'}
 
-_network_relative_folders_map = {'in_and_out': '', 'in_and_merge': '',
-                                 'i710': '', 'us101': '',
-                                 'traffic_lights': 'traffic_lights_study',
-                                 'platoon_lane_change': 'platoon_lane_change'}
+@dataclass
+class _PCInfo:
+    """Used to help run simulation in different computers"""
+    easy_id: str
+    networks_folder: str
+    shared_folder: str
+
+
+@dataclass
+class _NetworkInfo:
+    """Contains information about different VISSIM networks"""
+    file_name: str
+    relative_folder: str
+    on_ramp_link: List[int]
+    off_ramp_link: List[int]
+    merging_link: List[int]
+
+
+_folders_map = {
+    'DESKTOP-P2O85S9': _PCInfo('personal_pc',
+                               'C:\\Users\\fvall\\Documents\\Research\\'
+                               'TrafficSimulation\\VISSIM_networks',
+                               'G:\\My Drive\\Safety in Mixed Traffic'
+                               '\\data_exchange'),
+    'DESKTOP-626HHGI': _PCInfo('usc-old',
+                               'C:\\Users\\fvall\\Documents\\Research\\'
+                               'AV_TrafficSimulation\\VISSIM_networks',
+                               'C:\\Users\\fvall\\Google Drive\\'
+                               'Safety in Mixed Traffic\\data_exchange'),
+    'DESKTOP-B1GECOE': _PCInfo('usc',
+                               'C:\\Users\\fvall\\Documents\\Research\\'
+                               'TrafficSimulation\\VISSIM_networks',
+                               'G:\\My Drive\\Safety in Mixed Traffic'
+                               '\\data_exchange'),
+}
+
+_network_info = {
+    'in_and_out': _NetworkInfo('highway_in_and_out_lanes', '',
+                               [2, 10001], [10003, 5], [3]),
+    'in_and_merge': _NetworkInfo('highway_in_and_merge', '',
+                                 [2, 10001], [],
+                                 [3]),
+    'i710': _NetworkInfo('I710-MultiSec-3mi', '', [], [], []),
+    'us101': _NetworkInfo('US_101', '', [4], [5], []),
+    'traffic_lights': _NetworkInfo('traffic_lights_study',
+                                   'traffic_lights_study', [], [], []),
+    'platoon_lane_change': _NetworkInfo('platoon_lane_change',
+                                        'platoon_lane_change',
+                                        [2, 10001], [1003, 5], [3])
+}
 
 
 def get_networks_folder() -> str:
-    if os.environ['COMPUTERNAME'] == 'DESKTOP-626HHGI':
-        return ('C:\\Users\\fvall\\Documents\\Research'
-                '\\AV_TrafficSimulation\\VISSIM_networks')
-    else:
-        return ('C:\\Users\\fvall\\Documents\\Research'
-                '\\TrafficSimulation\\VISSIM_networks')
+    return _folders_map[os.environ['COMPUTERNAME']].networks_folder
 
 
 def get_shared_folder() -> str:
-    if os.environ['COMPUTERNAME'] == 'DESKTOP-626HHGI':
-        return ('C:\\Users\\fvall\\Google Drive\\Safety in Mixed '
-                'Traffic\\data_exchange')
-    else:
-        return 'G:\\My Drive\\Safety in Mixed Traffic\\data_exchange'
+    return _folders_map[os.environ['COMPUTERNAME']].shared_folder
 
 
 def copy_results_from_multiple_scenarios(network_name: str,
@@ -72,10 +104,9 @@ def copy_result_files(network_name: str, vehicle_types: VehicleType,
 
 
 def get_file_name_from_network_name(network_name):
-    if network_name in _network_names_map:
-        network_name = _network_names_map[
-            network_name]
-    elif network_name in _network_names_map.values():
+    if network_name in _network_info:
+        network_name = _network_info[network_name].file_name
+    elif network_name in {i.file_name for i in _network_info.values()}:
         pass
     else:
         raise ValueError('Network "{}" is not in the list of valid '
@@ -87,13 +118,59 @@ def get_file_name_from_network_name(network_name):
 
 
 def get_network_name_from_file_name(network_file):
-    return list(_network_names_map.keys())[
-        list(_network_names_map.values()).index(network_file)]
+    for key in _network_info:
+        if _network_info[key].file_name == network_file:
+            return key
+    raise ValueError('Simulation name for this file was not found')
+    # return list(_network_names_map.keys())[
+    #     list(_network_names_map.values()).index(network_file)]
 
 
 def get_relative_address_from_network_name(network_name):
-    return os.path.join(_network_relative_folders_map[network_name],
-                        _network_names_map[network_name])
+    return os.path.join(_network_info[network_name].relative_folder,
+                        _network_info[network_name].file_name)
+    # return os.path.join(_network_relative_folders_map[network_name],
+    #                     _network_names_map[network_name])
+
+
+def get_data_folder(network_results_folder: str,
+                    vehicle_type: List[VehicleType],
+                    controlled_percentage: List[int],
+                    vehicles_per_lane: int) -> str:
+    """
+    Creates a string with the full path of the simulation results data
+    folder. If all parameters are None, returns the test data folder
+
+    :param network_results_folder: Result's folder for a given network
+    :param vehicle_type: list of enums to indicate the vehicle (controller) type
+    :param controlled_percentage: Percentage of autonomous vehicles
+     in the simulation. Current possible values: 0:25:100
+    :param vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
+     values depend on the controlled_vehicles_percentage: 500:500:2500
+    :return: string with the folder where the data is
+    """
+    if (vehicle_type is None and controlled_percentage is None
+            and vehicles_per_lane is None):
+        return os.path.join(network_results_folder, 'test')
+
+    percent_folder = create_percent_folder_name(
+        controlled_percentage, vehicle_type)
+    vehicle_input_folder = create_vehs_per_lane_folder_name(
+        vehicles_per_lane)
+    return os.path.join(network_results_folder, percent_folder,
+                        vehicle_input_folder)
+
+
+def get_on_ramp_links(network_name: str):
+    return _network_info[network_name].on_ramp_link
+
+
+def get_off_ramp_links(network_name: str):
+    return _network_info[network_name].off_ramp_link
+
+
+def get_merging_links(network_name: str):
+    return _network_info[network_name].merging_link
 
 
 def create_percent_folder_name(percentage: List[int],
