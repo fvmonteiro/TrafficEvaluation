@@ -131,7 +131,8 @@ class VissimDataReader(DataReader):
     def create_full_file_address(self, file_identifier: Union[int, str],
                                  vehicle_type: List[VehicleType],
                                  controlled_vehicles_percentage: List[int],
-                                 vehicles_per_lane: int) -> str:
+                                 vehicles_per_lane: int,
+                                 accepted_risk: int = None) -> str:
         """
 
         :param file_identifier: This can be either a integer indicating
@@ -155,7 +156,7 @@ class VissimDataReader(DataReader):
                          + num_str + self.file_format)
         data_folder = file_handling.get_data_folder(
             self.data_dir, vehicle_type, controlled_vehicles_percentage,
-            vehicles_per_lane)
+            vehicles_per_lane, accepted_risk)
         # data_folder = self.get_data_folder(vehicle_type,
         #                                    controlled_vehicles_percentage,
         #                                    vehicles_per_lane)
@@ -333,7 +334,8 @@ class VissimDataReader(DataReader):
 
     def find_min_max_file_number(self, vehicle_type: List[VehicleType],
                                  percentage: List[int],
-                                 vehicles_per_lane: int) -> (int, int):
+                                 vehicles_per_lane: int,
+                                 accepted_risk: int = None) -> (int, int):
         """"Looks for the file with the highest simulation number. This is
         usually the file containing results from all simulations.
 
@@ -346,7 +348,7 @@ class VissimDataReader(DataReader):
         min_simulation_number = 10000
         results_folder = file_handling.get_data_folder(
             self.data_dir, vehicle_type, percentage,
-            vehicles_per_lane)
+            vehicles_per_lane, accepted_risk)
         # results_folder = self.get_data_folder(vehicle_type, percentage,
         #                                       vehicles_per_lane)
         network_file = file_handling.get_file_name_from_network_name(
@@ -693,7 +695,8 @@ class PostProcessedDataReader(DataReader):
 
     def load_data(self, file_identifier: Union[List[VehicleType], None],
                   controlled_vehicles_percentage: List[int] = None,
-                  vehicles_per_lane: int = None) -> pd.DataFrame:
+                  vehicles_per_lane: int = None,
+                  accepted_risk: int = None) -> pd.DataFrame:
         """
         Loads data from one file of a chosen network with given
         vehicle input and controlled vehicle percentage
@@ -710,7 +713,7 @@ class PostProcessedDataReader(DataReader):
         vehicle_type = file_identifier
         data_folder = file_handling.get_data_folder(
             self.data_dir, vehicle_type, controlled_vehicles_percentage,
-            vehicles_per_lane)
+            vehicles_per_lane, accepted_risk)
         # data_folder = self.get_data_folder(vehicle_type,
         #                                    controlled_vehicles_percentage,
         #                                    vehicles_per_lane)

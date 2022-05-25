@@ -6,9 +6,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 import data_writer
+import file_handling
 import post_processing
 import result_analysis
 import vehicle
+import vissim_interface
 from data_writer import SyntheticDataWriter
 import readers
 from vehicle import VehicleType, Vehicle
@@ -261,10 +263,15 @@ def main():
         # VehicleType.TRAFFIC_LIGHT_CACC
     ]
 
-    percentages = [0]
+    percentages = [0, 100]
     simulation_percentages = create_vehicle_percentages_dictionary(
         vehicle_type, percentages, 1)
-
+    # vi = vissim_interface.VissimInterface()
+    # vi.load_simulation(network_name)
+    # vi.run_multiple_scenarios(simulation_percentages, [500, 1000], [0, 10],
+    #                           runs_per_scenario=2, simulation_period=360)
+    # vehicle_types = simulation_percentages
+    # file_handling.copy_results_from_multiple_scenarios(network_name, )
     # =============== Tests ================= #
     # post_processing.create_simulation_summary_test(network_name)
 
@@ -312,9 +319,9 @@ def main():
     # simulation_percentages += create_vehicle_percentages_dictionary(
     #     vehicle_type, percentages, 2)
 
-    save_fig = False
-    ra = result_analysis.ResultAnalyzer(network_name, save_fig)
-    ra.plot_lane_change_risks(None, None, 0)
+    # save_fig = False
+    # ra = result_analysis.ResultAnalyzer(network_name, save_fig)
+    # ra.plot_lane_change_risks(None, None, 0)
 
 
 if __name__ == '__main__':

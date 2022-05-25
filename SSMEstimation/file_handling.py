@@ -69,37 +69,53 @@ def get_shared_folder() -> str:
 def copy_results_from_multiple_scenarios(network_name: str,
                                          vehicle_types: List[VehicleType],
                                          controlled_percentages: List[int],
-                                         vehicles_per_lane: List[int]):
+                                         vehicles_per_lane: List[int],
+                                         accepted_risks: List[int]):
     for vt in vehicle_types:
         for p in controlled_percentages:
             for vi in vehicles_per_lane:
-                copy_result_files(network_name, vt, p, vi)
+                for ar in accepted_risks:
+                    copy_result_files(network_name, vt, p, vi, ar)
 
 
 def copy_result_files(network_name: str, vehicle_types: VehicleType,
-                      controlled_percentages: int, vehicles_per_lane: int):
-    """Copies data collections, link segments, SSMs, Risky Maneuvers and
-    Violations files to a similar folder structure in Google Drive. """
+                      controlled_percentages: int, vehicles_per_lane: int,
+                      accepted_risk: int):
+    """Copies data collections, link segments, lane change data, SSMs,
+    Risky Maneuvers and Violations files to a similar folder structure in
+    Google Drive. """
 
-    network_relative_address = get_relative_address_from_network_name(
-        network_name)
-    percentage_folder = create_percent_folder_name(
-        [controlled_percentages], [vehicle_types])
-    vehicles_per_lane_folder = (
-        create_vehs_per_lane_folder_name(
-            vehicles_per_lane))
-    source_dir = os.path.join(get_networks_folder(), network_relative_address,
-                              percentage_folder, vehicles_per_lane_folder)
-
-    target_dir = os.path.join(get_shared_folder(), network_relative_address,
-                              percentage_folder, vehicles_per_lane_folder)
+    # network_relative_address = get_relative_address_from_network_name(
+    #     network_name)
+    # percentage_folder = create_percent_folder_name(
+    #     [controlled_percentages], [vehicle_types])
+    # vehicles_per_lane_folder = (
+    #     create_vehs_per_lane_folder_name(
+    #         vehicles_per_lane))
+    # source_dir_old = os.path.join(get_networks_folder(),
+    #                              network_relative_address,
+    #                           percentage_folder, vehicles_per_lane_folder)
+    # target_dir = os.path.join(get_shared_folder(), network_relative_address,
+    #                           percentage_folder, vehicles_per_lane_folder)
+    base_source_folder = os.path.join(
+        get_networks_folder(),
+        get_relative_address_from_network_name(network_name))
+    base_target_folder = os.path.join(
+        get_shared_folder(),
+        get_relative_address_from_network_name(network_name))
+    source_dir = get_data_folder(base_source_folder, [vehicle_types],
+                                 [controlled_percentages], vehicles_per_lane,
+                                 accepted_risk)
+    target_dir = get_data_folder(base_target_folder, [vehicle_types],
+                                 [controlled_percentages], vehicles_per_lane,
+                                 accepted_risk)
     if not os.path.exists(target_dir):
         os.makedirs(target_dir)
 
     all_file_names = os.listdir(source_dir)
     for file_name in all_file_names:
         file_extension = file_name.split('.')[-1]
-        if file_extension in {'csv', 'att'}:
+        if file_extension in {'csv', 'att', 'spw'}:
             shutil.copy(os.path.join(source_dir, file_name), target_dir)
 
 
@@ -136,7 +152,8 @@ def get_relative_address_from_network_name(network_name):
 def get_data_folder(network_results_folder: str,
                     vehicle_type: List[VehicleType],
                     controlled_percentage: List[int],
-                    vehicles_per_lane: int) -> str:
+                    vehicles_per_lane: int,
+                    accepted_risk: int) -> str:
     """
     Creates a string with the full path of the simulation results data
     folder. If all parameters are None, returns the test data folder
@@ -147,6 +164,7 @@ def get_data_folder(network_results_folder: str,
      in the simulation. Current possible values: 0:25:100
     :param vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
      values depend on the controlled_vehicles_percentage: 500:500:2500
+    :param accepted_risk: maximum lane changing risk in m/s
     :return: string with the folder where the data is
     """
     if (vehicle_type is None and controlled_percentage is None
@@ -157,8 +175,10 @@ def get_data_folder(network_results_folder: str,
         controlled_percentage, vehicle_type)
     vehicle_input_folder = create_vehs_per_lane_folder_name(
         vehicles_per_lane)
+    accepted_risk_folder = create_accepted_risk_folder_name(
+        accepted_risk)
     return os.path.join(network_results_folder, percent_folder,
-                        vehicle_input_folder)
+                        vehicle_input_folder, accepted_risk_folder)
 
 
 def get_on_ramp_links(network_name: str):
@@ -203,3 +223,14 @@ def create_vehs_per_lane_folder_name(vehicles_per_lane: Union[int, str]) -> str:
     else:
         vehs_per_lane_folder = str(int(vehicles_per_lane)) + '_vehs_per_lane'
     return vehs_per_lane_folder
+
+
+def create_accepted_risk_folder_name(accepted_risk: int) -> str:
+    """
+    Creates the name of the folder which contains the results for the given
+    maximum accepted lane change risk
+    :param accepted_risk: simulation's maximum accepted lane change risk
+    :return: folder name as: [accepted_risk]_accepted_risk
+    """
+    return ('' if accepted_risk is None
+            else str(accepted_risk) + '_accepted_risk')

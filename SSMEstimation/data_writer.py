@@ -51,7 +51,8 @@ class PostProcessedDataWriter(DataWriter):
 
     def save_as_csv(self, data: pd.DataFrame,
                     controlled_vehicles_percentage: Union[List[int], None],
-                    vehicles_per_lane: Union[int, None]):
+                    vehicles_per_lane: Union[int, None],
+                    accepted_risk: Union[int, None] = None):
         """
         Saves the data on the proper results folder based on the simulated
         network, controlled vehicles percentage and vehicle input.
@@ -60,12 +61,13 @@ class PostProcessedDataWriter(DataWriter):
         :param controlled_vehicles_percentage: percentage of controlled
          vehicles in the simulation
         :param vehicles_per_lane: vehicle input per lane of the simulation
+        :param accepted_risk: maximum lane changing risk
         :return: Nothing, just saves the data
         """
         file_name = self.file_base_name + self.file_extension
         folder_path = file_handling.get_data_folder(
             self.network_data_dir, self.vehicle_type,
-            controlled_vehicles_percentage, vehicles_per_lane)
+            controlled_vehicles_percentage, vehicles_per_lane, accepted_risk)
         # percentage_folder = file_handling.create_percent_folder_name(
         #     controlled_vehicles_percentage, self.vehicle_type)
         # vehicles_per_lane_folder = (
