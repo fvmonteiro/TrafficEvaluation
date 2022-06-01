@@ -112,6 +112,7 @@ class LaneChangeWriter(PostProcessedDataWriter):
         DataWriter.__init__(self, self._data_type_identifier,
                             self._file_extension, network_name, vehicle_type)
 
+
 class MergedDataWriter(DataWriter):
     _data_type_identifier = 'Merged Data'
     _file_extension = '.csv'

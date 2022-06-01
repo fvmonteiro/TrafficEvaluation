@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import os
 import shutil
-from typing import List, Union
+from typing import Dict, List, Union
 
 from vehicle import VehicleType
 
@@ -66,20 +66,22 @@ def get_shared_folder() -> str:
     return _folders_map[os.environ['COMPUTERNAME']].shared_folder
 
 
-def copy_results_from_multiple_scenarios(network_name: str,
-                                         vehicle_types: List[VehicleType],
-                                         controlled_percentages: List[int],
-                                         vehicles_per_lane: List[int],
-                                         accepted_risks: List[int]):
-    for vt in vehicle_types:
-        for p in controlled_percentages:
-            for vi in vehicles_per_lane:
-                for ar in accepted_risks:
-                    copy_result_files(network_name, vt, p, vi, ar)
+def copy_results_from_multiple_scenarios(
+        network_name: str,
+        percentages_per_vehicle_types: List[Dict[VehicleType, int]],
+        vehicles_per_lane: List[int],
+        accepted_risks: List[int]):
+    for item in percentages_per_vehicle_types:
+        vehicle_types = list(item.keys())
+        percentages = list(item.values())
+        for vi in vehicles_per_lane:
+            for ar in accepted_risks:
+                copy_result_files(network_name, vehicle_types,
+                                  percentages, vi, ar)
 
 
-def copy_result_files(network_name: str, vehicle_types: VehicleType,
-                      controlled_percentages: int, vehicles_per_lane: int,
+def copy_result_files(network_name: str, vehicle_types: List[VehicleType],
+                      controlled_percentages: List[int], vehicles_per_lane: int,
                       accepted_risk: int):
     """Copies data collections, link segments, lane change data, SSMs,
     Risky Maneuvers and Violations files to a similar folder structure in
@@ -103,11 +105,11 @@ def copy_result_files(network_name: str, vehicle_types: VehicleType,
     base_target_folder = os.path.join(
         get_shared_folder(),
         get_relative_address_from_network_name(network_name))
-    source_dir = get_data_folder(base_source_folder, [vehicle_types],
-                                 [controlled_percentages], vehicles_per_lane,
+    source_dir = get_data_folder(base_source_folder, vehicle_types,
+                                 controlled_percentages, vehicles_per_lane,
                                  accepted_risk)
-    target_dir = get_data_folder(base_target_folder, [vehicle_types],
-                                 [controlled_percentages], vehicles_per_lane,
+    target_dir = get_data_folder(base_target_folder, vehicle_types,
+                                 controlled_percentages, vehicles_per_lane,
                                  accepted_risk)
     if not os.path.exists(target_dir):
         os.makedirs(target_dir)
