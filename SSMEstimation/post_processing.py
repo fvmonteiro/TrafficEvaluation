@@ -359,6 +359,9 @@ def create_summary_with_risks(network_name: str,
     ssm_names = ['low_TTC', 'high_DRAC', 'risk',
                  'risk_no_lane_change']
     risk_name = 'risk'
+    if sum(controlled_percentage) == 0:  # accepted risk does not impact
+        # simulations without any AVs
+        accepted_risks = [0]
 
     pp = [
         PostProcessor(network_name, vehicle_type, 'ssm', ssm_names),
@@ -834,6 +837,9 @@ def complement_lane_change_data(network_name: str,
     """
 
     # Steps that can be done on the entire dataframe:
+    lc_data.drop(index=(
+        lc_data[lc_data['time'] + 5 > veh_data['time'].iloc[-1]]).index,
+                 inplace=True)
     remove_false_lane_change_starts(veh_data, lc_data)
     print('Getting attributes of {} lane changes'.format(lc_data.shape[0]))
     lc_data['lc_direction'] = lc_data['dest_lane'] - lc_data['origin_lane']
@@ -899,7 +905,18 @@ def add_vehicle_types_to_lc_data(veh_data: pd.DataFrame,
     lc_data['veh_type'] = veh_types[lc_data['veh_id']].to_numpy()
     lc_data['lo_type'] = veh_types[lc_data['lo_id']].to_numpy()
     lc_data['ld_type'] = veh_types[lc_data['ld_id']].to_numpy()
-    lc_data['fd_type'] = veh_types[lc_data['fd_id']].to_numpy()
+    try:
+        lc_data['fd_type'] = veh_types[lc_data['fd_id']].to_numpy()
+    except KeyError:
+        all_ids = veh_data['veh_id'].unique()
+        missing_ids = set([i for i in range(1, np.max(all_ids))]).difference(
+            all_ids)
+        print("Can't find fd in veh data. Missing ids: ", missing_ids)
+        print("While issue is not addressed, let's remove these lane changes.")
+        for m_id in missing_ids:
+            lc_data.drop(index=lc_data[lc_data['fd_id'] == m_id].index,
+                         inplace=True)
+        lc_data['fd_type'] = veh_types[lc_data['fd_id']].to_numpy()
 
 
 def remove_false_lane_change_starts(veh_data: pd.DataFrame,
@@ -1049,7 +1066,10 @@ def compute_initial_lane_change_risks(lc_data: pd.Series) -> (float, float,
         # veh_type = veh_data.loc[veh_data['veh_id'] == lc_data['fd_id'],
         #                         'veh_type'].iloc[0]
         # veh_type = veh_data.get_group(lc_data['fd_id'])['veh_type'].iloc[0]
-        veh_type = lc_data['fd_type']
+        try:
+            veh_type = lc_data['fd_type']
+        except KeyError:
+            print('no fd type')
         dest_lane_follower = Vehicle(veh_type)
         risk_fd = compute_risk(dest_lane_follower, lane_changing_veh,
                                False, lc_data['fd_vx'],

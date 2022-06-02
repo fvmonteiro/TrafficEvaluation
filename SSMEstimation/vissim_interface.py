@@ -213,10 +213,6 @@ class VissimInterface:
         :param demand: vehicle input (veh/hr)
         """
 
-        # TODO: we can maybe find a way of running this through Vissim too,
-        #  so it would be easier to test this scenario. We need to Run Script
-        #  File or Event Based from the Vissim interface for that
-
         if not self.is_network_loaded('i710'):
             return
 
@@ -412,14 +408,14 @@ class VissimInterface:
             self,
             percentages_per_vehicle_types: List[Dict[VehicleType, int]],
             inputs_per_lane: List[int],
-            accepted_risk: List[int] = None,
+            accepted_risks: List[int] = None,
             runs_per_scenario: int = 10,
             simulation_period: int = None,
             is_debugging: bool = False
     ):
         # Set-up simulation parameters
-        if accepted_risk is None:
-            accepted_risk = [0]
+        if accepted_risks is None:
+            accepted_risks = [0]
         if is_debugging:
             warm_up_minutes = 0
             runs_per_scenario = 2
@@ -435,7 +431,6 @@ class VissimInterface:
         self.vissim.Evaluation.SetAttValue('KeepPrevResults', 'KEEPALL')
         self.set_simulation_period(simulation_period)
         self.set_number_of_runs(runs_per_scenario)
-        # simulation = self.vissim.Simulation
         self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode", 1)
         self.vissim.SuspendUpdateGUI()
 
@@ -448,7 +443,9 @@ class VissimInterface:
             self.set_controlled_vehicles_percentage(percentages, vehicle_types)
             for ipl in inputs_per_lane:
                 self.set_uniform_vehicle_input_for_all_lanes(ipl)
-                for ar in accepted_risk:
+                for ar in (accepted_risks if sum(percentages) > 0
+                           else [0]):  # accepted risk does not impact
+                    # simulations without any AVs
                     self.reset_saved_simulations(warning_active=False)
                     self.set_accepted_lane_change_risk(ar)
                     results_folder = file_handling.get_data_folder(
@@ -924,6 +921,8 @@ class VissimInterface:
                              relative_flow.AttValue('RelFlow')))
 
     def set_accepted_lane_change_risk(self, accepted_risk: int):
+        if accepted_risk is None:
+            accepted_risk = 0
         print("[Client] Setting accepted lc risk to ", accepted_risk)
         self.set_uda_default_value(self.risk_uda_number, accepted_risk)
 
