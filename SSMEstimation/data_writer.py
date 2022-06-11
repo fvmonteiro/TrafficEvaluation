@@ -13,15 +13,10 @@ class DataWriter:
     # file_extension = '.csv'
 
     def __init__(self, data_type_identifier: str, file_extension: str,
-                 network_name: str, vehicle_type: List[VehicleType]):
-        network_file = file_handling.get_file_name_from_network_name(
-            network_name)
-        network_relative_address = (
-            file_handling.get_relative_address_from_network_name(network_name))
-        self.file_base_name = (network_file + '_'
+                 scenario_name: str, vehicle_type: List[VehicleType]):
+        self.file_handler = file_handling.FileHandler(scenario_name)
+        self.file_base_name = (self.file_handler.get_network_name() + '_'
                                + data_type_identifier)
-        self.network_data_dir = os.path.join(
-            file_handling.get_networks_folder(), network_relative_address)
         self.file_extension = file_extension
         self.vehicle_type = vehicle_type
         #  [vt.name.lower() for vt in vehicle_type]
@@ -45,9 +40,9 @@ class PostProcessedDataWriter(DataWriter):
     _data_type_identifier = 'SSM Results'
     _file_extension = '.csv'
 
-    def __init__(self, network_name: str, vehicle_type: List[VehicleType]):
+    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
         DataWriter.__init__(self, self._data_type_identifier,
-                            self._file_extension, network_name, vehicle_type)
+                            self._file_extension, scenario_name, vehicle_type)
 
     def save_as_csv(self, data: pd.DataFrame,
                     controlled_vehicles_percentage: Union[List[int], None],
@@ -65,9 +60,9 @@ class PostProcessedDataWriter(DataWriter):
         :return: Nothing, just saves the data
         """
         file_name = self.file_base_name + self.file_extension
-        folder_path = file_handling.get_data_folder(
-            self.network_data_dir, self.vehicle_type,
-            controlled_vehicles_percentage, vehicles_per_lane, accepted_risk)
+        folder_path = self.file_handler.get_data_folder(
+            self.vehicle_type, controlled_vehicles_percentage,
+            vehicles_per_lane, accepted_risk)
         # percentage_folder = file_handling.create_percent_folder_name(
         #     controlled_vehicles_percentage, self.vehicle_type)
         # vehicles_per_lane_folder = (
@@ -81,54 +76,45 @@ class PostProcessedDataWriter(DataWriter):
 class RiskyManeuverWriter(PostProcessedDataWriter):
     _data_type_identifier = 'Risky Maneuvers'
 
-    def __init__(self, network_name: str, vehicle_type: List[VehicleType]):
+    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
         DataWriter.__init__(self, self._data_type_identifier,
-                            self._file_extension, network_name, vehicle_type)
+                            self._file_extension, scenario_name, vehicle_type)
 
 
 class TrafficLightViolationWriter(PostProcessedDataWriter):
     _data_type_identifier = 'Traffic Light Violations'
     _file_extension = '.csv'
 
-    def __init__(self, network_name: str, vehicle_type: List[VehicleType]):
+    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
         DataWriter.__init__(self, self._data_type_identifier,
-                            self._file_extension, network_name, vehicle_type)
+                            self._file_extension, scenario_name, vehicle_type)
 
 
 class DiscomfortWriter(PostProcessedDataWriter):
     _data_type_identifier = 'Discomfort'
     _file_extension = '.csv'
 
-    def __init__(self, network_name: str, vehicle_type: List[VehicleType]):
+    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
         DataWriter.__init__(self, self._data_type_identifier,
-                            self._file_extension, network_name, vehicle_type)
+                            self._file_extension, scenario_name, vehicle_type)
 
 
 class LaneChangeWriter(PostProcessedDataWriter):
     _data_type_identifier = 'Lane Changes'
     _file_extension = '.csv'
 
-    def __init__(self, network_name: str, vehicle_type: List[VehicleType]):
+    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
         DataWriter.__init__(self, self._data_type_identifier,
-                            self._file_extension, network_name, vehicle_type)
+                            self._file_extension, scenario_name, vehicle_type)
 
 
-class MergedDataWriter(DataWriter):
-    _data_type_identifier = 'Merged Data'
+class LaneChangeIssuesWriter(PostProcessedDataWriter):
+    _data_type_identifier = 'Lane Change Issues'
     _file_extension = '.csv'
 
-    def __init__(self, network_name: str, vehicle_type: List[VehicleType]):
+    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
         DataWriter.__init__(self, self._data_type_identifier,
-                            self._file_extension, network_name,
-                            vehicle_type)
-
-    def save_as_csv(self, data: pd.DataFrame,
-                    controlled_vehicles_percentage: List[int]):
-        file_name = self.file_base_name + self.file_extension
-        percentage_folder = file_handling.create_percent_folder_name(
-            controlled_vehicles_percentage, self.vehicle_type)
-        folder_path = os.path.join(self.network_data_dir, percentage_folder)
-        self._save_as_csv(data, folder_path, file_name)
+                            self._file_extension, scenario_name, vehicle_type)
 
 
 class SyntheticDataWriter:

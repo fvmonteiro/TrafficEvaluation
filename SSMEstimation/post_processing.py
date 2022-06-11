@@ -8,12 +8,12 @@ import pandas as pd
 from scipy.stats import truncnorm
 
 import data_writer
-import file_handling
+from file_handling import FileHandler
 import readers
 from vehicle import Vehicle, VehicleType
 
 # ============================== Constants =================================== #
-# TODO: determine highway or traffic light from network_info dictionnary in
+# TODO: determine highway or traffic light from network_info dictionary in
 #  file_handling file
 HIGHWAY_SCENARIOS = {'in_and_out', 'in_and_merge', 'i710', 'us101'}
 TRAFFIC_LIGHT_SCENARIOS = {'traffic_lights'}
@@ -191,30 +191,32 @@ def create_simulation_summary_test(network_name: str):
     Short version of create_simulation_summary to make running tests easier
     :return:
     """
-    ssm_names = ['low_TTC', 'high_DRAC', 'risk',
-                 'risk_no_lane_change']
-    risk_name = 'risk'
-    pp = [
-        PostProcessor(network_name, None, 'ssm', ssm_names),
-        PostProcessor(network_name, None, 'risky_maneuvers',
-                      risk_name)
-    ]
-
-    vehicle_record_reader = readers.VehicleRecordReader(network_name)
-    print('Testing safety summary creation for network {}'.format(network_name))
-    data = defaultdict(list)
-    vehicle_records = vehicle_record_reader.load_test_data()
-    post_process_data(data_source_VISSIM, vehicle_records)
-    for single_pp in pp:
-        print('Computing', single_pp.data_name)
-        data[single_pp.data_name].append(single_pp.post_process(
-            vehicle_records))
-    print('-' * 79)
-
-    for single_pp in pp:
-        print('Saving ', single_pp.data_name)
-        all_simulations_data = pd.concat(data[single_pp.data_name])
-        single_pp.writer.save_as_csv(all_simulations_data, None, None)
+    # MUST BE UPDATED
+    pass
+    # ssm_names = ['low_TTC', 'high_DRAC', 'risk',
+    #              'risk_no_lane_change']
+    # risk_name = 'risk'
+    # pp = [
+    #     PostProcessor(network_name, None, 'ssm', ssm_names),
+    #     PostProcessor(network_name, None, 'risky_maneuvers',
+    #                   risk_name)
+    # ]
+    #
+    # vehicle_record_reader = readers.VehicleRecordReader(network_name)
+    # print('Testing safety summary creation for network {}'.format(network_name))
+    # data = defaultdict(list)
+    # vehicle_records = vehicle_record_reader.load_test_data()
+    # post_process_data(data_source_VISSIM, vehicle_records)
+    # for single_pp in pp:
+    #     print('Computing', single_pp.data_name)
+    #     data[single_pp.data_name].append(single_pp.post_process(
+    #         vehicle_records))
+    # print('-' * 79)
+    #
+    # for single_pp in pp:
+    #     print('Saving ', single_pp.data_name)
+    #     all_simulations_data = pd.concat(data[single_pp.data_name])
+    #     single_pp.writer.save_as_csv(all_simulations_data, None, None)
 
 
 def create_simulation_summary(network_name: str,
@@ -243,35 +245,11 @@ def create_simulation_summary(network_name: str,
         network_name, vehicle_type, controlled_percentage,
         vehicle_inputs)
 
-    if network_name in HIGHWAY_SCENARIOS:
-        ssm_names = ['low_TTC', 'high_DRAC', 'risk',
-                     'risk_no_lane_change']
-        risk_name = 'risk'
-    elif network_name in TRAFFIC_LIGHT_SCENARIOS:
-        ssm_names = ['barrier_function_risk']
-        risk_name = 'barrier_function_risk'
-    else:
-        raise ValueError('Unknown network name.')
-
-    pp = [
-        PostProcessor(network_name, vehicle_type, 'ssm', ssm_names),
-        PostProcessor(network_name, vehicle_type, 'risky_maneuvers',
-                      risk_name)
-    ]
-
-    traffic_light_reader = readers.TrafficLightSourceReader(
-        network_name)
-    try:
-        traffic_light_data = traffic_light_reader.load_data()
-        comfortable_brake = -4
-        pp += [
-            PostProcessor(network_name, vehicle_type, 'violations',
-                          traffic_light_data),
-            PostProcessor(network_name, vehicle_type, 'discomfort',
-                          comfortable_brake)
-        ]
-    except FileNotFoundError:
-        print('No traffic light data found -> no violations')
+    pp = [SSMProcessor(network_name, vehicle_type),
+          RiskyManeuverProcessor(network_name, vehicle_type)]
+    if network_name in TRAFFIC_LIGHT_SCENARIOS:
+        pp += [ViolationProcessor(network_name, vehicle_type),
+               DiscomfortProcessor(network_name, vehicle_type)]
 
     # pp += []  # for the lane change post processing that's added later
 
@@ -327,10 +305,10 @@ def create_simulation_summary(network_name: str,
 
 
 # TODO: ugly coding
-def create_summary_with_risks(network_name: str,
+def create_summary_with_risks(scenario_name: str,
                               vehicle_type: List[VehicleType],
                               controlled_percentage: List[int],
-                              vehicle_inputs: List[int] = None,
+                              vehicle_inputs: List[int],
                               accepted_risks: List[int] = None,
                               debugging: bool = False):
     """Reads multiple vehicle record data files, postprocesses them,
@@ -338,16 +316,14 @@ def create_summary_with_risks(network_name: str,
     find traffic light violations. SSMs, risky maneuvers and
     violations are saved as csv files per vehicle input.
 
-    :param network_name: Currently available: in_and_out, in_and_merge,
+    :param scenario_name: Currently available: in_and_out, in_and_merge,
      i710, us101, traffic_lights
     :param vehicle_type: Enum to indicate the vehicle (controller) type
     :param controlled_percentage: Percentage of controlled vehicles
      present in the simulation.
     :param vehicle_inputs: Vehicle inputs for which we want SSMs
-     computed. Default value is None, which means we'll read all available
-     inputs.
-    :param accepted_risks: Accepted lane change risk. Default value is None,
-    which means we'll read all available risks.
+     computed.
+    :param accepted_risks: Accepted lane change risk.
     :param debugging: If true, we load only 10^5 samples from the vehicle
      records and do not save results.
     :return: Nothing. SSM results are saved to as csv files"""
@@ -356,35 +332,28 @@ def create_summary_with_risks(network_name: str,
     #     network_name, vehicle_type, controlled_percentage,
     #     vehicle_inputs)
 
-    ssm_names = ['low_TTC', 'high_DRAC', 'risk',
-                 'risk_no_lane_change']
-    risk_name = 'risk'
-    if sum(controlled_percentage) == 0:  # accepted risk does not impact
-        # simulations without any AVs
+    if accepted_risks is None:  # simulations without risk as a variable
+        accepted_risks = [None]
+    elif sum(controlled_percentage) == 0:  # avoid repeating the same
+        # computation for scenarios that vary risk but without AVs
         accepted_risks = [0]
 
-    pp = [
-        PostProcessor(network_name, vehicle_type, 'ssm', ssm_names),
-        PostProcessor(network_name, vehicle_type, 'risky_maneuvers',
-                      risk_name)
-    ]
+    pp = [SSMProcessor(scenario_name, vehicle_type),
+          RiskyManeuverProcessor(scenario_name, vehicle_type),
+          LaneChangeIssuesProcessor(scenario_name, vehicle_type)]
 
-    lane_change_reader = readers.VissimLaneChangeReader(network_name)
-    vehicle_record_reader = readers.VehicleRecordReader(network_name)
+    lane_change_reader = readers.VissimLaneChangeReader(scenario_name)
+    vehicle_record_reader = readers.VehicleRecordReader(scenario_name)
     n_rows = 10 ** 5 if debugging else None
     for vi in vehicle_inputs:
         for ar in accepted_risks:
             print('Start of safety summary creation for network {}, vehicle '
                   'type {}, percentage {}, input {}, risk {}'.format(
-                    network_name, [vt.name.lower() for vt in vehicle_type],
+                    scenario_name, [vt.name.lower() for vt in vehicle_type],
                     controlled_percentage, vi, ar))
             data_generator = vehicle_record_reader.generate_data(
                 vehicle_type, controlled_percentage, [vi], ar,
                 n_rows=n_rows)
-            # lane_change_data = (
-            #     lane_change_reader.load_data_with_controlled_percentage(
-            #         [vehicle_type], [controlled_percentage], [vi], [ar]
-            #     ))
 
             data = defaultdict(list)
             for (vehicle_records, file_number) in data_generator:
@@ -395,12 +364,10 @@ def create_summary_with_risks(network_name: str,
                         vehicle_records))
                 lane_change_data = lane_change_reader.load_data(
                     file_number, vehicle_type, controlled_percentage, vi, ar)
-                # simulation_lc_data = lane_change_data[
-                #     lane_change_data['simulation_number'] == file_number
-                #     ]
-                complement_lane_change_data(network_name, vehicle_records,
+
+                complement_lane_change_data(scenario_name, vehicle_records,
                                             lane_change_data,
-                                            data['risky_maneuvers'][-1])
+                                            data['risky_maneuver'][-1])
                 data['lane_change'].append(lane_change_data)
                 print('-' * 79)
 
@@ -411,12 +378,49 @@ def create_summary_with_risks(network_name: str,
                     all_simulations_data['vehicles_per_lane'] = vi
                     single_pp.writer.save_as_csv(all_simulations_data,
                                                  controlled_percentage, vi, ar)
-                lc_writer = data_writer.LaneChangeWriter(network_name,
+                lc_writer = data_writer.LaneChangeWriter(scenario_name,
                                                          vehicle_type)
                 all_simulations_data = pd.concat(data['lane_change'])
                 all_simulations_data['vehicles_per_lane'] = vi
                 lc_writer.save_as_csv(all_simulations_data,
                                       controlled_percentage, vi, ar)
+
+
+def find_lane_change_issues(network_name: str,
+                            vehicle_type: List[VehicleType],
+                            controlled_percentage: List[int],
+                            vehicle_inputs: List[int],
+                            accepted_risks: List[int] = None):
+    """
+    Looks for cases of vehicles that were either removed from the simulation
+    for waiting too long for a lane change or AVs which gave control to vissim.
+
+    :param network_name:
+    :param vehicle_type:
+    :param controlled_percentage:
+    :param vehicle_inputs:
+    :param accepted_risks:
+    :return:
+    """
+    if accepted_risks is None:  # simulations without risk as a variable
+        accepted_risks = [None]
+    elif sum(controlled_percentage) == 0:  # avoid repeating the same
+        # computation for scenarios that vary risk but without AVs
+        accepted_risks = [0]
+    pp = LaneChangeIssuesProcessor(network_name,
+                                   vehicle_type)
+    vehicle_record_reader = readers.VehicleRecordReader(network_name)
+    for vi in vehicle_inputs:
+        for ar in accepted_risks:
+            data_generator = vehicle_record_reader.generate_data(
+                vehicle_type, controlled_percentage, [vi], ar)
+            data = defaultdict(list)
+            for (vehicle_records, file_number) in data_generator:
+                data[pp.data_name].append(pp.post_process(vehicle_records))
+            all_simulations_data = pd.concat(data[pp.data_name])
+            all_simulations_data['vehicles_per_lane'] = vi
+            pp.writer.save_as_csv(all_simulations_data, controlled_percentage,
+                                  vi, ar)
 
 
 def create_time_in_minutes_from_intervals(data: pd.DataFrame):
@@ -428,112 +432,6 @@ def create_time_in_minutes_from_intervals(data: pd.DataFrame):
     seconds_in_minute = 60
     data['time'] = data['time_interval'].apply(
         lambda x: int(x.split('-')[0]) / seconds_in_minute)
-
-
-def create_ssm_dataframe(vehicle_record: pd.DataFrame,
-                         ssm_names: List[str]):
-    # Compute
-    ssm_estimator = SSMEstimator(vehicle_record)
-    ssm_estimator.include_ssms(ssm_names)
-    # Aggregate
-    aggregation_period = 30  # [s]
-    new_index = ['time_interval', 'veh_type']
-    columns = new_index + ssm_names
-    create_time_bins_and_labels(aggregation_period, vehicle_record)
-    aggregated_ssm = vehicle_record[columns].groupby(
-        new_index).sum()
-    aggregated_ssm.reset_index(inplace=True)
-    aggregated_ssm.insert(0, 'simulation_number', vehicle_record[
-        'simulation_number'].iloc[0])
-    return aggregated_ssm
-
-
-def extract_risky_maneuvers(vehicle_record: pd.DataFrame,
-                            risk_name: str):
-    """
-    Find risky maneuvers and write their information on a dataframe
-    A risky maneuver is defined as a time interval during which risk is
-    greater than zero. We save the vehicles involved, start and end
-    times, total (sum over duration) risk and pointwise max risk of each
-    risky maneuver.
-
-    :param vehicle_record: dataframe with step by step vehicle data
-     including some risk measurement
-    :param risk_name: columns of the dataframe with the relevant risk for
-     this scenario
-    :return: dataframe where each row represents one risky maneuver
-    """
-
-    # Note: some vehicles enter simulation with positive risk. This
-    # makes it hard to deal with the whole dataframe at once.
-    # Thus, we deal with one vehicle at a time. There should be no more
-    # than 10k vehicles per simulation, so I'm hoping computations won't
-    # take too long.
-    # Spoiler alert: it takes some minutes to run over 10 files
-
-    risk_margin = 0.1  # ignore total risks below this margin
-    vehicle_record['is_risk_positive'] = vehicle_record[risk_name] > 0
-    all_ids = vehicle_record['veh_id'].unique()
-    risky_data_list = [pd.DataFrame(
-        columns=['veh_id', 'veh_type', 'leader_id', 'time', 'end_time',
-                 'total_risk', 'max_risk'])]
-    for veh_id in all_ids:
-        single_veh_record = vehicle_record[vehicle_record['veh_id']
-                                           == veh_id]
-        if (not any(single_veh_record['is_risk_positive'])
-                or single_veh_record[risk_name].sum() < risk_margin):
-            continue
-        delta_t = round(single_veh_record['time'].iloc[1]
-                        - single_veh_record['time'].iloc[0], 2)
-
-        # TODO: compare computation speeds
-        risk_transition_idx = (single_veh_record['is_risk_positive'].diff()
-                               != 0)
-        # risk_transition_idx = (
-        #   single_veh_record['is_risk_positive'].shift()
-        #   != single_veh_record['is_risk_positive'])
-
-        # Dealing with cases where the vehicle enters simulation with
-        # positive risk:
-        risk_transition_idx.iloc[0] = (
-            single_veh_record['is_risk_positive'].iloc[0])
-        risk_transition_idx = risk_transition_idx[risk_transition_idx]
-        start_indices = risk_transition_idx.iloc[::2].index
-        end_indices = risk_transition_idx.iloc[1::2].index
-        # Dealing with cases where the vehicle leaves simulation with
-        # positive risk (should never occur with full simulation data):
-        if len(end_indices) == len(start_indices) - 1:
-            end_indices = end_indices.append(
-                pd.Index([single_veh_record.index[-1]]))
-
-        # Build the df with data for each risky maneuver for this vehicle
-        temp_df = single_veh_record[
-            ['veh_id', 'veh_type', 'leader_id', 'time']].loc[start_indices]
-        try:
-            temp_df['end_time'] = single_veh_record['time'].loc[
-                end_indices].to_numpy()
-        except ValueError:
-            end_times = single_veh_record['time'].loc[
-                end_indices].to_numpy()
-            temp_df['end_time'] = 0
-            temp_df['end_time'].iloc[:len(end_times)] = end_times
-        risk = single_veh_record[risk_name]
-        risk_grouped = risk.groupby((risk == 0).cumsum())
-        cumulative_risk = risk_grouped.cumsum() * delta_t
-        cumulative_max_risk = risk_grouped.cummax()
-        temp_df['total_risk'] = cumulative_risk.shift().loc[
-            end_indices].to_numpy()
-        temp_df['max_risk'] = cumulative_max_risk.shift().loc[
-            end_indices].to_numpy()
-        temp_df.drop(index=temp_df[temp_df['total_risk'] < risk_margin].index,
-                     inplace=True)
-        risky_data_list.append(temp_df)
-    risky_data = pd.concat(risky_data_list)
-    if risky_data.empty:
-        risky_data.loc[0] = 0
-    risky_data['simulation_number'] = vehicle_record[
-        'simulation_number'].iloc[0]
-    return risky_data
 
 
 def save_safety_files(vehicle_input: int,
@@ -557,8 +455,9 @@ def save_safety_files(vehicle_input: int,
 
 def check_human_take_over(network_name: str,
                           vehicle_type: List[VehicleType],
-                          controlled_vehicle_percentage: List[int],
-                          vehicle_inputs: List[int] = None):
+                          controlled_percentage: List[int],
+                          vehicle_inputs: List[int],
+                          accepted_risk: List[int] = None):
     """Reads multiple vehicle record data files to check how often the
     autonomous vehicles gave control back to VISSIM
 
@@ -566,24 +465,72 @@ def check_human_take_over(network_name: str,
      network nickname. Currently available: in_and_out, in_and_merge, i710,
      us101
     :param vehicle_type: Enum to indicate the vehicle (controller) type
-    :param controlled_vehicle_percentage: Percentage of controlled vehicles
+    :param controlled_percentage: Percentage of controlled vehicles
      present in the simulation.
     :param vehicle_inputs: simulation vehicle inputs to be checked
+    :param accepted_risk: Accepted lane change risk
     :return: Nothing.
     """
 
+    if accepted_risk is None:
+        accepted_risk = [None]
+
     vehicle_record_reader = readers.VehicleRecordReader(network_name)
-    data_generator = vehicle_record_reader.generate_data(
-        vehicle_type, controlled_vehicle_percentage, vehicle_inputs)
-    n_blocked_vehs = []
-    for (vehicle_records, file_number) in data_generator:
-        blocked_vehs = vehicle_records.loc[
-            (vehicle_records['vissim_control'] == 1)
-            & (vehicle_records['veh_type'] != Vehicle.VISSIM_CAR_ID),
-            'veh_id'].unique()
-        n_blocked_vehs.append(blocked_vehs.shape[0])
-        print('Total blocked vehicles: ', blocked_vehs.shape[0])
-    print('Mean blocked vehicles:', np.mean(n_blocked_vehs))
+    for vi in vehicle_inputs:
+        print('Input:', vi)
+        for ar in accepted_risk:
+            print(' Accepted risk: ', ar)
+            n_blocked_vehs = []
+            data_generator = vehicle_record_reader.generate_data(
+                vehicle_type, controlled_percentage, [vi], ar
+            )
+            for (vehicle_records, _) in data_generator:
+                # Since the scenarios have at most one mandatory lane change,
+                # we assume each vehicle only gives control to VISSIM at
+                # most once
+                blocked_vehs = vehicle_records.loc[
+                    (vehicle_records['vissim_control'] == 1)
+                    & (vehicle_records['veh_type'] != Vehicle.VISSIM_CAR_ID),
+                    'veh_id'].unique()
+                n_blocked_vehs.append(blocked_vehs.shape[0])
+                # print('Total blocked vehicles: ', blocked_vehs.shape[0])
+            print('  Mean # of blocked vehicles: {}'.format(np.mean(
+                n_blocked_vehs)))
+
+
+def find_removed_vehicles(network_name: str, vehicle_type: List[VehicleType],
+                          controlled_percentage: List[int],
+                          vehicles_per_lane: List[int],
+                          accepted_risk: List[int] = None):
+    """Checks whether VISSIM removed any vehicles for standing still too
+    long.
+    Results obtained so far:
+    - in_and_out with no controlled vehicles and highest inputs (2000 and
+    2500) had no vehicles removed. """
+
+    if accepted_risk is None:
+        accepted_risk = [None]
+    exit_links = [5, 6]
+
+    vehicle_record_reader = readers.VehicleRecordReader(network_name)
+    for vi in vehicles_per_lane:
+        print('Input:', vi)
+        for ar in accepted_risk:
+            print(' Accepted risk: ', ar)
+            n_removed_vehicles = []
+            data_generator = vehicle_record_reader.generate_data(
+                vehicle_type, controlled_percentage, [vi], ar
+            )
+            for (vehicle_records, _) in data_generator:
+                max_time = vehicle_records.iloc[-1]['time']
+                last_entry_per_veh = vehicle_records.groupby('veh_id').last()
+                removed_vehs = last_entry_per_veh.loc[
+                    ~(last_entry_per_veh['link'].isin(exit_links))
+                    & (last_entry_per_veh['time'] < max_time)].index
+                n_removed_vehicles.append(len(removed_vehs))
+                print('  {} removed vehs'.format(n_removed_vehicles[-1]))
+            print(' Mean # of removed vehicles: {}'.format(np.mean(
+                  n_removed_vehicles)))
 
 
 def add_main_ssms(vehicle_records: pd.DataFrame, ssm_names: List[str]):
@@ -601,35 +548,35 @@ def add_main_ssms(vehicle_records: pd.DataFrame, ssm_names: List[str]):
     #     ssm_estimator.include_barrier_function_risk()
 
 
-def compute_discomfort(vehicle_records: pd.DataFrame,
-                       comfortable_brake: float):
-    """
-    Computes discomfort as the integral of |a(t) - a_comf| if |a(t)| > a_comf.
-
-    :param vehicle_records: vehicle records data loaded from VISSIM
-    :param comfortable_brake: accelerations with absolute value greater than
-     this are considered uncomfortable
-    :return: Dataframe with values of discomfort for all vehicles every
-    'aggregation period' seconds
-    """
-    discomfort_idx = vehicle_records['ax'] < comfortable_brake
-    vehicle_records['discomfort'] = 0
-    vehicle_records.loc[discomfort_idx, 'discomfort'] = (
-            comfortable_brake - vehicle_records.loc[discomfort_idx, 'ax'])
-    try:
-        aggregated_acceleration = vehicle_records[[
-            'veh_type', 'time_interval', 'discomfort']].groupby(
-            ['veh_type', 'time_interval']).sum()
-    except KeyError:
-        aggregation_period = 30
-        create_time_bins_and_labels(aggregation_period, vehicle_records)
-        aggregated_acceleration = vehicle_records[[
-            'veh_type', 'time_interval', 'discomfort']].groupby(
-            ['veh_type', 'time_interval']).sum()
-    aggregated_acceleration.reset_index(inplace=True)
-    aggregated_acceleration.insert(0, 'simulation_number',
-                                   vehicle_records['simulation_number'].iloc[0])
-    return aggregated_acceleration
+# def compute_discomfort(vehicle_records: pd.DataFrame,
+#                        comfortable_brake: float):
+#     """
+#     Computes discomfort as the integral of |a(t) - a_comf| if |a(t)| > a_comf.
+#
+#     :param vehicle_records: vehicle records data loaded from VISSIM
+#     :param comfortable_brake: accelerations with absolute value greater than
+#      this are considered uncomfortable
+#     :return: Dataframe with values of discomfort for all vehicles every
+#     'aggregation period' seconds
+#     """
+#     discomfort_idx = vehicle_records['ax'] < comfortable_brake
+#     vehicle_records['discomfort'] = 0
+#     vehicle_records.loc[discomfort_idx, 'discomfort'] = (
+#             comfortable_brake - vehicle_records.loc[discomfort_idx, 'ax'])
+#     try:
+#         aggregated_acceleration = vehicle_records[[
+#             'veh_type', 'time_interval', 'discomfort']].groupby(
+#             ['veh_type', 'time_interval']).sum()
+#     except KeyError:
+#         aggregation_period = 30
+#         create_time_bins_and_labels(aggregation_period, vehicle_records)
+#         aggregated_acceleration = vehicle_records[[
+#             'veh_type', 'time_interval', 'discomfort']].groupby(
+#             ['veh_type', 'time_interval']).sum()
+#     aggregated_acceleration.reset_index(inplace=True)
+#     aggregated_acceleration.insert(0, 'simulation_number',
+#                                    vehicle_records['simulation_number'].iloc[0])
+#     return aggregated_acceleration
 
 
 def create_time_bins_and_labels(period, vehicle_records):
@@ -1155,12 +1102,12 @@ def get_total_lane_change_risk(
     return risks['lo'], risks['ld'], risks['fd']
 
 
-def label_lane_changes(network_name: str, veh_data: pd.DataFrame,
+def label_lane_changes(scenario_name: str, veh_data: pd.DataFrame,
                        lc_data: pd.DataFrame):
     """
     Labels lane changes as mandatory or discretionary
 
-    :param network_name:
+    :param scenario_name:
     :param veh_data: vehicle records of a single simulation
     :param lc_data: lane change data for the entire simulation
     :return:
@@ -1172,8 +1119,9 @@ def label_lane_changes(network_name: str, veh_data: pd.DataFrame,
     data_by_veh = veh_data.groupby('veh_id')
     exit_link = data_by_veh['link'].last()
 
-    merging_link = file_handling.get_merging_links(network_name)
-    off_ramp_link = file_handling.get_off_ramp_links(network_name)
+    file_handler = FileHandler(scenario_name)
+    merging_link = file_handler.get_merging_links()
+    off_ramp_link = file_handler.get_off_ramp_links()
     exit_per_lc = exit_link.loc[lc_data['veh_id'].to_numpy()]
     took_off_ramp_mask = exit_per_lc.isin(off_ramp_link).to_numpy()
     lc_data['mandatory'] = False
@@ -1230,9 +1178,7 @@ def compute_collision_free_gap(follower: Vehicle, leader: Vehicle,
 
 
 def compute_risk(follower: Vehicle, leader: Vehicle, is_lane_changing: bool,
-                 follower_vel: float,
-                 leader_vel: float,
-                 gap: float):
+                 follower_vel: float, leader_vel: float, gap: float):
     """
 
     :param follower:
@@ -2289,87 +2235,276 @@ class SSMEstimator:
                 vehicle_effective_tau_j)
 
 
-# TODO: use the simple factory method to better organize this class
 class PostProcessor:
     """[Probably change name] Class contains a name, a writer and function
     pointer to make creating and saving post-processed data more easy to
     handle"""
 
-    data_name = ''
-    writer = None
-    post_processing_function = None
-    secondary_parameter = None
-    _mapping = {
-        'ssm': {'writer': data_writer.PostProcessedDataWriter,
-                'function': create_ssm_dataframe},
-        'risky_maneuvers': {'writer': data_writer.RiskyManeuverWriter,
-                            'function': extract_risky_maneuvers},
-        'violations': {'writer': data_writer.TrafficLightViolationWriter,
-                       'function': find_traffic_light_violations},
-        'discomfort': {'writer': data_writer.DiscomfortWriter,
-                       'function': compute_discomfort},
-        # TODO: lane change not ready to be integrated here
-        'lane_change': {'writer': data_writer.LaneChangeWriter,
-                        'function': complement_lane_change_data}
-    }
-
-    def __init__(self, network_name, vehicle_type, data_name,
-                 secondary_parameter=None):
+    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType],
+                 data_name: str, writer):
         """
 
-        :param network_name:
+        :param scenario_name:
         :param vehicle_type:
         :param data_name:
-        :param secondary_parameter: some post-processing functions require an
-         argument beyond just the data which is known beforehand
         """
         self.data_name = data_name
-        self.writer = self._mapping[data_name]['writer'](network_name,
-                                                         vehicle_type)
-        self.post_processing_function = self._mapping[data_name]['function']
-        self.secondary_parameter = secondary_parameter
+        self.writer = writer(scenario_name, vehicle_type)
+        self.file_handler = FileHandler(scenario_name)
+        # self.post_processing_function = self._mapping[data_name]['function']
+        # self.secondary_parameter = secondary_parameter
 
     def post_process(self, data):
-        return self.post_processing_function(data, self.secondary_parameter)
+        raise NotImplementedError
+        # return self.post_processing_function(data, self.secondary_parameter)
+
+
+class SSMProcessor(PostProcessor):
+
+    _writer = data_writer.PostProcessedDataWriter
+
+    def __init__(self, scenario_name, vehicle_type):
+        PostProcessor.__init__(self, scenario_name, vehicle_type, 'SSM',
+                               self._writer)
+        network_name = self.file_handler.get_network_name()
+        if network_name in HIGHWAY_SCENARIOS:
+            self.ssm_names = ['low_TTC', 'high_DRAC', 'risk',
+                              'risk_no_lane_change']
+        elif network_name in TRAFFIC_LIGHT_SCENARIOS:
+            self.ssm_names = ['barrier_function_risk']
+        else:
+            raise ValueError('Unknown network name.')
+
+    def post_process(self, data):
+        vehicle_record = data
+        # Compute
+        ssm_estimator = SSMEstimator(vehicle_record)
+        ssm_estimator.include_ssms(self.ssm_names)
+        # Aggregate
+        aggregation_period = 30  # [s]
+        new_index = ['time_interval', 'veh_type']
+        columns = new_index + self.ssm_names
+        create_time_bins_and_labels(aggregation_period, vehicle_record)
+        aggregated_ssm = vehicle_record[columns].groupby(
+            new_index).sum()
+        aggregated_ssm.reset_index(inplace=True)
+        aggregated_ssm.insert(0, 'simulation_number', vehicle_record[
+            'simulation_number'].iloc[0])
+        return aggregated_ssm
+
+    def set_measurements(self, ssm_names: List[str]):
+        """
+        Define which surrogate safety measurements should be computed by the
+        post process function
+        :param ssm_names: the names of desired SSMs
+        :return:
+        """
+        self.ssm_names = ssm_names
+
+
+class RiskyManeuverProcessor(PostProcessor):
+
+    _writer = data_writer.RiskyManeuverWriter
+
+    def __init__(self, scenario_name, vehicle_type):
+        PostProcessor.__init__(self, scenario_name, vehicle_type,
+                               'risky_maneuver', self._writer)
+        network_name = self.file_handler.get_network_name()
+        if network_name in HIGHWAY_SCENARIOS:
+            self.risk_name = 'risk'
+        elif network_name in TRAFFIC_LIGHT_SCENARIOS:
+            self.risk_name = 'barrier_function_risk'
+        else:
+            raise ValueError('Unknown network name.')
+
+    def post_process(self, data):
+        """
+        Find risky maneuvers and write their information on a dataframe
+        A risky maneuver is defined as a time interval during which risk is
+        greater than zero. We save the vehicles involved, start and end
+        times, total (sum over duration) risk and pointwise max risk of each
+        risky maneuver.
+
+        :param data: dataframe with step by step vehicle data
+         including some risk measurement
+        :return: dataframe where each row represents one risky maneuver
+        """
+
+        # Note: some vehicles enter simulation with positive risk. This
+        # makes it hard to deal with the whole dataframe at once.
+        # Thus, we deal with one vehicle at a time.
+
+        vehicle_record = data
+        risk_name = self.risk_name
+
+        risk_margin = 0.1  # ignore total risks below this margin
+        vehicle_record['is_risk_positive'] = vehicle_record[risk_name] > 0
+        all_ids = vehicle_record['veh_id'].unique()
+        risky_data_list = [pd.DataFrame(
+            columns=['veh_id', 'veh_type', 'leader_id', 'time', 'end_time',
+                     'total_risk', 'max_risk'])]
+        for veh_id in all_ids:
+            single_veh_record = vehicle_record[vehicle_record['veh_id']
+                                               == veh_id]
+            if (not any(single_veh_record['is_risk_positive'])
+                    or single_veh_record[risk_name].sum() < risk_margin):
+                continue
+            delta_t = round(single_veh_record['time'].iloc[1]
+                            - single_veh_record['time'].iloc[0], 2)
+
+            # TODO: compare computation speeds
+            risk_transition_idx = (single_veh_record['is_risk_positive'].diff()
+                                   != 0)
+            # risk_transition_idx = (
+            #   single_veh_record['is_risk_positive'].shift()
+            #   != single_veh_record['is_risk_positive'])
+
+            # Dealing with cases where the vehicle enters simulation with
+            # positive risk:
+            risk_transition_idx.iloc[0] = (
+                single_veh_record['is_risk_positive'].iloc[0])
+            risk_transition_idx = risk_transition_idx[risk_transition_idx]
+            start_indices = risk_transition_idx.iloc[::2].index
+            end_indices = risk_transition_idx.iloc[1::2].index
+            # Dealing with cases where the vehicle leaves simulation with
+            # positive risk (should never occur with full simulation data):
+            if len(end_indices) == len(start_indices) - 1:
+                end_indices = end_indices.append(
+                    pd.Index([single_veh_record.index[-1]]))
+
+            # Build the df with data for each risky maneuver for this vehicle
+            temp_df = single_veh_record[
+                ['veh_id', 'veh_type', 'leader_id', 'time']].loc[start_indices]
+            try:
+                temp_df['end_time'] = single_veh_record['time'].loc[
+                    end_indices].to_numpy()
+            except ValueError:
+                end_times = single_veh_record['time'].loc[
+                    end_indices].to_numpy()
+                temp_df['end_time'] = 0
+                temp_df['end_time'].iloc[:len(end_times)] = end_times
+            risk = single_veh_record[risk_name]
+            risk_grouped = risk.groupby((risk == 0).cumsum())
+            cumulative_risk = risk_grouped.cumsum() * delta_t
+            cumulative_max_risk = risk_grouped.cummax()
+            temp_df['total_risk'] = cumulative_risk.shift().loc[
+                end_indices].to_numpy()
+            temp_df['max_risk'] = cumulative_max_risk.shift().loc[
+                end_indices].to_numpy()
+            temp_df.drop(
+                index=temp_df[temp_df['total_risk'] < risk_margin].index,
+                inplace=True)
+            risky_data_list.append(temp_df)
+        risky_data = pd.concat(risky_data_list)
+        if risky_data.empty:
+            risky_data.loc[0] = 0
+        risky_data['simulation_number'] = vehicle_record[
+            'simulation_number'].iloc[0]
+        return risky_data
+
+    def set_risk(self, risk_name: str):
+        """
+        Define which measurement of risk is used to extract risky intervals
+        :param risk_name: the name of the risk measurement
+        :return:
+        """
+        self.risk_name = risk_name
+
+
+class ViolationProcessor(PostProcessor):
+
+    _writer = data_writer.TrafficLightViolationWriter
+
+    def __init__(self, scenario_name, vehicle_type):
+        PostProcessor.__init__(self, scenario_name, vehicle_type,
+                               'violation', self._writer)
+        traffic_light_reader = readers.TrafficLightSourceReader(
+            scenario_name)
+        self.traffic_light_data = traffic_light_reader.load_data()
+
+    def post_process(self, data):
+        return find_traffic_light_violations(data, self.traffic_light_data)
+
+
+class DiscomfortProcessor(PostProcessor):
+
+    _writer = data_writer.DiscomfortWriter
+
+    def __init__(self, scenario_name, vehicle_type):
+        PostProcessor.__init__(self, scenario_name, vehicle_type,
+                               'discomfort', self._writer)
+        self.comfortable_brake = -4
+
+    def post_process(self, data):
+        """
+        Computes discomfort as the integral of
+        |a(t) - a_comf| if |a(t)| > a_comf.
+
+        :param data: vehicle records data loaded from VISSIM
+        :return: Dataframe with values of discomfort for all vehicles every
+        'aggregation period' seconds
+        """
+        vehicle_records = data
+
+        discomfort_idx = vehicle_records['ax'] < self.comfortable_brake
+        vehicle_records['discomfort'] = 0
+        vehicle_records.loc[discomfort_idx, 'discomfort'] = (
+                self.comfortable_brake
+                - vehicle_records.loc[discomfort_idx, 'ax']
+        )
+        try:
+            aggregated_acceleration = vehicle_records[[
+                'veh_type', 'time_interval', 'discomfort']].groupby(
+                ['veh_type', 'time_interval']).sum()
+        except KeyError:
+            aggregation_period = 30
+            create_time_bins_and_labels(aggregation_period, vehicle_records)
+            aggregated_acceleration = vehicle_records[[
+                'veh_type', 'time_interval', 'discomfort']].groupby(
+                ['veh_type', 'time_interval']).sum()
+        aggregated_acceleration.reset_index(inplace=True)
+        aggregated_acceleration.insert(0, 'simulation_number',
+                                       vehicle_records[
+                                           'simulation_number'].iloc[0])
+        return aggregated_acceleration
+
+
+class LaneChangeIssuesProcessor(PostProcessor):
+
+    _writer = data_writer.LaneChangeIssuesWriter
+
+    def __init__(self, scenario_name, vehicle_type):
+        PostProcessor.__init__(self, scenario_name, vehicle_type,
+                               'lane_change_issues', self._writer)
+        self.exit_links = [5, 6]  # exit links for the in_and_out scenario
+
+    def post_process(self, data):
+        # Find removed vehicles
+        max_time = data.iloc[-1]['time']
+        last_entry_per_veh = data.groupby('veh_id', as_index=False).last()
+        removed_vehicles = last_entry_per_veh.loc[
+            ~(last_entry_per_veh['link'].isin(self.exit_links))
+            & (last_entry_per_veh['time'] < max_time), ['time', 'veh_id']]
+        removed_vehicles['issue'] = 'removed'
+
+        # Find AVs which needed human intervention
+        blocked_samples = data.loc[
+            (data['vissim_control'] == 1)
+            & (data['veh_type'] != Vehicle.VISSIM_CAR_ID),
+            ['time', 'veh_id']]
+        blocked_vehicles = blocked_samples.groupby('veh_id',
+                                                   as_index=False).first()
+        blocked_vehicles['issue'] = 'blocked AV'
+
+        issues_df = pd.concat([removed_vehicles, blocked_vehicles])
+        issues_df['simulation_number'] = data['simulation_number'].iloc[0]
+        return issues_df
+
+
+# TODO: class LaneChangePostProcessor
 
 
 # ============================ DEPRECATED ==================================== #
-def merge_data(network_name: str, vehicle_type: List[VehicleType],
-               controlled_vehicle_percentage: List[int]):
-    """Loads data collections, link evaluation and SSM data, merges them
-    and saves the merged dataframe to a file
-    If there is more than one link evaluation segment or more than one
-    data collection measurement, the resulting dataset will have a lot of
-    redundant information"""
-
-    print('Started merging data')
-
-    data_readers = (
-        readers.LinkEvaluationReader(network_name),
-        readers.DataCollectionReader(network_name),
-        readers.SSMDataReader(network_name)
-    )
-    percentage_columns = [vt.name.lower() + '_percentage' for vt in
-                          vehicle_type]
-    shared_cols = ['vehicles_per_lane', 'time_interval',
-                   'random_seed', 'simulation_number'] + percentage_columns
-    merged_data = pd.DataFrame()
-    for reader in data_readers:
-        data = reader.load_data_with_controlled_percentage(
-            [vehicle_type], [controlled_vehicle_percentage])
-        if merged_data.empty:
-            merged_data = data
-        else:
-            merged_data = merged_data.merge(right=data, how='inner',
-                                            on=shared_cols)
-    # DataPostProcessor.clean_headers(merged_data)
-    compute_flow(merged_data)
-    create_time_in_minutes_from_intervals(merged_data)
-    writer = data_writer.MergedDataWriter(network_name, vehicle_type)
-    writer.save_as_csv(merged_data, controlled_vehicle_percentage)
-
-    print('Merged data saved')
-
 
 def compute_flow(data: pd.DataFrame, sensor_numbers: Union[int, List[int]] = 1):
     """ Computes flow in vehicles/hour and includes it in the dataframe

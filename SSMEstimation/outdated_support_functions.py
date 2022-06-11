@@ -90,7 +90,7 @@ def post_process_and_save(data_source, network_name, vehicle_type):
     data_pp.post_process_data(data)
     print('Post processed data shape: ', data.shape)
     save_post_processed_data(data, data_source,
-                             data_reader.network_name)
+                             data_reader.scenario_name)
 
 
 def create_ssm(data_source, network_name, ssm_names):
@@ -133,7 +133,7 @@ def create_ssm(data_source, network_name, ssm_names):
     print('Saving ' + ', '.join(ssm_names))
     save_post_processed_data(ssm_estimator.veh_data,
                              data_reader.data_source,
-                             data_reader.network_name)
+                             data_reader.scenario_name)
 
 
 def explore_issues():
