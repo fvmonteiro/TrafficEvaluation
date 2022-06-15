@@ -2347,6 +2347,7 @@ class RiskyManeuverProcessor(PostProcessor):
             single_veh_record = vehicle_record[vehicle_record['veh_id']
                                                == veh_id]
             if (not any(single_veh_record['is_risk_positive'])
+                    or single_veh_record.shape[0] < 2
                     or single_veh_record[risk_name].sum() < risk_margin):
                 continue
             delta_t = round(single_veh_record['time'].iloc[1]
