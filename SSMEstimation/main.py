@@ -153,7 +153,46 @@ def plot_traffic_lights_results(save_results=False):
         'barrier_function_risk', percentages_per_vehicle_type, veh_inputs, 10)
     result_analyzer.plot_heatmap_for_traffic_light_scenario(
         'discomfort', percentages_per_vehicle_type, veh_inputs, 10)
-    result_analyzer.plot_violations_heatmap(percentages_per_vehicle_type, veh_inputs, 10)
+    result_analyzer.plot_violations_heatmap(percentages_per_vehicle_type,
+                                            veh_inputs, 10)
+
+
+def all_plots_for_scenarios_with_risk(
+        network_name: str, simulation_percentages: List[Dict[VehicleType, int]],
+        inputs_per_lane: List[int], accepted_risks: List[int]):
+    ra = result_analysis.ResultAnalyzer(network_name, should_save_fig=False)
+    ra.plot_grid_of_risk_histograms('total_risk', simulation_percentages,
+                                    inputs_per_lane, accepted_risks,
+                                    min_risk=1)
+    ra.plot_grid_of_risk_histograms('total_lane_change_risk',
+                                    simulation_percentages, inputs_per_lane,
+                                    accepted_risks)
+    ra.plot_grid_of_risk_histograms('initial_risk',
+                                    simulation_percentages,
+                                    inputs_per_lane, accepted_risks)
+    for veh_name in ['lo', 'ld', 'fd']:
+        ra.plot_grid_of_risk_histograms('initial_risk_to_' + veh_name,
+                                        simulation_percentages,
+                                        inputs_per_lane, accepted_risks)
+    for ipl in inputs_per_lane:
+        ra.box_plot_y_vs_vehicle_type('total_lane_change_risk',
+                                      'accepted_risk', ipl,
+                                      simulation_percentages, accepted_risks)
+        ra.box_plot_y_vs_vehicle_type('initial_risk',
+                                      'accepted_risk', ipl,
+                                      simulation_percentages, accepted_risks)
+        ra.box_plot_y_vs_vehicle_type('flow', 'accepted_risk', ipl,
+                                      simulation_percentages, accepted_risks)
+        ra.box_plot_y_vs_vehicle_type('risk', 'accepted_risk', ipl,
+                                      simulation_percentages, accepted_risks)
+        ra.plot_heatmap('lane_change_count', simulation_percentages,
+                        [ipl], accepted_risks)
+        ra.plot_heatmap('initial_risk', simulation_percentages,
+                        [ipl], accepted_risks)
+        ra.plot_heatmap('total_lane_change_risk', simulation_percentages,
+                        [ipl], accepted_risks)
+        ra.plot_heatmap('vehicle_count', simulation_percentages,
+                        [ipl], accepted_risks, normalize=False)
 
 
 # TODO: move this to some other file
@@ -199,61 +238,29 @@ def main():
         # VehicleType.TRAFFIC_LIGHT_CACC
     ]
 
-    percentages = [0, 100]
+    percentages = [100]
     simulation_percentages = create_vehicle_percentages_dictionary(
         vehicle_type, percentages, 1)
     inputs_per_lane = [1000, 2000]
-    accepted_risks = [i for i in range(0, 31, 10)]
+    accepted_risks = [i for i in range(10, 31, 10)]
 
     # =============== Tests ================= #
-    ra = result_analysis.ResultAnalyzer(network_name, should_save_fig=False)
-    # ra.plot_grid_of_risk_histograms('total_risk', simulation_percentages,
-    #                                 inputs_per_lane, accepted_risks,
-    #                                 min_risk=1)
-    # ra.plot_grid_of_risk_histograms('total_lane_change_risk',
-    #                                 simulation_percentages, inputs_per_lane,
-    #                                 accepted_risks)
-    # ra.plot_grid_of_risk_histograms('initial_risk',
-    #                                 simulation_percentages,
-    #                                 inputs_per_lane, accepted_risks)
-    # for veh_name in ['lo', 'ld', 'fd']:
-    #     ra.plot_grid_of_risk_histograms('initial_risk_to_' + veh_name,
-    #                                     simulation_percentages,
-    #                                     inputs_per_lane, accepted_risks)
-    for ipl in inputs_per_lane:
-        # ra.box_plot_y_vs_vehicle_type('total_lane_change_risk',
-        #                               'accepted_risk', ipl,
-        #                               simulation_percentages, accepted_risks)
-        # ra.box_plot_y_vs_vehicle_type('initial_risk',
-        #                               'accepted_risk', ipl,
-        #                               simulation_percentages, accepted_risks)
-        # ra.box_plot_y_vs_vehicle_type('flow', 'accepted_risk', ipl,
-        #                               simulation_percentages, accepted_risks)
-        # ra.box_plot_y_vs_vehicle_type('risk', 'accepted_risk', ipl,
-        #                               simulation_percentages, accepted_risks)
-        ra.plot_heatmap('lane_change_count', simulation_percentages,
-                        [ipl], accepted_risks)
-        ra.plot_heatmap('initial_risk', simulation_percentages,
-                        [ipl], accepted_risks)
-        ra.plot_heatmap('total_lane_change_risk', simulation_percentages,
-                        [ipl], accepted_risks)
-        ra.plot_heatmap('vehicle_count', simulation_percentages,
-                        [ipl], accepted_risks, normalize=False)
 
     # =============== Running =============== #
-    # vi = vissim_interface.VissimInterface()
-    # vi.load_simulation(network_name)
-    # vi.run_multiple_scenarios(simulation_percentages,
-    #                           inputs_per_lane,
-    #                           accepted_risks)
+    for ipl in inputs_per_lane:
+        vi = VissimInterface()
+        vi.load_simulation(network_name)
+        vi.run_multiple_scenarios(simulation_percentages,
+                                  [ipl],
+                                  accepted_risks)
 
     # =============== Post processing =============== #
-    # for item in simulation_percentages:
-    #     vehicle_types = list(item.keys())
-    #     percentages = list(item.values())
-    #     post_processing.create_summary_with_risks(
-    #         network_name, vehicle_types, percentages, inputs_per_lane,
-    #         accepted_risks)
+        for item in simulation_percentages:
+            vehicle_types = list(item.keys())
+            percentages = list(item.values())
+            post_processing.create_summary_with_risks(
+                network_name, vehicle_types, percentages, [ipl],
+                accepted_risks)
 
     # =============== Check results graphically =============== #
     # plot_acc_av_and_cav_results(False)

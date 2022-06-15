@@ -29,6 +29,7 @@ class VissimInterface:
 
     risk_to_leaders_uda_number = 9
     risk_to_follower_uda_number = 10
+    use_linear_lane_change_gap_uda_number = 11
 
     _initial_random_seed = 7
 
@@ -64,9 +65,8 @@ class VissimInterface:
         """ Loads a VISSIM network and optionally sets it to save vehicle
         records and ssam files.
 
-        :param scenario_name: Network name. Either the actual file name or the
-         network nickname. Currently available: in_and_out, in_and_merge, i710,
-         us101, traffic_lights
+        :param scenario_name: Currently available: in_and_out_*,
+         in_and_merge, i710, us101, traffic_lights
         :param layout_file: Optionally defines the layout file for the network
         :return: boolean indicating if simulation was properly loaded
         """
@@ -102,14 +102,13 @@ class VissimInterface:
 
     # RUNNING NETWORKS --------------------------------------------------------#
 
-    def run_simple_scenario(self, scenario: str,
+    def run_simple_scenario(self,
                             in_flow_input: int = None,
                             main_flow_input: int = None):
         """
         Runs the one of the toy scenarios: highway_in_and_out_lanes or
         highway_in_and_merge. Vehicle results are automatically saved.
 
-        :param scenario: in_and_out or in_and_merge
         :param in_flow_input: vehicle input (veh/h) of the in ramp (optional)
         :param main_flow_input: vehicle input (veh/h) of the main road
          (optional)
@@ -128,7 +127,6 @@ class VissimInterface:
             self.set_vehicle_inputs(veh_volumes)
 
         self.vissim.Evaluation.SetAttValue('VehRecFromTime', 0)
-        # when simulation gets longer, ignore warm-up time
         # Run
         print('Client: Simulation starting.')
         self.vissim.Simulation.RunContinuous()
@@ -145,7 +143,12 @@ class VissimInterface:
          (optional)
         :return: None
         """
-        self.run_simple_scenario('in_and_out', in_flow_input, main_flow_input)
+        scenario_name = self.file_handler.scenario_name
+        if scenario_name.endswith('risk_in_gap'):
+            self.set_use_linear_lane_change_gap(False)
+        else:
+            self.set_use_linear_lane_change_gap(True)
+        self.run_simple_scenario(in_flow_input, main_flow_input)
 
     def run_in_and_merge_scenario(self, in_flow_input: int = None,
                                   main_flow_input: int = None):
@@ -158,7 +161,7 @@ class VissimInterface:
          (optional)
         :return: None
         """
-        self.run_simple_scenario('in_and_merge', in_flow_input, main_flow_input)
+        self.run_simple_scenario(in_flow_input, main_flow_input)
 
     def run_us_101_simulation(self, highway_input: int = 8200,
                               ramp_input: int = 450,
@@ -463,193 +466,6 @@ class VissimInterface:
         self.vissim.ResumeUpdateGUI()
         self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode", 0)
 
-    # def run_with_increasing_demand(self, inputs_per_lane: List[int],
-    #                                runs_per_input: int = 10,
-    #                                simulation_period: int = None):
-    #     """
-    #     Runs a simulation several times with different seeds, then
-    #     increases the input and reruns the simulation.
-    #
-    #     :param inputs_per_lane: vehicles per hour per lane
-    #     :param runs_per_input: how many runs with the same input and varying
-    #      seed
-    #     :param simulation_period: Parameter used for debugging, when we want
-    #     shorter runs. If left at None, the code uses the predefined period
-    #     chosen for longer evaluations.
-    #     """
-    #
-    #     if not self.is_some_network_loaded():
-    #         print('Must load a network before running.')
-    #         return
-    #     self.check_saved_variables()
-    #
-    #     self.vissim.Evaluation.SetAttValue('KeepPrevResults', 'KEEPALL')
-    #     if not simulation_period:  # None, zero or empty string
-    #         self.set_simulation_period(
-    #             self._network_info[self.network_name].evaluation_period)
-    #     else:
-    #         self.set_simulation_period(simulation_period)
-    #     self.set_number_of_runs(runs_per_input)
-    #
-    #     simulation = self.vissim.Simulation
-    #     print('Starting series of runs, with initial seed {} and increment {}'.
-    #           format(simulation.AttValue('RandSeed'),
-    #                  simulation.AttValue('RandSeedIncr')))
-    #
-    #     self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode", 1)
-    #     self.vissim.SuspendUpdateGUI()
-    #     start_time = time.perf_counter()
-    #     for ipl in inputs_per_lane:
-    #         self.set_uniform_vehicle_input_for_all_lanes(ipl)
-    #
-    #         # For each input, we reset VISSIM's simulation count
-    #         self.reset_saved_simulations(warning_active=False)
-    #         # Then we set the proper folder to save the results
-    #         current_folder = self.vissim.Evaluation.AttValue('EvalOutDir')
-    #         # head, tail = os.path.split(current_folder)
-    #         # if 'percent' in tail or 'test' in tail:
-    #         #     head = os.path.join(head, tail)
-    #         veh_input_folder = str(ipl) + '_vehs_per_lane'
-    #         results_folder = os.path.join(current_folder, veh_input_folder)
-    #         self.set_results_folder(results_folder)
-    #
-    #         if self.network_name == 'in_and_out':
-    #             self.run_in_and_out_scenario()
-    #         elif self.network_name == 'in_and_merge':
-    #             self.run_in_and_merge_scenario()
-    #         elif self.network_name == 'i710':
-    #             self.run_i710_simulation(scenario_idx=1)
-    #         elif self.network_name == 'us101':
-    #             self.run_us_101_simulation()
-    #         elif self.network_name == 'traffic_lights':
-    #             self.run_traffic_lights_scenario()
-    #         else:
-    #             print("Error: trying to evaluate unknown scenario")
-    #
-    #     end_time = time.perf_counter()
-    #     n_inputs = len(inputs_per_lane)
-    #     print('Total time: {}s to run {} simulations including {} different '
-    #           'vehicle inputs'.format(end_time - start_time,
-    #                                   n_inputs * runs_per_input, n_inputs))
-    #     self.vissim.ResumeUpdateGUI()
-    #     self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode", 0)
-
-    # def run_with_varying_controlled_percentage(
-    #         self,
-    #         percentages_per_vehicle_types: List[Dict[VehicleType, int]],
-    #         inputs_per_lane: List[int],
-    #         runs_per_input: int = 10,
-    #         simulation_period: int = None,
-    #         is_debugging: bool = False):
-    #     """
-    #     Runs scenarios with increasing demand for varying percentage
-    #     values of controlled vehicles
-    #
-    #     :param percentages_per_vehicle_types: List of dictionaries. Each
-    #      dictionary should define the percentages of controlled vehicles as
-    #      VehicleType: int.
-    #     :param inputs_per_lane: vehicles per hour per lane
-    #     :param runs_per_input: how many runs with the same input and varying
-    #      seed
-    #     :param simulation_period: Parameter used for debugging, when we want
-    #     shorter runs. If left at None, the code uses the predefined period
-    #     chosen for longer evaluations.
-    #     :param is_debugging: if true, results are saved to a test folder
-    #     """
-    #
-    #     if (self.network_name in {'in_and_out', 'in_and_merge', 'us101'}
-    #             or is_debugging):
-    #         warm_up_minutes = 1
-    #         save_ssam = True
-    #     elif self.network_name in {'i710', 'traffic_lights'}:
-    #         warm_up_minutes = 10
-    #         save_ssam = False
-    #     else:
-    #         raise ValueError('Warm up time not set for network ',
-    #                          self.network_name)
-    #     self.set_evaluation_outputs(True, save_ssam, True, True, True,
-    #                                 warm_up_minutes * 60, 30)
-    #     # Any values for initial random seed and increment are good, as long
-    #     # as they are the same over each set of simulations.
-    #     self.set_random_seed(self._initial_random_seed)
-    #     self.set_random_seed_increment(1)
-    #
-    #     for item in percentages_per_vehicle_types:
-    #         vehicle_types = list(item.keys())
-    #         percentages = list(item.values())
-    #         if is_debugging:  # run 2 short simulations
-    #             print('Debug mode: running 2 short simulations with single '
-    #                   'input per lane value.')
-    #             self.use_debug_folder_for_results()
-    #             self.reset_saved_simulations(warning_active=False)
-    #             runs_per_input = 2
-    #             simulation_period = 360
-    #         else:  # save all results in different folders
-    #             # For each percentage, we reset VISSIM's simulation count
-    #             self.reset_saved_simulations(warning_active=False)
-    #             # Then we set the proper folder to save the results
-    #             results_folder = os.path.join(
-    #                 self.results_base_address,
-    #                 file_handling.create_percent_folder_name(
-    #                     percentages, vehicle_types))
-    #             self.set_results_folder(results_folder)
-    #         # Finally, we set the percentage and run the simulation
-    #         self.set_controlled_vehicles_percentage(percentages,
-    #                                                 vehicle_types)
-    #         self.run_with_increasing_demand(
-    #             inputs_per_lane,
-    #             runs_per_input=runs_per_input,
-    #             simulation_period=simulation_period)
-
-    # def run_with_increasing_accepted_risk(
-    #         self, percentage_per_vehicle_type: Dict[VehicleType, int],
-    #         vehicle_input: List[int], accepted_risks: List[int],
-    #         is_debugging: bool = False):
-    #     """
-    #     Run a scenario with fixed percentage of autonomous vehicle types and
-    #     increasing accepted lane change risk
-    #     :return:
-    #     """
-    #     warm_up_minutes = 1
-    #     self.set_evaluation_outputs(True, False, True, True, True,
-    #                                 warm_up_minutes * 60, 30)
-    #     # Any values for initial random seed and increment are good, as long
-    #     # as they are the same over each set of simulations.
-    #     self.set_random_seed(self._initial_random_seed)
-    #     self.set_random_seed_increment(1)
-    #     vehicle_types = list(percentage_per_vehicle_type.keys())
-    #     percentages = list(percentage_per_vehicle_type.values())
-    #     self.set_controlled_vehicles_percentage(percentages, vehicle_types)
-    #     results_base_folder = os.path.join(
-    #         self.results_base_address,
-    #         file_handling.create_percent_folder_name(percentages,
-    #                                                  vehicle_types))
-    #     for ar in accepted_risks:
-    #         if is_debugging:  # run 2 short simulations
-    #             print('Debug mode: running 2 short simulations with single '
-    #                   'input per lane value.')
-    #             self.use_debug_folder_for_results()
-    #             self.reset_saved_simulations(warning_active=False)
-    #             runs_per_input = 2
-    #             simulation_period = 360
-    #         else:  # save all results in different folders
-    #             # For each percentage, we reset VISSIM's simulation count
-    #             self.reset_saved_simulations(warning_active=False)
-    #             runs_per_input = 10
-    #             simulation_period = None  # gets defined in the function that
-    #             # actually runs the simulations
-    #             # Set the proper folder to save the results
-    #             results_folder = os.path.join(
-    #                 results_base_folder,
-    #                 file_handling.create_accepted_risk_folder_name(ar))
-    #             self.set_results_folder(results_folder)
-    #
-    #         self.set_uda_default_value(self.risk_to_leaders_uda_number, ar)
-    #         self.run_with_increasing_demand(
-    #             vehicle_input,
-    #             runs_per_input=runs_per_input,
-    #             simulation_period=simulation_period)
-
     def run_us_101_with_different_speed_limits(self, possible_speeds=None):
         if not self.is_correct_network_loaded():
             return
@@ -929,6 +745,18 @@ class VissimInterface:
               accepted_risk)
         self.set_uda_default_value(self.risk_to_follower_uda_number,
                                    accepted_risk)
+
+    def set_use_linear_lane_change_gap(self, use_linear_lane_change_gap: bool):
+        """
+        Determines whether the accepted lane change gaps are computed using a
+         linear overestimation of the non-linear value
+        :param use_linear_lane_change_gap:
+        :return:
+        """
+        print("[Client] Setting use linear lane change gap ",
+              use_linear_lane_change_gap)
+        self.set_uda_default_value(self.use_linear_lane_change_gap_uda_number,
+                                   use_linear_lane_change_gap)
 
     def set_uda_default_value(self, uda_number: int, uda_value: float):
         """
