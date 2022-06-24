@@ -409,7 +409,7 @@ class VissimInterface:
             accepted_risks = [0]
         if is_debugging:
             warm_up_minutes = 0
-            runs_per_scenario = 2
+            runs_per_scenario = 1
             simulation_period = 360
         else:
             warm_up_minutes = self.network_info.warm_up_minutes
@@ -424,8 +424,10 @@ class VissimInterface:
         self.vissim.Evaluation.SetAttValue('KeepPrevResults', 'KEEPALL')
         self.set_simulation_period(simulation_period)
         self.set_number_of_runs(runs_per_scenario)
-        self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode", 1)
-        self.vissim.SuspendUpdateGUI()
+        if not is_debugging:
+            self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode",
+                                                                  1)
+            self.vissim.SuspendUpdateGUI()
 
         print("Starting multiple-scenario run.")
         for item in percentages_per_vehicle_types:
@@ -753,7 +755,7 @@ class VissimInterface:
         :param use_linear_lane_change_gap:
         :return:
         """
-        print("[Client] Setting use linear lane change gap ",
+        print("[Client] Setting use linear lane change gap",
               use_linear_lane_change_gap)
         self.set_uda_default_value(self.use_linear_lane_change_gap_uda_number,
                                    use_linear_lane_change_gap)

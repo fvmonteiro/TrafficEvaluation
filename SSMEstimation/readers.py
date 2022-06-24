@@ -62,31 +62,6 @@ class DataReader:
     def load_data(self, file_identifier) -> pd.DataFrame:
         raise NotImplementedError
 
-    # def get_data_folder(self,
-    #                     vehicle_type: List[VehicleType],
-    #                     controlled_percentage: List[int],
-    #                     vehicles_per_lane: int) -> str:
-    #     """
-    #     Creates a string with the full path of the simulation results data
-    #     folder. If all parameters are None, returns the test data folder
-    #
-    #     :param vehicle_type: Enum to indicate the vehicle (controller) type
-    #     :param controlled_percentage: Percentage of autonomous vehicles
-    #      in the simulation. Current possible values: 0:25:100
-    #     :param vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
-    #      values depend on the controlled_vehicles_percentage: 500:500:2500
-    #     :return: string with the folder where the data is
-    #     """
-    #     if (vehicle_type is None and controlled_percentage is None
-    #             and vehicles_per_lane is None):
-    #         return os.path.join(self.data_dir, 'test')
-    #
-    #     percent_folder = file_handling.create_percent_folder_name(
-    #         controlled_percentage, vehicle_type)
-    #     vehicle_input_folder = file_handling.create_vehs_per_lane_folder_name(
-    #         vehicles_per_lane)
-    #     return os.path.join(self.data_dir, percent_folder, vehicle_input_folder)
-
     @staticmethod
     def _select_relevant_columns(data):
         columns_to_drop = []
@@ -105,7 +80,7 @@ class VissimDataReader(DataReader):
                  header_map: dict):
 
         self.file_handler = FileHandler(scenario_name)
-        network_data_dir = self.file_handler.get_results_base_folder()
+        # network_data_dir = self.file_handler.get_results_base_folder()
         DataReader.__init__(self, scenario_name)
         # self.vehicle_type = vehicle_type.name.lower()
         self.file_format = file_format
@@ -144,6 +119,7 @@ class VissimDataReader(DataReader):
          in the simulation. Current possible values: 0:25:100
         :param vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
          values depend on the controlled_vehicles_percentage: 500:500:2500
+        :param accepted_risk: accepted lane change risk
         :return: string with the full file address ready to be opened
         """
         if isinstance(file_identifier, str):
@@ -177,6 +153,7 @@ class VissimDataReader(DataReader):
          in the simulation. Current possible values: 0:25:100
         :param vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
          values depend on the controlled_vehicles_percentage: 500:500:2500
+        :param accepted_risk: accepted lane change risk
         :param n_rows: Number of rows going to be read from the file.
          Used for debugging purposes.
         :return: pandas dataframe with the data
@@ -253,6 +230,7 @@ class VissimDataReader(DataReader):
          in the simulation. If this is a list, all the data is appended to a 
          single data frame.
         :param vehicle_input:
+        :param accepted_risks: accepted lane change risk
         :return: pandas dataframe with the data
         """
         percentage_copy = vehicle_percentage[:]
@@ -270,8 +248,9 @@ class VissimDataReader(DataReader):
                 for ar in (accepted_risks if sum(percentage) > 0
                            else [0]):
                     min_file_number, max_file_number = (
-                        self.find_min_max_file_number(vt, percentage,
-                                                      veh_input, ar))
+                        self.file_handler.find_min_max_file_number(
+                            self.data_identifier, self.file_format, vt,
+                            percentage, veh_input, ar))
                     if min_file_number > max_file_number:
                         warnings.warn('Files not found')
                     # Since files contain cumulative data from all runs
@@ -310,6 +289,7 @@ class VissimDataReader(DataReader):
          values depend on the controlled_vehicles_percentage: 500:500:2500
         :param first_file_number: simulation run number of the first file
         :param last_file_number: simulation run number of the last file
+        :param accepted_risk: accepted lane change risk
         :return: single aggregated pandas dataframe """
 
         sim_output = []
@@ -329,40 +309,41 @@ class VissimDataReader(DataReader):
 
         return pd.concat(sim_output, ignore_index=True)
 
-    def find_min_max_file_number(self, vehicle_type: List[VehicleType],
-                                 percentage: List[int],
-                                 vehicles_per_lane: int,
-                                 accepted_risk: int = None) -> (int, int):
-        """"Looks for the file with the highest simulation number. This is
-        usually the file containing results from all simulations.
-
-        :param vehicle_type: Enum to indicate the vehicle (controller) type
-        :param percentage: Percentage of autonomous vehicles
-         in the simulation.
-        :param vehicles_per_lane: Vehicle input per lane used in simulation
-        :return: highest simulation number. """
-        max_simulation_number = -1
-        min_simulation_number = 10000
-        results_folder = self.file_handler.get_data_folder(
-            vehicle_type, percentage, vehicles_per_lane, accepted_risk)
-        network_file = self.file_handler.get_file_name()
-        for file in os.listdir(results_folder):
-            file_str = os.fsdecode(file)
-            if (file_str.startswith(network_file + self.data_identifier)
-                    and file_str.endswith(self.file_format)):
-                file_no_extension = file_str.split('.')[0]
-                try:
-                    sim_number = int(file_no_extension.split('_')[-1])
-                except ValueError:
-                    print('File {} is not being read because its name does not '
-                          'end with a number.'.format(file_no_extension))
-                    continue
-                if sim_number > max_simulation_number:
-                    max_simulation_number = sim_number
-                if sim_number < min_simulation_number:
-                    min_simulation_number = sim_number
-
-        return min_simulation_number, max_simulation_number
+    # def find_min_max_file_number(self, vehicle_type: List[VehicleType],
+    #                              percentage: List[int],
+    #                              vehicles_per_lane: int,
+    #                              accepted_risk: int = None) -> (int, int):
+    #     """"Looks for the file with the highest simulation number. This is
+    #     usually the file containing results from all simulations.
+    #
+    #     :param vehicle_type: Enum to indicate the vehicle (controller) type
+    #     :param percentage: Percentage of autonomous vehicles
+    #      in the simulation.
+    #     :param vehicles_per_lane: Vehicle input per lane used in simulation
+    #     :param accepted_risk: accepted lane change risk
+    #     :return: highest simulation number. """
+    #     max_simulation_number = -1
+    #     min_simulation_number = 10000
+    #     results_folder = self.file_handler.get_data_folder(
+    #         vehicle_type, percentage, vehicles_per_lane, accepted_risk)
+    #     network_file = self.file_handler.get_file_name()
+    #     for file in os.listdir(results_folder):
+    #         file_str = os.fsdecode(file)
+    #         if (file_str.startswith(network_file + self.data_identifier)
+    #                 and file_str.endswith(self.file_format)):
+    #             file_no_extension = file_str.split('.')[0]
+    #             try:
+    #                 sim_number = int(file_no_extension.split('_')[-1])
+    #             except ValueError:
+    #                 print('File {} is not being read because its name does not '
+    #                       'end with a number.'.format(file_no_extension))
+    #                 continue
+    #             if sim_number > max_simulation_number:
+    #                 max_simulation_number = sim_number
+    #             if sim_number < min_simulation_number:
+    #                 min_simulation_number = sim_number
+    #
+    #     return min_simulation_number, max_simulation_number
 
 
 class VehicleRecordReader(VissimDataReader):
@@ -424,6 +405,7 @@ class VehicleRecordReader(VissimDataReader):
         :param vehicle_inputs: Vehicle input per lane used in simulation.
         :param n_rows: Number of rows going to be read from the file.
          Used for debugging purposes.
+        :param accepted_risk: accepted lane change risk
         :return:
         """
         # if vehicle_inputs is None:
@@ -433,8 +415,9 @@ class VehicleRecordReader(VissimDataReader):
         # Check all the *_vehs_per_lane folders in the percentage folder
         for veh_input in vehicle_inputs:
             min_file_number, max_file_number = (
-                self.find_min_max_file_number(vehicle_type, percentage,
-                                              veh_input, accepted_risk))
+                        self.file_handler.find_min_max_file_number(
+                            self.data_identifier, self.file_format,
+                            vehicle_type, percentage, veh_input, accepted_risk))
             if min_file_number > max_file_number:
                 warnings.warn('Files not found')
             for file_number in range(min_file_number,
@@ -664,6 +647,7 @@ class VissimLaneChangeReader(VissimDataReader):
         :param vehicle_type:
         :param vehicle_percentage:
         :param vehicle_input:
+        :param accepted_risks: accepted lane change risk
         :return:
         """
 
@@ -679,20 +663,13 @@ class VissimLaneChangeReader(VissimDataReader):
         for i in range(len(vehicle_type)):
             vt = vehicle_type[i]
             percentage = percentage_copy[i]
-            # percent_folder = file_handling.create_percent_folder_name(
-            #     percentage, vt)
-            # percentage_path = os.path.join(self.data_dir, percent_folder)
 
-            # Check all the *_vehs_per_lane folders in the percentage folder
             for veh_input in vehicle_input:
-                # for folder in os.listdir(percentage_path):
-                #     if (os.path.isdir(os.path.join(percentage_path, folder))
-                #             and folder in desired_folders):
-                #         veh_input = int(folder.split('_')[0])
                 for ar in accepted_risks:
                     min_file_number, max_file_number = (
-                        self.find_min_max_file_number(vt, percentage,
-                                                      veh_input, ar))
+                        self.file_handler.find_min_max_file_number(
+                            self.data_identifier, self.file_format, vt,
+                            percentage, veh_input, ar))
                     if min_file_number > max_file_number:  # no file found
                         return pd.DataFrame()
                     new_data = self.load_data_from_several_files(
@@ -713,7 +690,6 @@ class PostProcessedDataReader(DataReader):
 
     def __init__(self, scenario_name: str, data_identifier: str):
         self.file_handler = FileHandler(scenario_name)
-        network_data_dir = self.file_handler.get_results_base_folder()
         DataReader.__init__(self, scenario_name)
         self.data_identifier = data_identifier
 
@@ -731,6 +707,7 @@ class PostProcessedDataReader(DataReader):
          percentage
         :param vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
          values depend on the controlled_vehicles_percentage: 500:500:2500
+        :param accepted_risk: accepted lane change risk
         :return: pandas dataframe with the data
         """
 
@@ -741,7 +718,7 @@ class PostProcessedDataReader(DataReader):
         # data_folder = self.get_data_folder(vehicle_type,
         #                                    controlled_vehicles_percentage,
         #                                    vehicles_per_lane)
-        network_file = self.file_handler.get_network_name()
+        network_file = self.file_handler.get_file_name()
         file_name = (network_file + self.data_identifier + self.file_format)
         full_address = os.path.join(data_folder, file_name)
         try:
@@ -837,6 +814,7 @@ class SSMDataReader(PostProcessedDataReader):
         :param controlled_vehicles_percentage: indicates the controlled vehicles
          percentage
         :param vehicles_per_lane: Vehicle input per lane used in simulation
+        :param accepted_risk: accepted lane change risk
         :return: SSM data for the requested simulation
         """
         data = super().load_data(file_identifier,
@@ -879,6 +857,13 @@ class LaneChangeReader(PostProcessedDataReader):
         return data
 
 
+class LaneChangeIssuesReader(PostProcessedDataReader):
+    _data_identifier = '_Lane Change Issues'
+
+    def __init__(self, scenario_name):
+        PostProcessedDataReader.__init__(self, scenario_name,
+                                         self._data_identifier)
+
 class ViolationsReader(PostProcessedDataReader):
     _data_identifier = '_Traffic Light Violations'
 
@@ -915,7 +900,7 @@ class NGSIMDataReader(DataReader):
         # self.interval = 0
         try:
             self.data_dir = os.path.join(self.ngsim_dir,
-                                    self.location_switch[location])
+                                         self.location_switch[location])
             file_name = 'trajectories-'
         except KeyError:
             print('{}: KeyError: location {} not defined'.
@@ -953,7 +938,7 @@ class NGSIMDataReader(DataReader):
 class SyntheticDataReader(DataReader):
     file_extension = '.csv'
     data_dir = ('C:\\Users\\fvall\\Documents\\Research\\TrafficSimulation'
-                     '\\synthetic_data\\')
+                '\\synthetic_data\\')
     synthetic_sim_name = 'synthetic_data'
 
     def __init__(self):
@@ -1022,7 +1007,6 @@ class SignalControllerFileReader(DataReader):
         except OSError:
             raise ValueError('File {} not found'.format(full_address))
 
-
 # DEPRECATED CLASSES #
 # class OnLineDataReader(DataReader):
 #     """"Class to read NGSIM data online, commands from
@@ -1037,22 +1021,22 @@ class SignalControllerFileReader(DataReader):
 #         DataReader.__init__(self, url, database_identifier)
 #         self.data_source = 'NGSIM_online'
 
-    # def load_data(self, location='us-101', limit='2000'):
-    #     """
-    #     :param location: peachtree, i-80, us-101, lankershim
-    #     :param limit: max number of rows
-    #     :return: pandas dataframe
-    #     """
-    #     # The get function can receive SQL-like parameters to better select
-    #     # the data
-    #
-    #     # Unauthenticated client only works with public data sets. Note
-    #     # 'None' in place of application token, and no username or password:
-    #     client = Socrata(self.data_dir, None)
-    #     # Results, returned as JSON from API / converted to Python list of
-    #     # dictionaries by sodapy.
-    #     results = client.get(self.file_name, location=location, limit=limit)
-    #     # Convert to pandas DataFrame
-    #     results_df = pd.DataFrame.from_records(results)
-    #
-    #     return results_df
+# def load_data(self, location='us-101', limit='2000'):
+#     """
+#     :param location: peachtree, i-80, us-101, lankershim
+#     :param limit: max number of rows
+#     :return: pandas dataframe
+#     """
+#     # The get function can receive SQL-like parameters to better select
+#     # the data
+#
+#     # Unauthenticated client only works with public data sets. Note
+#     # 'None' in place of application token, and no username or password:
+#     client = Socrata(self.data_dir, None)
+#     # Results, returned as JSON from API / converted to Python list of
+#     # dictionaries by sodapy.
+#     results = client.get(self.file_name, location=location, limit=limit)
+#     # Convert to pandas DataFrame
+#     results_df = pd.DataFrame.from_records(results)
+#
+#     return results_df

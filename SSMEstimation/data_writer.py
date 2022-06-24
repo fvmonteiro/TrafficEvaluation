@@ -15,7 +15,7 @@ class DataWriter:
     def __init__(self, data_type_identifier: str, file_extension: str,
                  scenario_name: str, vehicle_type: List[VehicleType]):
         self.file_handler = file_handling.FileHandler(scenario_name)
-        self.file_base_name = (self.file_handler.get_network_name() + '_'
+        self.file_base_name = (self.file_handler.get_file_name() + '_'
                                + data_type_identifier)
         self.file_extension = file_extension
         self.vehicle_type = vehicle_type

@@ -310,8 +310,10 @@ def create_summary_with_risks(scenario_name: str,
                               controlled_percentage: List[int],
                               vehicle_inputs: List[int],
                               accepted_risks: List[int] = None,
-                              debugging: bool = False):
-    """Reads multiple vehicle record data files, postprocesses them,
+                              debugging: bool = False,
+                              post_processors: List[str] = None):
+    """
+    Reads multiple vehicle record data files, postprocesses them,
     computes and aggregates SSMs results, extracts risky maneuvers, and
     find traffic light violations. SSMs, risky maneuvers and
     violations are saved as csv files per vehicle input.
@@ -326,11 +328,11 @@ def create_summary_with_risks(scenario_name: str,
     :param accepted_risks: Accepted lane change risk.
     :param debugging: If true, we load only 10^5 samples from the vehicle
      records and do not save results.
-    :return: Nothing. SSM results are saved to as csv files"""
-
-    # check_already_processed_vehicle_inputs(
-    #     network_name, vehicle_type, controlled_percentage,
-    #     vehicle_inputs)
+    :param post_processors: Defines which post processing operations should be
+     done. Used for debugging. Default value of None will perform all
+     available operations. [NOT IMPLEMENTED]
+    :return: Nothing. Results are saved to as csv files
+    """
 
     if accepted_risks is None:  # simulations without risk as a variable
         accepted_risks = [None]

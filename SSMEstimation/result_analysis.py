@@ -57,7 +57,8 @@ class ResultAnalyzer:
         'initial_risk': readers.LaneChangeReader,
         'initial_risk_to_lo': readers.LaneChangeReader,
         'initial_risk_to_ld': readers.LaneChangeReader,
-        'initial_risk_to_fd': readers.LaneChangeReader
+        'initial_risk_to_fd': readers.LaneChangeReader,
+        'lane_change_issues': readers.LaneChangeIssuesReader
     }
 
     def __init__(self, network_name: str, should_save_fig: bool = False):
@@ -219,11 +220,17 @@ class ResultAnalyzer:
         sns.set_style('whitegrid')
         sns.boxplot(data=relevant_data, x='control_type', y=y, hue=hue)
                     # kind=kind)
+        for ct in relevant_data['control_type'].unique():
+            print('vehs per lane: {}, ct: {}, y: {}'.format(
+                vehicles_per_lane, ct,
+                relevant_data.loc[relevant_data['control_type'] == ct,
+                                  y].median()
+            ))
         # legend_len = len(relevant_data[hue].unique())
         # n_legend_cols = (legend_len if legend_len < 5
         #                  else legend_len // 2 + 1)
-        plt.legend(title=hue, loc='right', ncol=1,
-                   bbox_to_anchor=(1.1, 1))
+        plt.legend(title=hue, ncol=1,
+                   bbox_to_anchor=(1.01, 1))
         plt.title(str(vehicles_per_lane) + ' vehs/h/lane', fontsize=22)
         if self.should_save_fig:
             self.save_fig(plt.gcf(), 'box_plot', y, [vehicles_per_lane],
@@ -308,7 +315,7 @@ class ResultAnalyzer:
             self, risk_type: str,
             percentages_per_vehicle_types: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int], accepted_risks: List[int],
-            warmup_time: int = 10, min_risk: int = 0.01
+            warmup_time: int = 10, min_risk: int = 0.1
     ):
         """
         Creates a grid of size '# of vehicle types' vs '# of accepted risks'
@@ -354,6 +361,8 @@ class ResultAnalyzer:
                 sns.histplot(data=data_to_plot, x=risk_type,
                              stat='count', hue='vehicles_per_lane',
                              palette='tab10', ax=axes[i, j])
+                if i + j > 0 and axes[i, j].get_legend():
+                    axes[i, j].get_legend().remove()
                 if i == 0:
                     axes[i, j].set_title('accepted risk = ' + str(ar))
         plt.tight_layout()
@@ -441,9 +450,9 @@ class ResultAnalyzer:
         for vpl in vehicles_per_lane:
             data = self._load_data(y, percentages_per_vehicle_types, [vpl],
                                    accepted_risks)
-            self._prepare_data_for_plotting(data, warmup_time)
+            self._prepare_data_for_plotting(data, warmup_time * 60)
             data.loc[data['control_percentages'] == 'no control',
-                     'control_percentages'] = '100%HD'
+                     'control_percentages'] = '100% HD'
             n_simulations = len(data['simulation_number'].unique())
             table = data.pivot_table(values=col_in_df,
                                      index=['accepted_risk'],
@@ -451,7 +460,7 @@ class ResultAnalyzer:
                                      aggfunc=aggregation_function)
             if 'count' in y:
                 table /= n_simulations
-            no_avs_no_risk_value = table.loc[0, '100%HD']
+            no_avs_no_risk_value = table.loc[0, '100% HD']
             print("Base value (humans drivers): ", no_avs_no_risk_value)
             # Necessary because simulations without AVs only have LC values
             # with zero accepted risk.
@@ -471,6 +480,30 @@ class ResultAnalyzer:
                       fontsize=22)
             plt.tight_layout()
             plt.show()
+
+    def print_summary_of_issues(
+            self, percentages_per_vehicle_types: List[Dict[VehicleType, int]],
+            vehicles_per_lane: List[int], accepted_risks: List[int],
+            warmup_time: int = 10):
+        """
+        Prints out a summary with average number of times the AV requested
+        human intervention and average number of vehicles removed from
+        simulation
+        :param percentages_per_vehicle_types:
+        :param vehicles_per_lane:
+        :param accepted_risks:
+        :param warmup_time:
+        :return:
+        """
+        data = self._load_data('lane_change_issues',
+                               percentages_per_vehicle_types,
+                               vehicles_per_lane, accepted_risks)
+        self._prepare_data_for_plotting(data, warmup_time)
+        n_simulations = len(data['simulation_number'].unique())
+        issue_count = data.groupby(['vehicles_per_lane', 'control_percentages',
+                                    'accepted_risk', 'issue'])['veh_id'].count()
+        issue_count /= n_simulations
+        print(issue_count)
 
     # Traffic Light Scenario Plots =========================================== #
     def plot_violations_per_control_percentage(
@@ -798,7 +831,8 @@ class ResultAnalyzer:
         4. [Optional] Filter out certain sensor groups
 
         :param data: data aggregated over time
-        :param warmup_time: Samples earlier than warmup_time are dropped
+        :param warmup_time: Samples earlier than warmup_time are dropped.
+         Must be passed in minutes
         :param flow_sensor_number: if plotting flow, we can determine choose
          which data collection measurement will be shown
         """

@@ -82,6 +82,20 @@ _scenario_info = {
 }
 
 
+def temp_name_editing():
+    folder = ("C:\\Users\\fvall\\Documents\\Research\\TrafficSimulation"
+              "\\VISSIM_networks\\highway_in_and_out_lanes\\test")
+    for file in os.listdir(folder):
+        file_str = os.fsdecode(file)
+        file_name, file_ext = file_str.split('.')
+        base_name = file_name[:-3]
+        num_str = int(file_name[-3:]) + 5
+        new_name = base_name + str(num_str).rjust(3, '0') + '.' + file_ext
+        old_file = os.path.join(folder, file_str)
+        new_file = os.path.join(folder, new_name)
+        os.rename(old_file, new_file)
+
+
 class FileHandler:
     """Class is the interface between scenario names and all their properties"""
 
@@ -144,6 +158,10 @@ class FileHandler:
                 and vehicles_per_lane is None):
             return os.path.join(results_base_folder, 'test')
 
+        if sum(controlled_percentage) == 0:
+            accepted_risk = None
+            results_base_folder = os.path.join(self.get_network_file_folder())
+
         percent_folder = create_percent_folder_name(
             controlled_percentage, vehicle_type)
         vehicle_input_folder = create_vehs_per_lane_folder_name(
@@ -152,6 +170,49 @@ class FileHandler:
             accepted_risk)
         return os.path.join(results_base_folder, percent_folder,
                             vehicle_input_folder, accepted_risk_folder)
+
+    def find_min_max_file_number(self,
+                                 data_identifier: str,
+                                 file_format: str,
+                                 vehicle_type: List[VehicleType],
+                                 percentage: List[int],
+                                 vehicles_per_lane: int,
+                                 accepted_risk: int = None) -> (int, int):
+        """"
+        Looks for the file with the highest simulation number. This is
+        usually the file containing results from all simulations.
+
+        :param data_identifier: last part of the file name
+        :param file_format: file extension
+        :param vehicle_type: Enum to indicate the vehicle (controller) type
+        :param percentage: Percentage of autonomous vehicles
+         in the simulation.
+        :param vehicles_per_lane: Vehicle input per lane used in simulation
+        :param accepted_risk: accepted lane change risk
+        :return: highest simulation number.
+        """
+        max_simulation_number = -1
+        min_simulation_number = 10000
+        results_folder = self.get_data_folder(
+            vehicle_type, percentage, vehicles_per_lane, accepted_risk)
+        network_file = self.get_file_name()
+        for file in os.listdir(results_folder):
+            file_str = os.fsdecode(file)
+            if (file_str.startswith(network_file + data_identifier)
+                    and file_str.endswith(file_format)):
+                file_no_extension = file_str.split('.')[0]
+                try:
+                    sim_number = int(file_no_extension.split('_')[-1])
+                except ValueError:
+                    print('File {} is not being read because its name does not '
+                          'end with a number.'.format(file_no_extension))
+                    continue
+                if sim_number > max_simulation_number:
+                    max_simulation_number = sim_number
+                if sim_number < min_simulation_number:
+                    min_simulation_number = sim_number
+
+        return min_simulation_number, max_simulation_number
 
     def copy_results_from_multiple_scenarios(
             self,
@@ -174,112 +235,38 @@ class FileHandler:
         Risky Maneuvers and Violations files to a similar folder structure in
         Google Drive. """
 
-        base_source_folder = os.path.join(
-            get_networks_folder(),
-            self.get_results_relative_address())
-        base_target_folder = os.path.join(
-            get_shared_folder(),
-            self.get_results_relative_address())
-        percent_folder = create_percent_folder_name(
-            controlled_percentages, vehicle_types)
-        vehicle_input_folder = create_vehs_per_lane_folder_name(
-            vehicles_per_lane)
-        accepted_risk_folder = create_accepted_risk_folder_name(
+        source_dir = self.get_data_folder(
+            vehicle_types, controlled_percentages, vehicles_per_lane,
             accepted_risk)
-        source_dir = os.path.join(base_source_folder, percent_folder,
-                                  vehicle_input_folder, accepted_risk_folder)
-        target_dir = os.path.join(base_target_folder, percent_folder,
-                                  vehicle_input_folder, accepted_risk_folder)
+        target_dir = os.path.join(
+            get_shared_folder(),
+            source_dir.split(get_networks_folder() + "\\")[1]
+        )
+        # base_target_folder = os.path.join(
+        #     get_shared_folder(),
+        #     self.get_results_relative_address())
+        # percent_folder = create_percent_folder_name(
+        #     controlled_percentages, vehicle_types)
+        # vehicle_input_folder = create_vehs_per_lane_folder_name(
+        #     vehicles_per_lane)
+        # accepted_risk_folder = create_accepted_risk_folder_name(
+        #     accepted_risk)
+        # target_dir = os.path.join(base_target_folder, percent_folder,
+        #                           vehicle_input_folder, accepted_risk_folder)
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
 
         all_file_names = os.listdir(source_dir)
-        for file_name in all_file_names:
-            file_extension = file_name.split('.')[-1]
-            if file_extension in {'csv', 'att'}:
-                shutil.copy(os.path.join(source_dir, file_name), target_dir)
-
-
-# def get_network_name_from_scenario(scenario_name: str):
-#     return _scenario_info[scenario_name].network
-#
-#
-# def get_file_name_from_scenario(scenario_name: str):
-#     return _scenario_info[scenario_name].file_name
-
-
-# def get_file_name_from_network_name(network_name: str):
-#     if network_name in _scenario_info:
-#         return _scenario_info[network_name].file_name
-#     for existing_scenario in _scenario_info.values():
-#         if network_name == existing_scenario.network:
-#             return existing_scenario.file_name
-#     raise ValueError('Network "{}" is not in the list of valid '
-#                      'simulations\nCheck whether the network exists  '
-#                      'and add it to the VissimInterface attribute '
-#                      'existing_networks'.
-#                      format(network_name))
-
-
-# def get_network_name_from_file_name(network_file:str):
-#     for key in _scenario_info:
-#         if _scenario_info[key].file_name == network_file:
-#             return key
-#     raise ValueError('Simulation name for this file was not found')
-
-
-# def get_results_relative_address(network_name: str):
-#     return os.path.join(get_network_file_relative_address(network_name),
-#                         _scenario_info[network_name].results_folder)
-
-
-# def get_network_file_relative_address(network_name: str):
-#     # The network files are in folder with the same name as the file
-#     return _scenario_info[network_name].file_name
-
-
-# def get_data_folder(network_results_folder: str,
-#                     vehicle_type: List[VehicleType],
-#                     controlled_percentage: List[int],
-#                     vehicles_per_lane: int,
-#                     accepted_risk: int) -> str:
-#     """
-#     Creates a string with the full path of the simulation results data
-#     folder. If all parameters are None, returns the test data folder
-#
-#     :param network_results_folder: Result's folder for a given network
-#     :param vehicle_type: list of enums to indicate the vehicle (controller) type
-#     :param controlled_percentage: Percentage of autonomous vehicles
-#      in the simulation. Current possible values: 0:25:100
-#     :param vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
-#      values depend on the controlled_vehicles_percentage: 500:500:2500
-#     :param accepted_risk: maximum lane changing risk in m/s
-#     :return: string with the folder where the data is
-#     """
-#     if (vehicle_type is None and controlled_percentage is None
-#             and vehicles_per_lane is None):
-#         return os.path.join(network_results_folder, 'test')
-#
-#     percent_folder = create_percent_folder_name(
-#         controlled_percentage, vehicle_type)
-#     vehicle_input_folder = create_vehs_per_lane_folder_name(
-#         vehicles_per_lane)
-#     accepted_risk_folder = create_accepted_risk_folder_name(
-#         accepted_risk)
-#     return os.path.join(network_results_folder, percent_folder,
-#                         vehicle_input_folder, accepted_risk_folder)
-
-
-# def get_on_ramp_links(network_name: str):
-#     return _scenario_info[network_name].on_ramp_link
-#
-#
-# def get_off_ramp_links(network_name: str):
-#     return _scenario_info[network_name].off_ramp_link
-#
-#
-# def get_merging_links(network_name: str):
-#     return _scenario_info[network_name].merging_link
+        all_csv_files = [file for file in all_file_names if
+                         file.endswith('csv')]
+        _, max_file_number = self.find_min_max_file_number(
+            '', 'att', vehicle_types, controlled_percentages, vehicles_per_lane,
+            accepted_risk)
+        max_att_files = [file for file in all_file_names if
+                         file.endswith(str(max_file_number) + '.att')]
+        files_to_copy = all_csv_files + max_att_files
+        for file_name in files_to_copy:
+            shutil.copy(os.path.join(source_dir, file_name), target_dir)
 
 
 def create_percent_folder_name(percentage: List[int],
