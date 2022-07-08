@@ -1,6 +1,7 @@
 from enum import Enum
-from typing import Union
+from typing import Union, Tuple
 
+from math import sin, cos
 import numpy as np
 
 
@@ -56,7 +57,7 @@ def find_collision_time_and_severity(initial_gaps,
     return tc, severity
 
 
-class VehicleType (Enum):
+class VehicleType(Enum):
     HUMAN_DRIVEN = 0
     ACC = 1
     AUTONOMOUS = 2
@@ -121,7 +122,7 @@ class Vehicle:
     }
 
     # Typical parameters values
-    _CAR_MAX_BRAKE = 6   # [m/s2]
+    _CAR_MAX_BRAKE = 6  # [m/s2]
     _CAR_MAX_JERK = 50  # [m/s3]
     _CAR_FREE_FLOW_VELOCITY = 33  # 33 m/s ~= 120km/h ~= 75 mph
     _TRUCK_MAX_BRAKE = 3  # From VISSIM: 5.5
@@ -191,7 +192,7 @@ class Vehicle:
         self.tau_j, self.lambda0, self.lambda1 = (
             self._compute_emergency_braking_parameters(self.max_brake))
         (self.tau_j_lane_change, self.lambda0_lane_change,
-            self.lambda1_lane_change) = (
+         self.lambda1_lane_change) = (
             self._compute_emergency_braking_parameters(
                 self.max_brake_lane_change))
 
@@ -215,13 +216,14 @@ class Vehicle:
                            / (self.free_flow_velocity + self.lambda1))
 
         if gamma < gamma_threshold:
-            h = ((rho**2 * self.free_flow_velocity / 2 + rho * self.lambda1)
-                 / ((1-gamma)*self.max_brake))
-            d = self.lambda1**2 / (2*(1-gamma)*self.max_brake) + self.lambda0
-        elif gamma > (1 - rho)**2:
-            h = ((gamma - (1-rho)**2)*self.free_flow_velocity/2/gamma
+            h = ((rho ** 2 * self.free_flow_velocity / 2 + rho * self.lambda1)
+                 / ((1 - gamma) * self.max_brake))
+            d = self.lambda1 ** 2 / (
+                    2 * (1 - gamma) * self.max_brake) + self.lambda0
+        elif gamma > (1 - rho) ** 2:
+            h = ((gamma - (1 - rho) ** 2) * self.free_flow_velocity / 2 / gamma
                  + self.lambda1) / self.max_brake
-            d = self.lambda1**2 / 2 / self.max_brake + self.lambda0
+            d = self.lambda1 ** 2 / 2 / self.max_brake + self.lambda0
         else:
             h = self.lambda1 / self.max_brake
             d = self.lambda1 ** 2 / 2 / self.max_brake + self.lambda0
@@ -295,9 +297,65 @@ class Vehicle:
             new_jerk = 0
         return new_accel, new_jerk
 
-    # def compute_gap_thresholds(self, ego_velocity, leader_velocity):
-    #
-    #     delta_v = leader_velocity - ego_velocity
-    #     gap_thresholds = []
-    #     gap_thresholds.append(delta_v**2 + 2*gap*(self.accel_t0 +
-    #     leader.max_brake))
+
+def severity_in_2d_collision(initial_normal_velocity: Tuple[float, float],
+                             initial_tangent_velocity: Tuple[float, float],
+                             initial_angular_velocity: Tuple[float, float],
+                             coefficients: Tuple[float, float, float],
+                             mass: Tuple[float, float],
+                             moment_of_inertia: Tuple[float, float],
+                             heading_angle: Tuple[float, float],
+                             angle_to_impact_line: Tuple[float, float],
+                             impact_angle: float,
+                             distance_to_impact_center: Tuple[float, float]
+                             ):
+    """
+
+    :param initial_normal_velocity:
+    :param initial_tangent_velocity:
+    :param initial_angular_velocity:
+    :param coefficients: coefficient of restitution, coefficient of friction,
+     and moment coefficient of restitution
+    :param mass:
+    :param moment_of_inertia:
+    :param heading_angle: heading angle relative to the road's x axis
+    :param angle_to_impact_line: angle between the length axis of a vehicle
+     and the impact line
+    :param impact_angle: relative to the road's y axis
+    :param distance_to_impact_center: distance from center of mass to the
+     impact center
+    :return:
+    """
+    v1n, v2n = initial_normal_velocity
+    v1t, v2t = initial_tangent_velocity
+    omega1, omega2 = initial_angular_velocity
+    e, mu, em = coefficients
+    m1, m2 = mass
+    I1, I2 = moment_of_inertia
+    theta1, theta2 = heading_angle
+    phi1, phi2 = angle_to_impact_line
+    cos_beta = cos(impact_angle)
+    sin_beta = sin(impact_angle)
+    d1, d2 = distance_to_impact_center
+
+    da = d2 * sin(theta2 + phi2)
+    db = d2 * cos(theta2 + phi2)
+    dc = d1 * sin(theta1 + phi1)
+    dd = d1 * cos(theta1 + phi1)
+
+    A = np.array([[m1, 0, 0, m2, 0, 0],
+                  [0, m1, 0, 0, m2, 0],
+                  [0, m1 * (db + dd), I1, m2 * (da + dc), 0, I2],
+                  [cos_beta, sin_beta, dc * cos_beta - dd * sin_beta,
+                   -cos_beta, -sin_beta, da * cos_beta - db * sin_beta],
+                  [0, m1 * (cos_beta - mu * sin_beta), 0,
+                   m2 * (sin_beta + mu * cos_beta), 0, 0],
+                  [em * m1 * dc / I1, -em * m1 * dd / I1, -1,
+                   em * m2 * da / I2, -em * m2 * db / I2, 1]])
+    A_b = np.copy(A)
+    A_b[3, :] *= -e
+    A_b[5, 2] *= em
+    A_b[5, 5] *= em
+    b = np.dot(A_b, np.array([v1n, v1t, omega1, v2n, v2t, omega2]))
+    x = np.linalg.solve(A, b)
+    return x
