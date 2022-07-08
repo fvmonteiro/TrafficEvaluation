@@ -63,10 +63,10 @@ class ResultAnalyzer:
 
     def __init__(self, network_name: str, should_save_fig: bool = False):
         if os.environ['COMPUTERNAME'] == 'DESKTOP-626HHGI':
-            self._figure_folder = ('C:\\Users\\fvall\\Google Drive\\Safety in '
-                                   'Mixed Traffic\\images')
+            self._figure_folder = ('C:\\Users\\fvall\\Google Drive\\Lane '
+                                   'Change\\images')
         else:
-            self._figure_folder = ('G:\\My Drive\\Safety in Mixed Traffic'
+            self._figure_folder = ('G:\\My Drive\\Lane Change'
                                    '\\images')
         self.network_name = network_name
         self.should_save_fig = should_save_fig
@@ -234,7 +234,7 @@ class ResultAnalyzer:
         plt.title(str(vehicles_per_lane) + ' vehs/h/lane', fontsize=22)
         if self.should_save_fig:
             self.save_fig(plt.gcf(), 'box_plot', y, [vehicles_per_lane],
-                          percentages_per_vehicle_types)
+                          percentages_per_vehicle_types, accepted_risks)
         self.widen_fig(plt.gcf(), len(percentages_per_vehicle_types))
         plt.tight_layout()
         plt.show()
@@ -366,6 +366,9 @@ class ResultAnalyzer:
                 if i == 0:
                     axes[i, j].set_title('accepted risk = ' + str(ar))
         plt.tight_layout()
+        if self.should_save_fig:
+            self.save_fig(fig, 'histogram_grid', risk_type, vehicles_per_lane,
+                          percentages_per_vehicle_types, accepted_risks)
         plt.show()
 
     def hist_plot_lane_change_initial_risks(
@@ -423,7 +426,7 @@ class ResultAnalyzer:
         :param percentages_per_vehicle_types:
         :param vehicles_per_lane:
         :param accepted_risks:
-        :param warmup_time:
+        :param warmup_time: in minutes
         :param normalize:
         :return:
         """
@@ -479,6 +482,9 @@ class ResultAnalyzer:
             plt.title(title + ' at ' + str(vpl) + ' vehs/h/lane',
                       fontsize=22)
             plt.tight_layout()
+            if self.should_save_fig:
+                self.save_fig(plt.gcf(), 'heatmap', y, [vpl],
+                              percentages_per_vehicle_types, accepted_risks)
             plt.show()
 
     def print_summary_of_issues(
@@ -832,13 +838,14 @@ class ResultAnalyzer:
 
         :param data: data aggregated over time
         :param warmup_time: Samples earlier than warmup_time are dropped.
-         Must be passed in minutes
+         Must be passed in seconds
         :param flow_sensor_number: if plotting flow, we can determine choose
          which data collection measurement will be shown
         """
         self._create_single_control_percentage_column(data)
         if 'time' not in data.columns:
             post_processing.create_time_in_minutes_from_intervals(data)
+            data['time'] *= 60
         if 'flow' in data.columns:
             data.drop(data[data['sensor_number'] != flow_sensor_number].index,
                       inplace=True)
@@ -918,24 +925,24 @@ class ResultAnalyzer:
                  vehicles_per_lane: Union[int, List[int]],
                  percentages_per_vehicle_types: List[
                      Dict[VehicleType, int]],
-                 # controlled_percentage: Union[str, List[str]]
+                 accepted_risk: List[int] = None
                  ):
         # Making the figure nice for inclusion in documents
         # self.widen_fig(fig, controlled_percentage)
         # plt.rc('font', size=20)
         if not isinstance(vehicles_per_lane, list):
             vehicles_per_lane = [vehicles_per_lane]
-        # if not isinstance(controlled_percentage, list):
-        #     controlled_percentage = [controlled_percentage]
+        if accepted_risk is None:
+            accepted_risk = []
         vehicles_types, _ = list_of_dicts_to_1d_list(
             percentages_per_vehicle_types)
 
         fig.set_dpi(200)
         axes = fig.axes
-        if plot_type != 'heatmap':
-            for ax in axes:
-                ax.ticklabel_format(style='sci', axis='y', scilimits=(0, 3),
-                                    useMathText=True)
+        # if plot_type != 'heatmap':
+        #     for ax in axes:
+        #         ax.ticklabel_format(style='sci', axis='y', scilimits=(0, 3),
+        #                             useMathText=True)
         plt.tight_layout()
         vehicle_type_strings = [vt.name.lower() for vt in set(vehicles_types)]
         fig_name = (
@@ -945,6 +952,8 @@ class ResultAnalyzer:
                 + 'vehs_per_lane' + '_'
                 + '_'.join(sorted(vehicle_type_strings))
         )
+        if accepted_risk:
+            fig_name += '_risks_' + '_'.join(str(ar) for ar in accepted_risk)
         # + '_'.join(str(c) for c in controlled_percentage) + '_'
         # + '_'.join(str(vt.name).lower() for vt in
         #            self._vehicle_types))
