@@ -9,7 +9,7 @@ import seaborn as sns
 
 import post_processing
 import readers
-from vehicle import VehicleType
+from vehicle import VehicleType, vehicle_type_to_str_map
 
 
 def list_of_dicts_to_2d_lists(dict_list: List[Dict]):
@@ -30,6 +30,20 @@ def list_of_dicts_to_1d_list(dict_list: List[Dict]):
         keys += list(d.keys())
         values += list(d.values())
     return keys, values
+
+
+# TODO: the management of these dictionaries is getting messy. Try to make
+#  it more uniform
+def vehicle_percentage_dict_to_string(vp_dict: Dict[VehicleType, int]) -> str:
+    # TODO: the resulting string is not sorted. You can get 25% AV 25% CAV
+    #  or 25% CAV 25% AV
+    if sum(vp_dict.values()) == 0:
+        return 'no control'
+    ret_str = ''
+    for veh_type in vp_dict.keys():
+        ret_str += (str(vp_dict[veh_type]) + '% '
+                    + vehicle_type_to_str_map[veh_type])
+    return ret_str
 
 
 class ResultAnalyzer:
@@ -81,7 +95,7 @@ class ResultAnalyzer:
             percentages_per_vehicle_types = [percentages_per_vehicle_types]
         data = self._load_data(y, percentages_per_vehicle_types,
                                [vehicles_per_lane], accepted_risks)
-        self._prepare_data_for_plotting(data, warmup_time)
+        self._prepare_data_for_plotting(data, warmup_time * 60)
         # self.remove_deadlock_simulations(relevant_data)
 
         # Plot
@@ -109,7 +123,7 @@ class ResultAnalyzer:
 
         data = self._load_data(y, percentages_per_vehicle_types,
                                [vehicles_per_lane])
-        self._prepare_data_for_plotting(data, warmup_time)
+        self._prepare_data_for_plotting(data, warmup_time * 60)
         relevant_data = self._ensure_data_source_is_uniform(data,
                                                             [vehicles_per_lane])
         # self.remove_deadlock_simulations(relevant_data)
@@ -204,7 +218,7 @@ class ResultAnalyzer:
         """
         data = self._load_data(y, percentages_per_vehicle_types,
                                [vehicles_per_lane], accepted_risks)
-        self._prepare_data_for_plotting(data, warmup_time)
+        self._prepare_data_for_plotting(data, warmup_time * 60)
         relevant_data = self._ensure_data_source_is_uniform(
             data, [vehicles_per_lane])
 
@@ -214,26 +228,39 @@ class ResultAnalyzer:
             'control_percentages'].str.split(' ', expand=True)
         relevant_data.loc[no_control_idx, 'control_type'] = 'human'
         relevant_data.loc[no_control_idx, 'percentage'] = '0%'
+        relevant_data['Accepted Risk'] = relevant_data['accepted_risk'].map(
+            {0: 'safe', 10: 'low', 20: 'medium', 30: 'high'}
+        )
+        if hue == 'accepted_risk':
+            hue = 'Accepted Risk'
 
         # Plot
-        plt.rc('font', size=15)
+        plt.rc('font', size=25)
         sns.set_style('whitegrid')
         sns.boxplot(data=relevant_data, x='control_type', y=y, hue=hue)
                     # kind=kind)
-        for ct in relevant_data['control_type'].unique():
-            print('vehs per lane: {}, ct: {}, y: {}'.format(
-                vehicles_per_lane, ct,
-                relevant_data.loc[relevant_data['control_type'] == ct,
-                                  y].median()
-            ))
+
+        # Direct output
+        print('vehs per lane: {}, {}'.format(vehicles_per_lane, y))
+        print(relevant_data[['control_percentages', y,
+                             'Accepted Risk']].groupby(
+            ['control_percentages', 'Accepted Risk']).median())
+        # for ct in relevant_data['control_type'].unique():
+        #     print('vehs per lane: {}, ct: {}, median {}: {}'.format(
+        #         vehicles_per_lane, ct, y,
+        #         relevant_data.loc[relevant_data['control_type'] == ct,
+        #                           y].median()
+        #     ))
         # legend_len = len(relevant_data[hue].unique())
         # n_legend_cols = (legend_len if legend_len < 5
         #                  else legend_len // 2 + 1)
         plt.legend(title=hue, ncol=1,
                    bbox_to_anchor=(1.01, 1))
         plt.title(str(vehicles_per_lane) + ' vehs/h/lane', fontsize=22)
+        fig = plt.gcf()
+        fig.set_size_inches(12, 6)
         if self.should_save_fig:
-            self.save_fig(plt.gcf(), 'box_plot', y, [vehicles_per_lane],
+            self.save_fig(fig, 'box_plot', y, [vehicles_per_lane],
                           percentages_per_vehicle_types, accepted_risks)
         self.widen_fig(plt.gcf(), len(percentages_per_vehicle_types))
         plt.tight_layout()
@@ -268,7 +295,7 @@ class ResultAnalyzer:
         warmup_time *= 60  # minutes to seconds
         data.drop(index=data[data['total_risk'] < min_total_risk].index,
                   inplace=True)
-        self._prepare_data_for_plotting(data, warmup_time)
+        self._prepare_data_for_plotting(data, warmup_time * 60)
 
         # data['duration'] = data['end_time'] - data['time']
         # variables_list = [  # 'duration',
@@ -311,7 +338,177 @@ class ResultAnalyzer:
                       .format(control_percentage, veh_input,
                               mean_count, mean_simulation_risk))
 
-    def plot_grid_of_risk_histograms(
+    def plot_lane_change_risk_histograms(
+            self, risk_type: str,
+            percentages_per_vehicle_types: List[Dict[VehicleType, int]],
+            vehicles_per_lane: List[int], accepted_risks: List[int],
+            warmup_time: int = 10, min_risk: int = 0.1
+    ):
+        """
+        Plot one histogram of lane change risks for each vehicle percentage
+        each single risk value
+
+        :param risk_type: Options: total_risk, total_lane_change_risk and
+         initial_risk
+        :param percentages_per_vehicle_types:
+        :param vehicles_per_lane:
+        :param accepted_risks:
+        :param warmup_time:
+        :param min_risk:
+        :return:
+        """
+        data = self._load_data(risk_type,
+                               percentages_per_vehicle_types,
+                               vehicles_per_lane, accepted_risks)
+        self._prepare_data_for_plotting(data, warmup_time*60)
+        relevant_data = self._ensure_data_source_is_uniform(
+            data, vehicles_per_lane)
+        relevant_data.drop(
+            index=relevant_data[relevant_data[risk_type] < min_risk].index,
+            inplace=True)
+        plt.rc('font', size=30)
+        # sns.set(font_scale=2)
+        # for cp in control_percentages:
+        for item in percentages_per_vehicle_types:
+            cp = vehicle_percentage_dict_to_string(item)
+            for ar in accepted_risks:
+                if cp == 'no control' and ar > 0:
+                    continue
+                data_to_plot = relevant_data[
+                    (relevant_data['control_percentages'] == cp)
+                    & (relevant_data['accepted_risk'] == ar)
+                    ]
+                sns.histplot(data=data_to_plot, x=risk_type,
+                             stat='count', hue='vehicles_per_lane',
+                             palette='tab10')
+                # Direct output
+                print('veh penetration: {}, risk: {}'.format(cp, ar))
+                print(data_to_plot[['vehicles_per_lane', risk_type]].groupby(
+                    'vehicles_per_lane').count())
+                print(data_to_plot[['vehicles_per_lane', risk_type]].groupby(
+                    'vehicles_per_lane').median())
+                plt.tight_layout()
+                fig = plt.gcf()
+                fig.set_size_inches(12, 6)
+                if self.should_save_fig:
+                    self.save_fig(fig, 'histogram', risk_type,
+                                  vehicles_per_lane, [item], [ar])
+                plt.show()
+
+    def plot_lane_change_risk_histograms_risk_as_hue(
+            self, risk_type: str,
+            percentages_per_vehicle_types: List[Dict[VehicleType, int]],
+            vehicles_per_lane: List[int], accepted_risks: List[int],
+            warmup_time: int = 10, min_risk: int = 0.1
+    ):
+        """
+        Plot one histogram of lane change risks for each vehicle percentage.
+        All risk values on the same plot
+
+        :param risk_type: Options: total_risk, total_lane_change_risk and
+         initial_risk
+        :param percentages_per_vehicle_types:
+        :param vehicles_per_lane:
+        :param accepted_risks:
+        :param warmup_time:
+        :param min_risk:
+        :return:
+        """
+        data = self._load_data(risk_type,
+                               percentages_per_vehicle_types,
+                               vehicles_per_lane, accepted_risks)
+        self._prepare_data_for_plotting(data, warmup_time*60)
+        data['risk'] = data['accepted_risk'].map({0: 'safe', 10: 'low',
+                                                  20: 'medium', 30: 'high'})
+        relevant_data = self._ensure_data_source_is_uniform(
+            data, vehicles_per_lane)
+        relevant_data.drop(
+            index=relevant_data[relevant_data[risk_type] < min_risk].index,
+            inplace=True)
+        plt.rc('font', size=30)
+        # sns.set(font_scale=2)
+        # for cp in control_percentages:
+        for item in percentages_per_vehicle_types:
+            cp = vehicle_percentage_dict_to_string(item)
+            if cp == 'no control':
+                continue
+            data_to_plot = relevant_data[
+                (relevant_data['control_percentages'] == cp)
+                ]
+            sns.histplot(data=data_to_plot, x=risk_type,
+                         stat='count', hue='risk',
+                         palette='tab10')
+            # plt.legend(title='Risk', labels=['safe', 'low', 'medium'])
+            # Direct output
+            print('veh penetration: {}'.format(cp))
+            print(data_to_plot[['control_percentages', 'veh_type', 'risk',
+                                risk_type]].groupby(
+                ['control_percentages', 'veh_type', 'risk']).count())
+            print(data_to_plot[['control_percentages', 'risk', risk_type]].groupby(
+                ['control_percentages', 'risk']).median())
+            plt.tight_layout()
+            fig = plt.gcf()
+            fig.set_size_inches(12, 6)
+            if self.should_save_fig:
+                self.save_fig(fig, 'histogram', risk_type,
+                              vehicles_per_lane, [item], accepted_risks)
+            plt.show()
+
+    def plot_row_of_lane_change_risk_histograms(
+            self, risk_type: str,
+            percentage_of_vehicle_type: Dict[VehicleType, int],
+            vehicles_per_lane: List[int], accepted_risks: List[int],
+            warmup_time: int = 10, min_risk: int = 0.1
+    ):
+        """
+        Plots histograms of lane change risks for a single penetration
+        percentage and varied risk
+        :param risk_type:
+        :param percentage_of_vehicle_type:
+        :param vehicles_per_lane:
+        :param accepted_risks:
+        :param warmup_time:
+        :param min_risk:
+        :return:
+        """
+        data = self._load_data(risk_type,
+                               [percentage_of_vehicle_type],
+                               vehicles_per_lane, accepted_risks)
+        self._prepare_data_for_plotting(data, warmup_time * 60)
+        relevant_data = self._ensure_data_source_is_uniform(
+            data, vehicles_per_lane)
+        relevant_data.drop(
+            index=relevant_data[relevant_data[risk_type] < min_risk].index,
+            inplace=True)
+
+        n_risks = len(accepted_risks)
+        fig, axes = plt.subplots(nrows=1, ncols=n_risks)
+        fig.set_size_inches(12, 6)
+        for j in range(n_risks):
+            ar = accepted_risks[j]
+            data_to_plot = relevant_data[
+                (relevant_data['accepted_risk'] == ar)
+                ]
+            sns.histplot(data=data_to_plot, x=risk_type,
+                         stat='count', hue='vehicles_per_lane',
+                         palette='tab10', ax=axes[j])
+            axes[j].set_title('accepted risk = ' + str(ar))
+
+            print(percentage_of_vehicle_type)
+            print('Count')
+            print(data_to_plot[['vehicles_per_lane', risk_type]].groupby(
+                'vehicles_per_lane').count())
+            print('Median')
+            print(data_to_plot[['vehicles_per_lane', risk_type]].groupby(
+                'vehicles_per_lane').median())
+
+        plt.tight_layout()
+        if self.should_save_fig:
+            self.save_fig(fig, 'histogram_row_', risk_type, vehicles_per_lane,
+                          [percentage_of_vehicle_type], accepted_risks)
+        plt.show()
+
+    def plot_grid_of_lane_change_risk_histograms(
             self, risk_type: str,
             percentages_per_vehicle_types: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int], accepted_risks: List[int],
@@ -333,7 +530,7 @@ class ResultAnalyzer:
         data = self._load_data(risk_type,
                                percentages_per_vehicle_types,
                                vehicles_per_lane, accepted_risks)
-        self._prepare_data_for_plotting(data, warmup_time)
+        self._prepare_data_for_plotting(data, warmup_time * 60)
         relevant_data = self._ensure_data_source_is_uniform(
             data, vehicles_per_lane)
         relevant_data.drop(
@@ -365,6 +562,7 @@ class ResultAnalyzer:
                     axes[i, j].get_legend().remove()
                 if i == 0:
                     axes[i, j].set_title('accepted risk = ' + str(ar))
+
         plt.tight_layout()
         if self.should_save_fig:
             self.save_fig(fig, 'histogram_grid', risk_type, vehicles_per_lane,
@@ -504,7 +702,7 @@ class ResultAnalyzer:
         data = self._load_data('lane_change_issues',
                                percentages_per_vehicle_types,
                                vehicles_per_lane, accepted_risks)
-        self._prepare_data_for_plotting(data, warmup_time)
+        self._prepare_data_for_plotting(data, warmup_time * 60)
         n_simulations = len(data['simulation_number'].unique())
         issue_count = data.groupby(['vehicles_per_lane', 'control_percentages',
                                     'accepted_risk', 'issue'])['veh_id'].count()
@@ -543,7 +741,7 @@ class ResultAnalyzer:
                   inplace=True)
 
         warmup_time *= 60  # minutes to seconds
-        self._prepare_data_for_plotting(data, warmup_time)
+        self._prepare_data_for_plotting(data, warmup_time * 60)
         results = data.groupby(['control_percentages', 'vehicles_per_lane'],
                                as_index=False)['veh_id'].count().rename(
             columns={'veh_id': 'violations count'})
@@ -571,7 +769,7 @@ class ResultAnalyzer:
         plt.rc('font', size=17)
         for vpl in vehicles_per_lane:
             data = self._load_data(y, percentages_per_vehicle_types, [vpl])
-            self._prepare_data_for_plotting(data, warmup_time)
+            self._prepare_data_for_plotting(data, warmup_time * 60)
             table = pd.pivot_table(
                 # data[[y, 'traffic_light_acc_percentage',
                 #       'traffic_light_cacc_percentage']],
@@ -611,7 +809,7 @@ class ResultAnalyzer:
         for vpl in vehicles_per_lane:
             data = self._load_data('violations', percentages_per_vehicle_types,
                                    [vpl])
-            self._prepare_data_for_plotting(data, warmup_time)
+            self._prepare_data_for_plotting(data, warmup_time * 60)
             table = pd.pivot_table(
                 data[['veh_id', 'traffic_light_acc_percentage',
                       'traffic_light_cacc_percentage']], values='veh_id',
@@ -656,7 +854,7 @@ class ResultAnalyzer:
             {'follower': 'human', 'leader': 'CAV', 'id': 203},
             {'follower': 'CAV', 'leader': 'human', 'id': 201},
             # {'follower': 'CAV', 'leader': 'CAV', 'id': 152},
-            # {'follower': 'CAV', 'leader': 'CAV', 'id': 196},
+            {'follower': 'CAV', 'leader': 'CAV', 'id': 196},
             # {'follower': 'CAV', 'leader': 'CAV', 'id': 208},
             # {'follower': 'CAV', 'leader': 'CAV', 'id': 234},
             # {'follower': 'CAV', 'leader': 'CAV', 'id': 239}
@@ -728,7 +926,7 @@ class ResultAnalyzer:
         #     raise ValueError('Parameter y should be a list with two strings.')
         #
         # data = self._load_all_merged_data(percentages_per_vehicle_types)
-        # self._prepare_data_for_plotting(data, warmup_time)
+        # self._prepare_data_for_plotting(data, warmup_time * 60)
         # fig, ax1 = plt.subplots()
         # ax2 = ax1.twinx()
         #
@@ -934,8 +1132,13 @@ class ResultAnalyzer:
             vehicles_per_lane = [vehicles_per_lane]
         if accepted_risk is None:
             accepted_risk = []
-        vehicles_types, _ = list_of_dicts_to_1d_list(
+        vehicles_types, temp = list_of_dicts_to_1d_list(
             percentages_per_vehicle_types)
+        veh_penetration_strings = []
+        for i in range(len(vehicles_types)):
+            veh_penetration_strings.append(str(temp[i]) + '_'
+                                           + vehicles_types[i].name.lower())
+        # vehicle_type_strings = [vt.name.lower() for vt in set(vehicles_types)]
 
         fig.set_dpi(200)
         axes = fig.axes
@@ -944,13 +1147,13 @@ class ResultAnalyzer:
         #         ax.ticklabel_format(style='sci', axis='y', scilimits=(0, 3),
         #                             useMathText=True)
         plt.tight_layout()
-        vehicle_type_strings = [vt.name.lower() for vt in set(vehicles_types)]
+
         fig_name = (
                 plot_type + '_' + measurement_name + '_'
                 + self.network_name + '_'
                 + '_'.join(str(v) for v in sorted(vehicles_per_lane)) + '_'
                 + 'vehs_per_lane' + '_'
-                + '_'.join(sorted(vehicle_type_strings))
+                + '_'.join(sorted(veh_penetration_strings))
         )
         if accepted_risk:
             fig_name += '_risks_' + '_'.join(str(ar) for ar in accepted_risk)

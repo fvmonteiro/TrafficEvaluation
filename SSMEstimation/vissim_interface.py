@@ -909,7 +909,7 @@ class VissimInterface:
     def create_platoon(self, platoon_size):
 
         desired_speed = 100  # km/h
-        vehicle_type = vehicle.VehicleType.CONNECTED
+        vehicle_type = vehicle.VehicleType.PLATOON
         platoon_vehicle = vehicle.Vehicle(vehicle_type)
         platoon_vehicle.free_flow_velocity = desired_speed / 3.6
         h, d = platoon_vehicle.compute_vehicle_following_parameters(

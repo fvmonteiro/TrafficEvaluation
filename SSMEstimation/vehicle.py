@@ -57,16 +57,33 @@ def find_collision_time_and_severity(initial_gaps,
     return tc, severity
 
 
+# TODO: these VehicleType and Vehicle classes are messy. Consider better
+#  organizing the data. Perhaps make VehicleType a regular class.
 class VehicleType(Enum):
     HUMAN_DRIVEN = 0
     ACC = 1
     AUTONOMOUS = 2
     CONNECTED = 3
-    TRAFFIC_LIGHT_ACC = 4
-    TRAFFIC_LIGHT_CACC = 5
-    TRUCK = 6
-    BUS = 7
-    MOTORCYCLE = 8
+    PLATOON = 4
+    TRAFFIC_LIGHT_ACC = 5
+    TRAFFIC_LIGHT_CACC = 6
+    TRUCK = 7
+    BUS = 8
+    MOTORCYCLE = 9
+
+
+vehicle_type_to_str_map = {
+    VehicleType.HUMAN_DRIVEN: 'no control',
+    VehicleType.ACC: 'ACC',
+    VehicleType.AUTONOMOUS: 'AV',
+    VehicleType.CONNECTED: 'CAV',
+    VehicleType.PLATOON: 'Platoon',
+    VehicleType.TRAFFIC_LIGHT_ACC: 'TL-ACC',
+    VehicleType.TRAFFIC_LIGHT_CACC: 'TL-CACC',
+    VehicleType.TRUCK: 'truck',
+    VehicleType.BUS: 'bus',
+    VehicleType.MOTORCYCLE: 'motorcycle'
+}
 
 
 class Vehicle:
@@ -81,6 +98,7 @@ class Vehicle:
     VISSIM_CONNECTED_CAR_ID = 120
     VISSIM_TRAFFIC_LIGHT_ACC_ID = 130
     VISSIM_TRAFFIC_LIGHT_CACC_ID = 135
+    VISSIM_PLATOON_CAR_ID = 140
     VISSIM_TRUCK_ID = 200
     VISSIM_BUS_ID = 300
     # TYPE_CAR = 'car'
@@ -91,7 +109,7 @@ class Vehicle:
     # TYPE_MOTORCYCLE = 'motorcycle'
 
     RELEVANT_TYPES = {VehicleType.HUMAN_DRIVEN, VehicleType.TRUCK,
-                      VehicleType.ACC,
+                      VehicleType.ACC, VehicleType.PLATOON,
                       VehicleType.AUTONOMOUS, VehicleType.CONNECTED,
                       VehicleType.TRAFFIC_LIGHT_ACC,
                       VehicleType.TRAFFIC_LIGHT_CACC}
@@ -108,6 +126,7 @@ class Vehicle:
                     VISSIM_TRAFFIC_LIGHT_ACC_ID: VehicleType.TRAFFIC_LIGHT_ACC,
                     VISSIM_TRAFFIC_LIGHT_CACC_ID:
                         VehicleType.TRAFFIC_LIGHT_CACC,
+                    VISSIM_PLATOON_CAR_ID: VehicleType.PLATOON,
                     VISSIM_TRUCK_ID: VehicleType.TRUCK,
                     VISSIM_BUS_ID: VehicleType.CONNECTED}
 
@@ -118,7 +137,8 @@ class Vehicle:
         VehicleType.AUTONOMOUS: VISSIM_AUTONOMOUS_CAR_ID,
         VehicleType.CONNECTED: VISSIM_CONNECTED_CAR_ID,
         VehicleType.TRAFFIC_LIGHT_ACC: VISSIM_TRAFFIC_LIGHT_ACC_ID,
-        VehicleType.TRAFFIC_LIGHT_CACC: VISSIM_TRAFFIC_LIGHT_CACC_ID
+        VehicleType.TRAFFIC_LIGHT_CACC: VISSIM_TRAFFIC_LIGHT_CACC_ID,
+        VehicleType.PLATOON: VISSIM_PLATOON_CAR_ID
     }
 
     # Typical parameters values
@@ -133,6 +153,7 @@ class Vehicle:
                            VehicleType.CONNECTED: _CAR_MAX_BRAKE,
                            VehicleType.TRAFFIC_LIGHT_ACC: _CAR_MAX_BRAKE,
                            VehicleType.TRAFFIC_LIGHT_CACC: _CAR_MAX_BRAKE,
+                           VehicleType.PLATOON: _CAR_MAX_BRAKE,
                            VehicleType.TRUCK: _TRUCK_MAX_BRAKE}
     _MAX_JERK_PER_TYPE = {VehicleType.HUMAN_DRIVEN: _CAR_MAX_JERK,
                           VehicleType.ACC: _CAR_MAX_JERK,
@@ -140,6 +161,7 @@ class Vehicle:
                           VehicleType.CONNECTED: _CAR_MAX_JERK,
                           VehicleType.TRAFFIC_LIGHT_ACC: _CAR_MAX_JERK,
                           VehicleType.TRAFFIC_LIGHT_CACC: _CAR_MAX_JERK,
+                          VehicleType.PLATOON: _CAR_MAX_JERK,
                           VehicleType.TRUCK: _TRUCK_MAX_JERK}
     _BRAKE_DELAY_PER_TYPE = {VehicleType.HUMAN_DRIVEN: 0.75,
                              VehicleType.ACC: 0.2,
@@ -147,6 +169,7 @@ class Vehicle:
                              VehicleType.CONNECTED: 0.1,
                              VehicleType.TRAFFIC_LIGHT_ACC: 0.2,
                              VehicleType.TRAFFIC_LIGHT_CACC: 0.1,
+                             VehicleType.PLATOON: 0.1,
                              VehicleType.TRUCK: 0.5}
     _FREE_FLOW_VELOCITY_PER_TYPE = {
         VehicleType.HUMAN_DRIVEN: _CAR_FREE_FLOW_VELOCITY,
@@ -155,6 +178,7 @@ class Vehicle:
         VehicleType.CONNECTED: _CAR_FREE_FLOW_VELOCITY,
         VehicleType.TRAFFIC_LIGHT_ACC: _CAR_FREE_FLOW_VELOCITY,
         VehicleType.TRAFFIC_LIGHT_CACC: _CAR_FREE_FLOW_VELOCITY,
+        VehicleType.PLATOON: _CAR_FREE_FLOW_VELOCITY,
         VehicleType.TRUCK: 25}
 
     _sampling_time = 0.01
@@ -297,11 +321,16 @@ class Vehicle:
             new_jerk = 0
         return new_accel, new_jerk
 
+    def simulate_emergency_braking_during_lane_change(self):
+        pass
 
-def severity_in_2d_collision(initial_normal_velocity: Tuple[float, float],
-                             initial_tangent_velocity: Tuple[float, float],
-                             initial_angular_velocity: Tuple[float, float],
-                             coefficients: Tuple[float, float, float],
+
+def severity_in_2d_collision(vx0: Tuple[float, float],
+                             vy0: Tuple[float, float],
+                             omega0: Tuple[float, float],
+                             restitution_coefficient: float,
+                             friction_coefficient: Union[float, str],
+                             moment_coefficient: float,
                              mass: Tuple[float, float],
                              moment_of_inertia: Tuple[float, float],
                              heading_angle: Tuple[float, float],
@@ -310,12 +339,23 @@ def severity_in_2d_collision(initial_normal_velocity: Tuple[float, float],
                              distance_to_impact_center: Tuple[float, float]
                              ):
     """
-
-    :param initial_normal_velocity:
-    :param initial_tangent_velocity:
-    :param initial_angular_velocity:
-    :param coefficients: coefficient of restitution, coefficient of friction,
-     and moment coefficient of restitution
+    Computes the Delta-V of a collision treating vehicles as rigid bodies.
+    :param vx0:
+    :param vy0:
+    :param omega0:
+    :param restitution_coefficient: defined as the ratio between final and
+     initial relative speeds. It measures the loss of kinetic energy in the
+     collision. Range: [0, 1]
+    :param friction_coefficient: defined as the ratio of tangent impulse and
+     normal impulse relative to the impact line. It measures the change in
+     tangential velocities during the collision. Range: [0, mu_max],
+     where mu_max depends on the restitution coefficient and initial relative
+     velocities
+    :param moment_coefficient: models how the collision might generate
+     angular momentum on the vehicles. Range: {1} and [-1, 0]. The value 1
+     means no moment is generated, which is reasonable for close-to-1D
+     collisions. Value 0 leads to equal final angular velocities, which is a
+     perfectly inelastic angular collision.
     :param mass:
     :param moment_of_inertia:
     :param heading_angle: heading angle relative to the road's x axis
@@ -326,10 +366,11 @@ def severity_in_2d_collision(initial_normal_velocity: Tuple[float, float],
      impact center
     :return:
     """
-    v1n, v2n = initial_normal_velocity
-    v1t, v2t = initial_tangent_velocity
-    omega1, omega2 = initial_angular_velocity
-    e, mu, em = coefficients
+    v1x, v2x = vx0
+    v1x, v2y = vy0
+    omega1, omega2 = omega0
+    e = restitution_coefficient
+    em = moment_coefficient
     m1, m2 = mass
     I1, I2 = moment_of_inertia
     theta1, theta2 = heading_angle
@@ -337,6 +378,15 @@ def severity_in_2d_collision(initial_normal_velocity: Tuple[float, float],
     cos_beta = cos(impact_angle)
     sin_beta = sin(impact_angle)
     d1, d2 = distance_to_impact_center
+
+    # Actually, we don't know the right value of mu_max for rigid-body
+    # collisions
+    mu_max = abs((v1x - v2y) / (v1x - v2x)) / (1 + e)
+    mu = mu_max if friction_coefficient == 'max' else friction_coefficient
+    # if friction_coefficient > mu_max:
+    #     print('Selected friction coefficient is too high.\n'
+    #           'Setting it to the max value:', mu_max)
+    #     mu = mu_max
 
     da = d2 * sin(theta2 + phi2)
     db = d2 * cos(theta2 + phi2)
@@ -350,12 +400,12 @@ def severity_in_2d_collision(initial_normal_velocity: Tuple[float, float],
                    -cos_beta, -sin_beta, da * cos_beta - db * sin_beta],
                   [0, m1 * (cos_beta - mu * sin_beta), 0,
                    m2 * (sin_beta + mu * cos_beta), 0, 0],
-                  [em * m1 * dc / I1, -em * m1 * dd / I1, -1,
-                   em * m2 * da / I2, -em * m2 * db / I2, 1]])
+                  [-em * m1 * dc / I1, em * m1 * dd / I1, -1 + 2 * em,
+                   -em * m2 * da / I2, em * m2 * db / I2, 1 - 2 * em]])
     A_b = np.copy(A)
     A_b[3, :] *= -e
-    A_b[5, 2] *= em
-    A_b[5, 5] *= em
-    b = np.dot(A_b, np.array([v1n, v1t, omega1, v2n, v2t, omega2]))
+    A_b[5, 2] = em
+    A_b[5, 5] = -em
+    b = np.dot(A_b, np.array([v1x, v1x, omega1, v2x, v2y, omega2]))
     x = np.linalg.solve(A, b)
     return x
