@@ -164,10 +164,10 @@ def main():
     # =============== Define data source =============== #
     # Options: i710, us-101, in_and_out, in_and_merge
     network_file = VissimInterface.network_names_map['in_and_out']
-    vehicle_type = [# VehicleType.ACC,
-                    # VehicleType.AUTONOMOUS,
-                    VehicleType.CONNECTED
-                    ]
+    vehicle_type = [  # VehicleType.ACC,
+        # VehicleType.AUTONOMOUS,
+        VehicleType.CONNECTED
+    ]
 
     # =============== Temporary tests  =============== #
     # ra = result_analysis.ResultAnalyzer(network_file, vehicle_type)
@@ -202,10 +202,10 @@ def main():
     # =============== Check results graphically =============== #
 
     vehicle_types = [
-        # VehicleType.ACC,
-        # VehicleType.AUTONOMOUS,
+        VehicleType.ACC,
+        VehicleType.AUTONOMOUS,
         VehicleType.CONNECTED
-        ]
+    ]
     result_analyzer = result_analysis.ResultAnalyzer('in_and_out',
                                                      vehicle_types)
     # result_analyzer.find_removed_vehicles(VehicleType.CONNECTED, 100, [1000,
@@ -213,7 +213,7 @@ def main():
 
     save_results = False
 
-    percentages = [i for i in range(0, 101, 25)]
+    percentages = [i for i in range(0, 101, 100)]
     veh_inputs = [i for i in range(1000, 2001, 1000)]
     # result_analyzer.plot_risky_maneuver_histogram_per_vehicle_type(
     #     percentages, [2000], min_total_risk=1,
@@ -222,7 +222,7 @@ def main():
     #     percentages, 2000, min_total_risk=1, should_save_fig=save_results
     # )
     result_analyzer.box_plot_y_vs_controlled_percentage(
-        'flow', [2000], percentages, warmup_time=10,
+        'flow', veh_inputs, percentages, warmup_time=10,
         should_save_fig=save_results
     )
     # result_analyzer.box_plot_y_vs_controlled_percentage(
@@ -237,8 +237,6 @@ def main():
     #                                    warmup_time=5)
     #     # result_analyzer.plot_y_vs_time('risk_no_lane_change', veh_input,
     #     #                                [100], warmup_time=5)
-
-
 
     # result_analyzer.box_plot_y_vs_controlled_percentage(
     #     'risk_no_lane_change', veh_inputs, [100], warmup_time=10)
