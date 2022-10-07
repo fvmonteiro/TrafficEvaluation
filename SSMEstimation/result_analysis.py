@@ -13,7 +13,6 @@ from vehicle import VehicleType
 
 
 class ResultAnalyzer:
-
     units_map = {'TTC': 's', 'low_TTC': '# vehicles',
                  'DRAC': 'm/s^2', 'high_DRAC': '# vehicles',
                  'CPI': 'dimensionless', 'DTSG': 'm',
@@ -155,14 +154,13 @@ class ResultAnalyzer:
             print('Veh input: ', veh_input)
             veh_input_idx = relevant_data['vehicles_per_lane'] == veh_input
             for control_percentage in relevant_data[
-                'control_percentages'].unique():
-
+                    'control_percentages'].unique():
                 control_percentage_idx = (relevant_data['control_percentages']
                                           == control_percentage)
-                print('Mean {}: {}'.
+                print('Median {}: {}'.
                       format(y, relevant_data.loc[(veh_input_idx
                                                    & control_percentage_idx),
-                                                  y].mean()))
+                                                  y].median()))
 
     def box_plot_y_vs_vehicle_type(
             self, y: str, vehicles_per_lane: int,
@@ -344,7 +342,7 @@ class ResultAnalyzer:
                                          == ct]
             plt.rc('font', size=15)
             sns.histplot(data=data_to_plot, x='total_risk',
-                         stat='count', #hue='control_percentages',
+                         stat='count',  # hue='control_percentages',
                          binwidth=1, palette='tab10')
             plt.tight_layout()
             if should_save_fig:

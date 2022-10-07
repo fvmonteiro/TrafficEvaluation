@@ -293,12 +293,11 @@ class DataPostProcessor:
             already_exists = vehicles_per_lane in processed_vehicle_inputs
             if already_exists:
                 print('FYI: SSM results for vehicle input ', vehicles_per_lane,
-                      'already exist. They are being recomputed but will not '
-                      'be saved.')
+                      'already exist. They are being recomputed and will '
+                      'overwrite previous results.')
 
             # We save once per vehicle_per_lane value
-            if (not already_exists and not debugging
-                    and 0 < temp != vehicles_per_lane):
+            if not debugging and 0 < temp != vehicles_per_lane:
                 print('Files with input ', temp, ' done. Saving to file...')
                 ssm_writer.save_as_csv(pd.concat(ssm_data),
                                        controlled_vehicle_percentage,
