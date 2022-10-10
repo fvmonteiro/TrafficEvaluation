@@ -196,7 +196,7 @@ class ResultAnalyzer:
                                                y].median()))
 
     def box_plot_y_vs_vehicle_type(
-            self, y: str, hue: str, vehicles_per_lane: int,
+            self, y: str, hue: str, vehicles_per_lane: List[int],
             percentages_per_vehicle_types: List[Dict[VehicleType, int]],
             accepted_risks: List[int] = None,
             warmup_time: int = 10, kind: str = 'box'):
@@ -217,10 +217,10 @@ class ResultAnalyzer:
          types of plots
         """
         data = self._load_data(y, percentages_per_vehicle_types,
-                               [vehicles_per_lane], accepted_risks)
+                               vehicles_per_lane, accepted_risks)
         self._prepare_data_for_plotting(data, warmup_time * 60)
         relevant_data = self._ensure_data_source_is_uniform(
-            data, [vehicles_per_lane])
+            data, vehicles_per_lane)
 
         no_control_idx = (relevant_data['control_percentages']
                           == 'no control')
@@ -242,9 +242,10 @@ class ResultAnalyzer:
 
         # Direct output
         print('vehs per lane: {}, {}'.format(vehicles_per_lane, y))
-        print(relevant_data[['control_percentages', y,
+        print(relevant_data[['vehicles_per_lane', 'control_percentages', y,
                              'Accepted Risk']].groupby(
-            ['control_percentages', 'Accepted Risk']).median())
+            ['vehicles_per_lane', 'control_percentages',
+             'Accepted Risk']).median())
         # for ct in relevant_data['control_type'].unique():
         #     print('vehs per lane: {}, ct: {}, median {}: {}'.format(
         #         vehicles_per_lane, ct, y,
@@ -1003,9 +1004,9 @@ class ResultAnalyzer:
         self.box_plot_y_vs_controlled_percentage(
             'flow', veh_inputs, percentages_per_vehicle_types, warmup_time=10
         )
-        self.box_plot_y_vs_controlled_percentage(
-            'risk', veh_inputs, percentages_per_vehicle_types, warmup_time=10
-        )
+        # self.box_plot_y_vs_controlled_percentage(
+        #     'risk', veh_inputs, percentages_per_vehicle_types, warmup_time=10
+        # )
         self.plot_risky_maneuver_histogram_per_vehicle_type(
             percentages_per_vehicle_types, veh_inputs, min_total_risk=1
         )

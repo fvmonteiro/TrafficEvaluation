@@ -288,10 +288,12 @@ def main():
     #     continue
 
     # =============== Check results graphically =============== #
-    all_plots_for_scenarios_with_risk(network_name, simulation_percentages,
-                                      inputs_per_lane, accepted_risks,
-                                      save_fig=True)
-    # ra = result_analysis.ResultAnalyzer(network_name, False)
+    # all_plots_for_scenarios_with_risk(network_name, simulation_percentages,
+    #                                   inputs_per_lane, accepted_risks,
+    #                                   save_fig=False)
+    ra = result_analysis.ResultAnalyzer(network_name, False)
+    ra.box_plot_y_vs_vehicle_type('flow', 'vehicles_per_lane', [1000, 2000],
+                                  simulation_percentages, [0])
     # ra.plot_lane_change_risk_histograms_risk_as_hue('total_lane_change_risk',
     #                                                 simulation_percentages,
     #                                                 inputs_per_lane,

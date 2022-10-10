@@ -864,6 +864,7 @@ class LaneChangeIssuesReader(PostProcessedDataReader):
         PostProcessedDataReader.__init__(self, scenario_name,
                                          self._data_identifier)
 
+
 class ViolationsReader(PostProcessedDataReader):
     _data_identifier = '_Traffic Light Violations'
 
