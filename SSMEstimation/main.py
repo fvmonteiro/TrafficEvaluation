@@ -265,11 +265,11 @@ def main():
     # =============== Running =============== #
     # vi = VissimInterface()
     # vi.load_simulation(network_name)
-    # vi.run_platoon_scenario()
     # for ipl in inputs_per_lane:
     #     vi.run_multiple_scenarios(simulation_percentages,
     #                               [ipl],
     #                               accepted_risks)
+    # vi.close_vissim()
 
     # =============== Post processing =============== #
     # for item in simulation_percentages:
@@ -292,8 +292,10 @@ def main():
     #                                   inputs_per_lane, accepted_risks,
     #                                   save_fig=False)
     ra = result_analysis.ResultAnalyzer(network_name, False)
-    ra.box_plot_y_vs_vehicle_type('flow', 'vehicles_per_lane', [1000, 2000],
-                                  simulation_percentages, [0])
+    ra.plot_fundamental_diagram([1000, 2000], simulation_percentages,
+                                accepted_risks=[0])
+    # ra.box_plot_y_vs_vehicle_type('flow', 'vehicles_per_lane', [1000, 2000],
+    #                               simulation_percentages, [0])
     # ra.plot_lane_change_risk_histograms_risk_as_hue('total_lane_change_risk',
     #                                                 simulation_percentages,
     #                                                 inputs_per_lane,

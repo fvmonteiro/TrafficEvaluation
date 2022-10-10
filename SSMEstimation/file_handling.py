@@ -26,8 +26,14 @@ class _NetworkInfo:
 @dataclass
 class _ScenarioInfo:
     """Contains information about different simulation scenarios"""
-    network: _NetworkInfo  # network_name, file_name, results_folder
+    network_name: str
+    network: _NetworkInfo
     results_folder: str
+
+    def __init__(self, network_name, results_folder):
+        self.network_name = network_name
+        self.network_info = _network_info[network_name]
+        self.results_folder = results_folder
 
 
 _folders_map = {
@@ -65,25 +71,23 @@ _network_info = {
 
 _scenario_info = {
     'in_and_out':
-        _ScenarioInfo(_network_info['in_and_out'], ''),
+        _ScenarioInfo('in_and_out', ''),
     'in_and_out_safe':
-        _ScenarioInfo(_network_info['in_and_out'], 'safe'),
+        _ScenarioInfo('in_and_out', 'safe'),
     'in_and_out_risk_in_headway':
-        _ScenarioInfo(_network_info['in_and_out'], 'risk_in_headway'),
+        _ScenarioInfo('in_and_out', 'risk_in_headway'),
     'in_and_out_risk_in_gap':
-        _ScenarioInfo(_network_info['in_and_out'], 'risk_in_gap'),
+        _ScenarioInfo('in_and_out', 'risk_in_gap'),
     'in_and_merge':
-        _ScenarioInfo(_network_info['in_and_merge'], 'results'),
+        _ScenarioInfo('in_and_merge', 'results'),
     'i710':
-        _ScenarioInfo(_network_info['i710'], 'results'),
+        _ScenarioInfo('i710', 'results'),
     'us101':
-        _ScenarioInfo(_network_info['us101'], 'results'),
+        _ScenarioInfo('us101', 'results'),
     'traffic_lights':
-        _ScenarioInfo(_network_info['traffic_lights'],
-                      'traffic_lights_study'),
+        _ScenarioInfo('traffic_lights', 'traffic_lights_study'),
     'platoon_lane_change':
-        _ScenarioInfo(_network_info['platoon_lane_change'],
-                      'platoon_lane_change')
+        _ScenarioInfo('platoon_lane_change', 'platoon_lane_change')
 }
 
 
@@ -110,14 +114,14 @@ class FileHandler:
         # self.network_name = _scenario_info[scenario_name].network
 
     def get_network_name(self):
-        return self.scenario_info.network
+        return self.scenario_info.network_name
 
     def get_file_name(self):
-        return self.scenario_info.network.file_name
+        return self.scenario_info.network_info.file_name
 
     def get_network_file_relative_address(self):
         # The network files are in folder with the same name as the file
-        return self.scenario_info.network.file_name
+        return self.scenario_info.network_info.file_name
 
     def get_network_file_folder(self):
         return os.path.join(get_networks_folder(),
@@ -132,13 +136,13 @@ class FileHandler:
                             self.get_results_relative_address())
 
     def get_on_ramp_links(self):
-        return self.scenario_info.network.on_ramp_link
+        return self.scenario_info.network_info.on_ramp_link
 
     def get_off_ramp_links(self):
-        return self.scenario_info.network.off_ramp_link
+        return self.scenario_info.network_info.off_ramp_link
 
     def get_merging_links(self):
-        return self.scenario_info.network.merging_link
+        return self.scenario_info.network_info.merging_link
 
     def get_data_folder(self,
                         vehicle_type: List[VehicleType],

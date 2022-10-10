@@ -138,10 +138,39 @@ class ResultAnalyzer:
                           percentages_per_vehicle_types)
         plt.show()
 
+    def plot_fundamental_diagram(
+            self, vehicles_per_lane: List[int],
+            percentages_per_vehicle_types: List[Dict[VehicleType, int]],
+            warmup_time: int = 10, accepted_risks: List[int] = None,
+            flow_sensor_number: int = 1):
+        density_data = self._load_data('density',
+                                       percentages_per_vehicle_types,
+                                       vehicles_per_lane, accepted_risks)
+        flow_data = self._load_data('flow', percentages_per_vehicle_types,
+                                    vehicles_per_lane, accepted_risks)
+        self._prepare_data_for_plotting(density_data, warmup_time * 60)
+        self._prepare_data_for_plotting(flow_data, warmup_time * 60)
+        intersection_columns = ['vehicles_per_lane', 'control_percentages',
+                                'simulation_number', 'time_interval',
+                                'random_seed']
+        data = flow_data.merge(density_data, on=intersection_columns)
+
+        relevant_data = self._ensure_data_source_is_uniform(
+            data, vehicles_per_lane)
+        # for control_percentage in relevant_data.control_percentages.unique():
+        #     data_to_plot = relevant_data[relevant_data['control_percentages']
+        #                                  == control_percentage]
+        #     ax = sns.scatterplot(data=data_to_plot, x='density', y='flow')
+        #     ax.set_title(control_percentage)
+        #     plt.show()
+        sns.scatterplot(data=relevant_data, x='density', y='flow',
+                        hue='control_percentages')
+        plt.show()
+
     def box_plot_y_vs_controlled_percentage(
             self, y: str, vehicles_per_lane: Union[int, List[int]],
             percentages_per_vehicle_types: List[Dict[VehicleType, int]],
-            warmup_time: int = 0, flow_sensor_number: int = 1):
+            warmup_time: int = 10, flow_sensor_number: int = 1):
         """Plots averaged y over several runs with the same vehicle input
         versus controlled vehicles percentage as a box plot.
 
@@ -259,9 +288,9 @@ class ResultAnalyzer:
                    bbox_to_anchor=(1.01, 1))
         plt.title(str(vehicles_per_lane) + ' vehs/h/lane', fontsize=22)
         fig = plt.gcf()
-        fig.set_size_inches(12, 6)
+        fig.set_size_inches(12, 7)
         if self.should_save_fig:
-            self.save_fig(fig, 'box_plot', y, [vehicles_per_lane],
+            self.save_fig(fig, 'box_plot', y, vehicles_per_lane,
                           percentages_per_vehicle_types, accepted_risks)
         self.widen_fig(plt.gcf(), len(percentages_per_vehicle_types))
         plt.tight_layout()

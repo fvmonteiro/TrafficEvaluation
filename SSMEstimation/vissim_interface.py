@@ -415,6 +415,8 @@ class VissimInterface:
             warm_up_minutes = self.network_info.warm_up_minutes
         if network_name == 'traffic_lights':
             self.set_traffic_lights()
+        if simulation_period is None:
+            simulation_period = self.network_info.evaluation_period
 
         self.set_evaluation_outputs(True, False, True, True, True,
                                     warm_up_minutes * 60, 30)

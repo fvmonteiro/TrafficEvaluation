@@ -190,7 +190,7 @@ class VissimDataReader(DataReader):
                                                 variable_name.lstrip(' ')]
                                             + extra_info)
                     except KeyError:
-                        column_names.append(variable_name.lower())
+                        column_names.append(variable_name.lower() + extra_info)
                 data = pd.read_csv(file, sep=self.separator,
                                    names=column_names, index_col=False,
                                    nrows=n_rows)
@@ -344,6 +344,24 @@ class VissimDataReader(DataReader):
     #                 min_simulation_number = sim_number
     #
     #     return min_simulation_number, max_simulation_number
+
+    @staticmethod
+    def keep_only_aggregated_data(data: pd.DataFrame):
+        """
+        Some files contains data aggregated for all vehicle categories and
+        then detailed for each vehicle category. This method keeps only the
+        aggregated data
+        :param data: the data to be cleaned
+        :return:
+        """
+        cols_to_be_dropped = []
+        for name in data.columns:
+            if '(' in name and name.split('(')[1][:-1] != 'ALL':
+                cols_to_be_dropped.append(name)
+        data.drop(columns=cols_to_be_dropped, inplace=True)
+        # Remove (ALL) from the column names
+        column_names = [name.split('(')[0] for name in data.columns]
+        data.columns = column_names
 
 
 class VehicleRecordReader(VissimDataReader):
@@ -523,14 +541,7 @@ class DataCollectionReader(VissimDataReader):
                                  vehicles_per_lane, accepted_risk, n_rows)
         # We remove columns with information specific to a single vehicle
         # type. We only want the (ALL) columns
-        cols_to_be_dropped = []
-        for name in data.columns:
-            if '(' in name and name.split('(')[1][:-1] != 'ALL':
-                cols_to_be_dropped.append(name)
-        data.drop(columns=cols_to_be_dropped, inplace=True)
-        # Remove (ALL) from the column names
-        column_names = [name.split('(')[0] for name in data.columns]
-        data.columns = column_names
+        VissimDataReader.keep_only_aggregated_data(data)
         # Include flow
         time_interval = data['time_interval'].iloc[0]
         data['flow'] = self._compute_flow(data['vehicle_count'], time_interval)
@@ -557,6 +568,7 @@ class LinkEvaluationReader(VissimDataReader):
         'DELAYREL': 'delay_relative', 'SPEED': 'average_speed',
         'VOLUME': 'volume'
     }
+    _data_to_ignore = 'emissions'
 
     def __init__(self, scenario_name):
         VissimDataReader.__init__(self, scenario_name,
@@ -573,8 +585,16 @@ class LinkEvaluationReader(VissimDataReader):
                                  controlled_vehicles_percentage,
                                  vehicles_per_lane, accepted_risk, n_rows)
         # Some column names contain (ALL). We can remove that information
-        column_names = [name.split('(')[0] for name in data.columns]
-        data.columns = column_names
+        # We remove columns with information specific to a single vehicle
+        # type. We only want the (ALL) columns
+        VissimDataReader.keep_only_aggregated_data(data)
+        # Drop all the emissions columns
+        cols_to_be_dropped = [name for name in data.columns
+                              if name.startswith(self._data_to_ignore)]
+        # for name in data.columns:
+        #     if name.startswith(self._data_to_ignore):
+        #         cols_to_be_dropped.append(name)
+        data.drop(columns=cols_to_be_dropped, inplace=True)
         return data
 
 
