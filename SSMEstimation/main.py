@@ -164,8 +164,9 @@ def main():
     # =============== Define data source =============== #
     # Options: i710, us-101, in_and_out, in_and_merge
     network_file = VissimInterface.network_names_map['in_and_out']
-    vehicle_type = [  # VehicleType.ACC,
-        # VehicleType.AUTONOMOUS,
+    vehicle_type = [
+        VehicleType.ACC,
+        VehicleType.AUTONOMOUS,
         VehicleType.CONNECTED
     ]
 
@@ -175,22 +176,24 @@ def main():
 
     # =============== Running =============== #
     # run_simulations(network_name='in_and_out', vehicle_types=vehicle_type,
-    #                 percentage=25, percentage_increase=25,
-    #                 final_percentage=75,
-    #                 input_per_lane=2000)
+    #                 percentage=0, percentage_increase=100,
+    #                 final_percentage=100,
+    #                 input_per_lane=1000,
+    #                 input_per_lane_increase=1000,
+    #                 final_input_per_lane=2000)
 
     # =============== Post processing =============== #
 
     post_processor = post_processing.DataPostProcessor()
-    # for vt in vehicle_type:
-    #     for percentage in range(25, 75+1, 25):
-    #         post_processor.create_ssm_summary(network_file,
-    #                                           vt,
-    #                                           percentage,
-    #                                           vehicle_inputs=[2000],
-    #                                           # debugging=True
-    #                                           )
-    #         post_processor.merge_data(network_file, vt, percentage)
+    for vt in vehicle_type:
+        for percentage in range(100, 101, 100):
+            post_processor.create_ssm_summary(network_file,
+                                              vt,
+                                              percentage,
+                                              vehicle_inputs=[1000, 2000],
+                                              # debugging=True
+                                              )
+            post_processor.merge_data(network_file, vt, percentage)
 
     # =============== Check results numbers =============== #
     # for percentage in range(100, 100+1, 25):
