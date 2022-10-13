@@ -247,9 +247,9 @@ def main():
     # =============== Scenario Definition =============== #
     # Options: i710, us101, in_and_out, in_and_merge,
     # platoon_lane_change, traffic_lights
-    network_name = 'in_and_out_risk_in_headway'
+    network_name = 'in_and_out_safe'
     vehicle_type = [
-        # VehicleType.ACC,
+        VehicleType.ACC,
         VehicleType.AUTONOMOUS,
         VehicleType.CONNECTED,
         # VehicleType.TRAFFIC_LIGHT_ACC,
@@ -260,7 +260,7 @@ def main():
     simulation_percentages = create_vehicle_percentages_dictionary(
         vehicle_type, percentages, 1)
     inputs_per_lane = [1000, 2000]
-    accepted_risks = [i for i in range(0, 31, 10)]
+    accepted_risks = [0]  # [i for i in range(0, 31, 10)]
 
     # =============== Running =============== #
     # vi = VissimInterface()
@@ -278,23 +278,25 @@ def main():
     #     post_processing.create_summary_with_risks(
     #         network_name, vehicle_types, percentages, inputs_per_lane,
     #         accepted_risks)
-
+    #
     # file_handler = file_handling.FileHandler(network_name)
     # try:
     #     file_handler.copy_results_from_multiple_scenarios(
-    #         simulation_percentages, [ipl], accepted_risks)
+    #         simulation_percentages, inputs_per_lane, accepted_risks)
     # except FileNotFoundError:
     #     print("Couldn't copy files to shared folder.")
-    #     continue
+    #     # continue
 
     # =============== Check results graphically =============== #
+    # all_inputs = [1000, 1200, 1500, 2000]
     # all_plots_for_scenarios_with_risk(network_name, simulation_percentages,
     #                                   inputs_per_lane, accepted_risks,
     #                                   save_fig=False)
     ra = result_analysis.ResultAnalyzer(network_name, False)
     ra.plot_fundamental_diagram([1000, 2000], simulation_percentages,
-                                accepted_risks=[0])
-    # ra.box_plot_y_vs_vehicle_type('flow', 'vehicles_per_lane', [1000, 2000],
+                                accepted_risks=[0],
+                                flow_sensor_name=['out_ramp'])
+    # ra.box_plot_y_vs_vehicle_type('flow', 'vehicles_per_lane', all_inputs,
     #                               simulation_percentages, [0])
     # ra.plot_lane_change_risk_histograms_risk_as_hue('total_lane_change_risk',
     #                                                 simulation_percentages,

@@ -419,7 +419,8 @@ class VissimInterface:
             simulation_period = self.network_info.evaluation_period
 
         self.set_evaluation_outputs(True, False, True, True, True,
-                                    warm_up_minutes * 60, 30)
+                                    warm_up_minutes * 60,
+                                    data_frequency=5)
         self.set_random_seed(self._initial_random_seed)
         self.set_random_seed_increment(1)
         self.check_saved_variables()

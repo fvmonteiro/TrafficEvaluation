@@ -53,6 +53,7 @@ class ResultAnalyzer:
                  'risk': 'm/s', 'estimated_risk': 'm/s',
                  'flow': 'veh/h', 'density': 'veh/km',
                  'time': 'min', 'time_interval': 's'}
+
     ssm_pretty_name_map = {'low_TTC': 'Low TTC',
                            'high_DRAC': 'High DRAC',
                            'CPI': 'CPI',
@@ -73,6 +74,18 @@ class ResultAnalyzer:
         'initial_risk_to_ld': readers.LaneChangeReader,
         'initial_risk_to_fd': readers.LaneChangeReader,
         'lane_change_issues': readers.LaneChangeIssuesReader
+    }
+
+    sensor_name_map = {
+        'in': 1, 'out': 2,
+        'in_main_left': 3, 'in_main_right': 4, 'in_ramp': 5,
+        'out_main_left': 6, 'out_main_right': 7, 'out_ramp': 8
+    }
+
+    sensor_lane_map = {
+        'in': [1, 2, 3], 'out': [1, 2, 3],
+        'in_main_left': [1], 'in_main_right': [2], 'in_ramp': [3],
+        'out_main_left': [1], 'out_main_right': [2], 'out_ramp': [3]
     }
 
     def __init__(self, network_name: str, should_save_fig: bool = False):
@@ -142,14 +155,17 @@ class ResultAnalyzer:
             self, vehicles_per_lane: List[int],
             percentages_per_vehicle_types: List[Dict[VehicleType, int]],
             warmup_time: int = 10, accepted_risks: List[int] = None,
-            flow_sensor_number: int = 1):
+            flow_sensor_name: List[str] = None):
+
         density_data = self._load_data('density',
                                        percentages_per_vehicle_types,
                                        vehicles_per_lane, accepted_risks)
         flow_data = self._load_data('flow', percentages_per_vehicle_types,
                                     vehicles_per_lane, accepted_risks)
-        self._prepare_data_for_plotting(density_data, warmup_time * 60)
-        self._prepare_data_for_plotting(flow_data, warmup_time * 60)
+        self._prepare_data_for_plotting(density_data, warmup_time * 60,
+                                        flow_sensor_name)
+        self._prepare_data_for_plotting(flow_data, warmup_time * 60,
+                                        flow_sensor_name)
         intersection_columns = ['vehicles_per_lane', 'control_percentages',
                                 'simulation_number', 'time_interval',
                                 'random_seed']
@@ -157,12 +173,12 @@ class ResultAnalyzer:
 
         relevant_data = self._ensure_data_source_is_uniform(
             data, vehicles_per_lane)
-        # for control_percentage in relevant_data.control_percentages.unique():
-        #     data_to_plot = relevant_data[relevant_data['control_percentages']
-        #                                  == control_percentage]
-        #     ax = sns.scatterplot(data=data_to_plot, x='density', y='flow')
-        #     ax.set_title(control_percentage)
-        #     plt.show()
+        for control_percentage in relevant_data.control_percentages.unique():
+            data_to_plot = relevant_data[relevant_data['control_percentages']
+                                         == control_percentage]
+            ax = sns.scatterplot(data=data_to_plot, x='density', y='flow')
+            ax.set_title(control_percentage)
+            plt.show()
         sns.scatterplot(data=relevant_data, x='density', y='flow',
                         hue='control_percentages')
         plt.show()
@@ -170,7 +186,7 @@ class ResultAnalyzer:
     def box_plot_y_vs_controlled_percentage(
             self, y: str, vehicles_per_lane: Union[int, List[int]],
             percentages_per_vehicle_types: List[Dict[VehicleType, int]],
-            warmup_time: int = 10, flow_sensor_number: int = 1):
+            warmup_time: int = 10, flow_sensor_name: List[str] = None):
         """Plots averaged y over several runs with the same vehicle input
         versus controlled vehicles percentage as a box plot.
 
@@ -180,7 +196,7 @@ class ResultAnalyzer:
          define the percentage of different vehicles type in the simulation
         :param warmup_time: must be given in minutes. Samples before
          start_time are ignored.
-        :param flow_sensor_number: if plotting flow, we can determine choose
+        :param flow_sensor_name: if plotting flow, we can determine choose
          which data collection measurement will be shown
         """
 
@@ -188,7 +204,7 @@ class ResultAnalyzer:
             vehicles_per_lane = [vehicles_per_lane]
         data = self._load_data(y, percentages_per_vehicle_types,
                                vehicles_per_lane)
-        self._prepare_data_for_plotting(data, warmup_time, flow_sensor_number)
+        self._prepare_data_for_plotting(data, warmup_time, flow_sensor_name)
         relevant_data = self._ensure_data_source_is_uniform(data,
                                                             vehicles_per_lane)
 
@@ -1055,7 +1071,7 @@ class ResultAnalyzer:
 
     def _prepare_data_for_plotting(self, data: pd.DataFrame,
                                    warmup_time: float = 0,
-                                   flow_sensor_number: int = 1):
+                                   sensor_name: List[str] = None):
         """Performs several operations to make the data proper for plotting:
         1. Fill NaN entries in columns describing controlled vehicle
         percentage
@@ -1063,19 +1079,29 @@ class ResultAnalyzer:
         percentage into a single 'control_percentages' column
         3. [Optional] Removes samples before warm-up time
         4. [Optional] Filter out certain sensor groups
-
         :param data: data aggregated over time
         :param warmup_time: Samples earlier than warmup_time are dropped.
          Must be passed in seconds
-        :param flow_sensor_number: if plotting flow, we can determine choose
-         which data collection measurement will be shown
+        :param sensor_name: if plotting flow or density, we can determine
+         which sensor/lane is shown
         """
         self._create_single_control_percentage_column(data)
         if 'time' not in data.columns:
             post_processing.create_time_in_minutes_from_intervals(data)
             data['time'] *= 60
         if 'flow' in data.columns:
-            data.drop(data[data['sensor_number'] != flow_sensor_number].index,
+            if sensor_name is None:
+                sensor_name = ['in']
+            sensor_number = [self.sensor_name_map[name] for name
+                             in sensor_name]
+            data.drop(data[~data['sensor_number'].isin(sensor_number)].index,
+                      inplace=True)
+        if ('density' in data.columns) and (sensor_name is not None):
+            data['lane'] = (data['link_segment_number'].str.split('-').str[1].
+                            astype(int))
+            lanes = []
+            [lanes.extend(self.sensor_lane_map[name]) for name in sensor_name]
+            data.drop(data[~data['lane'].isin(lanes)].index,
                       inplace=True)
         data.drop(index=data[data['time'] < warmup_time].index, inplace=True)
 
