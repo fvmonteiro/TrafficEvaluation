@@ -186,7 +186,7 @@ def all_plots_for_scenarios_with_risk(
         # ra.box_plot_y_vs_vehicle_type('initial_risk',
         #                               'accepted_risk', ipl,
         #                               simulation_percentages, accepted_risks)
-        ra.box_plot_y_vs_vehicle_type('flow', 'accepted_risk', ipl,
+        ra.box_plot_y_vs_vehicle_type('flow', 'accepted_risk', [ipl],
                                       simulation_percentages, accepted_risks)
         # ra.box_plot_y_vs_vehicle_type('risk', 'accepted_risk', ipl,
         #                               simulation_percentages, accepted_risks)
@@ -207,7 +207,7 @@ def all_plots_for_scenarios_with_risk_and_varying_penetration(
     ra = result_analysis.ResultAnalyzer(network_name,
                                         should_save_fig=save_fig)
 
-    ra.box_plot_y_vs_vehicle_type('flow', 'accepted_risk', inputs_per_lane,
+    ra.box_plot_y_vs_vehicle_type('flow', 'accepted_risk', [inputs_per_lane],
                                   simulation_percentages, accepted_risks)
     ra.plot_heatmap('lane_change_count', simulation_percentages,
                     [inputs_per_lane], accepted_risks)
@@ -288,16 +288,16 @@ def main():
     #     # continue
 
     # =============== Check results graphically =============== #
-    # all_inputs = [1000, 1200, 1500, 2000]
+    all_inputs = [1000, 1200, 1500, 2000]
     # all_plots_for_scenarios_with_risk(network_name, simulation_percentages,
     #                                   inputs_per_lane, accepted_risks,
     #                                   save_fig=False)
     ra = result_analysis.ResultAnalyzer(network_name, False)
-    ra.plot_fundamental_diagram([1000, 2000], simulation_percentages,
-                                accepted_risks=[0],
-                                flow_sensor_name=['out_ramp'])
-    # ra.box_plot_y_vs_vehicle_type('flow', 'vehicles_per_lane', all_inputs,
-    #                               simulation_percentages, [0])
+    # ra.plot_fundamental_diagram([1000, 2000], simulation_percentages,
+    #                             accepted_risks=[0],
+    #                             flow_sensor_name=['out_ramp'])
+    ra.box_plot_y_vs_vehicle_type('flow', 'vehicles_per_lane', all_inputs,
+                                  simulation_percentages, [0])
     # ra.plot_lane_change_risk_histograms_risk_as_hue('total_lane_change_risk',
     #                                                 simulation_percentages,
     #                                                 inputs_per_lane,
