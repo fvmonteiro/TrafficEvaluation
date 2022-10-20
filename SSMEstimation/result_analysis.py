@@ -892,8 +892,7 @@ class ResultAnalyzer:
         :return:
         """
         network_name = 'traffic_lights'
-        vehicle_type = [VehicleType.TRAFFIC_LIGHT_CACC]
-        percentage = [25]
+        vehicle_percentage = {VehicleType.TRAFFIC_LIGHT_CACC: 25}
         vehicles_per_lane = 500
         cases = [
             {'follower': 'human', 'leader': 'human', 'id': 202},
@@ -907,8 +906,8 @@ class ResultAnalyzer:
         ]
         time = [910, 950]
         reader = readers.VehicleRecordReader(network_name)
-        veh_record = reader.load_data(1, vehicle_type, percentage,
-                                      vehicles_per_lane)
+        veh_record = reader.load_data_from_scenario(1, vehicle_percentage,
+                                                    vehicles_per_lane)
         sns.set_style('whitegrid')
         # fig, axes = plt.subplots(len(cases), 1)
         # fig.set_size_inches(12, 16)
@@ -1058,15 +1057,15 @@ class ResultAnalyzer:
 
     # Support methods ======================================================== #
     def _load_data(self, y: str,
-                   percentages_per_vehicle_types: List[Dict[VehicleType, int]],
+                   vehicle_percentages: List[Dict[VehicleType, int]],
                    vehicles_per_lane: List[int],
                    accepted_risks: List[int] = None):
         # reader = self._get_data_reader(y)
         reader = self.data_reader_map[y](self.network_name)
-        vehicle_types, percentages = list_of_dicts_to_2d_lists(
-            percentages_per_vehicle_types)
+        # vehicle_types, percentages = list_of_dicts_to_2d_lists(
+        #     percentages_per_vehicle_types)
         data = reader.load_data_with_controlled_percentage(
-            vehicle_types, percentages, vehicles_per_lane, accepted_risks)
+            vehicle_percentages, vehicles_per_lane, accepted_risks)
         return data
 
     def _prepare_data_for_plotting(self, data: pd.DataFrame,
@@ -1096,37 +1095,38 @@ class ResultAnalyzer:
                              in sensor_name]
             data.drop(data[~data['sensor_number'].isin(sensor_number)].index,
                       inplace=True)
-        if ('density' in data.columns) and (sensor_name is not None):
-            data['lane'] = (data['link_segment_number'].str.split('-').str[1].
-                            astype(int))
+        if (('density' in data.columns) and (sensor_name is not None)
+                and (self._has_per_lane_results(data))):
             lanes = []
             [lanes.extend(self.sensor_lane_map[name]) for name in sensor_name]
             data.drop(data[~data['lane'].isin(lanes)].index,
                       inplace=True)
         data.drop(index=data[data['time'] < warmup_time].index, inplace=True)
 
-    def _create_single_control_percentage_column(self, data: pd.DataFrame):
+    @staticmethod
+    def _create_single_control_percentage_column(data: pd.DataFrame):
         """
         Create single column with all controlled vehicles' percentages info
         """
-        percentage_strings = [col for col in data.columns
-                              if 'percentage' in col]
-        data[percentage_strings] = data[percentage_strings].fillna(0)
-        data['control_percentages'] = ''
-        for ps in percentage_strings:
-            idx = data[ps] > 0
-            data[ps] = data[ps].astype('int')
-            data.loc[idx, 'control_percentages'] += (
-                    + data.loc[idx, ps].apply(str) + '% '
-                    + ps.replace('_percentage', ''))
-        data.loc[data['control_percentages'] == '',
-                 'control_percentages'] = 'no control'
-        data['control_percentages'] = data['control_percentages'].str.replace(
-            'autonomous', 'AV'
-        )
-        data['control_percentages'] = data['control_percentages'].str.replace(
-            'connected', 'CAV'
-        )
+        pass
+        # percentage_strings = [col for col in data.columns
+        #                       if 'percentage' in col]
+        # data[percentage_strings] = data[percentage_strings].fillna(0)
+        # data['control_percentages'] = ''
+        # for ps in percentage_strings:
+        #     idx = data[ps] > 0
+        #     data[ps] = data[ps].astype('int')
+        #     data.loc[idx, 'control_percentages'] += (
+        #             + data.loc[idx, ps].apply(str) + '% '
+        #             + ps.replace('_percentage', ''))
+        # data.loc[data['control_percentages'] == '',
+        #          'control_percentages'] = 'no control'
+        # data['control_percentages'] = data['control_percentages'].str.replace(
+        #     'autonomous', 'AV'
+        # )
+        # data['control_percentages'] = data['control_percentages'].str.replace(
+        #     'connected', 'CAV'
+        # )
 
     @staticmethod
     def _ensure_data_source_is_uniform(data: pd.DataFrame,
@@ -1160,6 +1160,17 @@ class ResultAnalyzer:
                   'controlled percentages or vehicle inputs had the same '
                   'amount of simulation results')
         return relevant_data
+
+    @staticmethod
+    def _has_per_lane_results(data) -> bool:
+        """
+        :param data: Data from link evaluation records
+        :return: boolean indicating whether the data has results individualized
+        per lane
+        """
+        if 'lane' in data.columns and data['lane'].iloc[0] != 0:
+            return True
+        return False
 
     @staticmethod
     def remove_deadlock_simulations(data):

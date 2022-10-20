@@ -445,7 +445,7 @@ class VissimInterface:
                     self.reset_saved_simulations(warning_active=False)
                     self.set_accepted_lane_change_risk_to_leaders(ar)
                     self.set_accepted_lane_change_risk_to_follower(ar / 2)
-                    results_folder = self.file_handler.get_data_folder(
+                    results_folder = self.file_handler.get_vissim_data_folder(
                         vehicle_types, percentages, ipl, ar)
                     if is_debugging:
                         self.use_debug_folder_for_results()

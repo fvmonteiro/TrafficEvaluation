@@ -1,7 +1,7 @@
 import time
 from collections import defaultdict
 import warnings
-from typing import List, Union
+from typing import Dict, List, Union
 
 import numpy as np
 import pandas as pd
@@ -21,8 +21,11 @@ data_source_VISSIM = 'vissim'
 data_source_NGSIM = 'ngsim'
 data_source_SYNTHETIC = 'synthetic'
 
+km_to_mile = 0.6213712
+
 
 # =============================== Functions ================================== #
+
 def post_process_data(data_source: str,
                       vehicle_records: pd.DataFrame):
     """Post processing includes:
@@ -220,8 +223,9 @@ def create_simulation_summary_test(network_name: str):
 
 
 def create_simulation_summary(network_name: str,
-                              vehicle_type: List[VehicleType],
-                              controlled_percentage: List[int],
+                              vehicle_percentages: Dict[VehicleType, int],
+                              # vehicle_type: List[VehicleType],
+                              # controlled_percentage: List[int],
                               vehicle_inputs: List[int] = None,
                               debugging: bool = False):
     """Reads multiple vehicle record data files, postprocesses them,
@@ -242,8 +246,12 @@ def create_simulation_summary(network_name: str,
     :return: Nothing. SSM results are saved to as csv files"""
 
     check_already_processed_vehicle_inputs(
-        network_name, vehicle_type, controlled_percentage,
+        network_name, vehicle_percentages,
         vehicle_inputs)
+
+    # TODO: temp lines. We need to refactor everything to receive dicts
+    vehicle_type = list(vehicle_percentages.keys())
+    controlled_percentage = list(vehicle_percentages.values())
 
     pp = [SSMProcessor(network_name, vehicle_type),
           RiskyManeuverProcessor(network_name, vehicle_type)]
@@ -260,15 +268,13 @@ def create_simulation_summary(network_name: str,
         # for ar in accepted_risks:
 
         print('Start of safety summary creation for network {}, vehicle '
-              'type {}, percentage {}, and input {}'.format(
-                  network_name, [vt.name.lower() for vt in vehicle_type],
-                  controlled_percentage, vi))
+              'percentages {}, and input {}'.format(
+                network_name, vehicle_percentages, vi))
         data_generator = vehicle_record_reader.generate_data(
-            vehicle_type, controlled_percentage, [vi],
-            n_rows=n_rows)
+            vehicle_percentages, [vi], n_rows=n_rows)
         lane_change_data = (
             lane_change_reader.load_data_with_controlled_percentage(
-                [vehicle_type], [controlled_percentage], [vi]
+                [vehicle_percentages], [vi]
             ))
 
         data = defaultdict(list)
@@ -283,7 +289,7 @@ def create_simulation_summary(network_name: str,
                 warnings.warn("Must change this code (check the next method)")
                 simulation_lc_data = lane_change_data[
                     lane_change_data['simulation'] == file_number
-                ]
+                    ]
                 complement_lane_change_data(network_name, vehicle_records,
                                             simulation_lc_data,
                                             data['risky_maneuver'][-1])
@@ -364,7 +370,7 @@ def create_summary_with_risks(scenario_name: str,
                     print('Computing', single_pp.data_name)
                     data[single_pp.data_name].append(single_pp.post_process(
                         vehicle_records))
-                lane_change_data = lane_change_reader.load_data(
+                lane_change_data = lane_change_reader.load_data_from_scenario(
                     file_number, vehicle_type, controlled_percentage, vi, ar)
 
                 complement_lane_change_data(scenario_name, vehicle_records,
@@ -532,7 +538,7 @@ def find_removed_vehicles(network_name: str, vehicle_type: List[VehicleType],
                 n_removed_vehicles.append(len(removed_vehs))
                 print('  {} removed vehs'.format(n_removed_vehicles[-1]))
             print(' Mean # of removed vehicles: {}'.format(np.mean(
-                  n_removed_vehicles)))
+                n_removed_vehicles)))
 
 
 def add_main_ssms(vehicle_records: pd.DataFrame, ssm_names: List[str]):
@@ -603,8 +609,10 @@ def create_time_bins_and_labels(period, vehicle_records):
 
 
 def check_already_processed_vehicle_inputs(
-        network_name: str, vehicle_type: List[VehicleType],
-        controlled_vehicle_percentage: List[int], vehicle_inputs: List[int]):
+        network_name: str, vehicle_percentages: Dict[VehicleType, int],
+        # vehicle_type: List[VehicleType],
+        # controlled_vehicle_percentage: List[int],
+        vehicle_inputs: List[int]):
     """
     Checks if the scenario being post processed was processed before.
     Prints a message if yes.
@@ -620,17 +628,16 @@ def check_already_processed_vehicle_inputs(
     ssm_reader = readers.SSMDataReader(network_name)
     try:
         ssm_data = ssm_reader.load_data_with_controlled_percentage(
-            [vehicle_type], [controlled_vehicle_percentage], vehicle_inputs)
+            [vehicle_percentages], vehicle_inputs)
     except OSError:
         return
     # if not ssm_data.empty:
     processed_vehicle_inputs = ssm_data['vehicles_per_lane'].unique()
     for v_i in (set(vehicle_inputs) & set(processed_vehicle_inputs)):
-        print('FYI: SSM results for network {}, vehicle type {}, '
-              'percentage {}, and input {} already exist. They are '
+        print('FYI: SSM results for network {}, vehicle percentages {}, '
+              'and input {} already exist. They are '
               'being recomputed.'.
-              format(network_name, [vt.name for vt in vehicle_type],
-                     controlled_vehicle_percentage, v_i))
+              format(network_name, vehicle_percentages, v_i))
 
 
 def compute_distance_to_leader(data_source: str, veh_data: pd.DataFrame,
@@ -687,7 +694,120 @@ def remove_early_samples(vehicle_records: pd.DataFrame,
     veh_data.drop(index=below_warmup, inplace=True)
 
 
+# ========================= Interfacing with MOVES =========================== #
+
+def translate_links_from_vissim_to_moves(
+        scenario_name: str, vehicles_per_lane: int,
+        vehicle_percentages: Dict[VehicleType, int],
+        accepted_risk: int = None):
+
+    vehicle_types = list(vehicle_percentages.keys())
+    vehicle_types_percentages = list(vehicle_percentages.values())
+    # Load VISSIM data
+    link_evaluation_reader = readers.LinkEvaluationReader(scenario_name)
+    link_evaluation_data = (link_evaluation_reader.
+                            load_data_with_controlled_percentage(
+                                [vehicle_types],
+                                [vehicle_types_percentages],
+                                vehicles_per_lane, [0])
+                            )
+    relevant_link_data = link_evaluation_data.groupby('link_number')[[
+        'link_number', 'link_length', 'volume', 'average_speed']].mean()
+
+    moves_link_data = _fill_moves_link_data(scenario_name, relevant_link_data)
+    moves_link_source_data = _fill_moves_link_source_data(
+        scenario_name, relevant_link_data['link_number'])
+
+    link_writer = data_writer.MOVESLinksWriter(scenario_name, vehicle_types)
+    # link_source_writer = data_writer.MOVESLinkSourceWriter(scenario_name,
+    #                                                        vehicle_types)
+    link_writer.save_data(moves_link_data, vehicle_types_percentages,
+                          vehicles_per_lane, accepted_risk)
+    # link_source_writer.save_data(moves_link_source_data,
+    #                              vehicle_types_percentages,
+    #                              vehicles_per_lane, accepted_risk)
+
+
+def _fill_moves_link_data(scenario_name: str,
+                          vissim_link_data: pd.DataFrame) -> pd.DataFrame:
+    moves_link_reader = readers.MovesLinkReader(scenario_name)
+    county_id = moves_link_reader.get_count_id()
+    zone_id = moves_link_reader.get_zone_id()
+    road_type_id = moves_link_reader.get_road_id()
+    off_net_id = moves_link_reader.get_off_road_id()
+    moves_link_data = pd.DataFrame()
+    moves_link_data['linkID'] = vissim_link_data['link_number']
+    moves_link_data['countyID'] = county_id
+    moves_link_data['zoneID'] = zone_id
+    moves_link_data['roadTypeID'] = road_type_id
+    moves_link_data['linkLength'] = (vissim_link_data['link_length']
+                                     / 1000 * km_to_mile)
+    moves_link_data['linkVolume'] = np.round(vissim_link_data['volume'])
+    moves_link_data['linkAvgSpeed'] = np.round(
+        vissim_link_data['average_speed'] * km_to_mile)
+    moves_link_data['linkDescription'] = 0
+    moves_link_data['linkAvgGrade'] = 0
+    # Add one off-network link
+    moves_link_data.loc[len(moves_link_data.index)] = [
+        moves_link_data['linkID'].max() + 1, county_id, zone_id, off_net_id,
+        0, 0, 0, 0, 0]
+    return moves_link_data
+
+
+def _fill_moves_link_source_data(scenario_name: str,
+                                 link_ids: pd.Series) -> pd.DataFrame:
+    # NOTE: for now we're only dealing with cars
+    moves_link_source_reader = readers.MovesLinkSourceReader(scenario_name)
+    car_id = moves_link_source_reader.get_passenger_vehicle_id()
+    link_ids.name = 'linkID'
+    moves_link_source_data = pd.DataFrame(link_ids)
+    moves_link_source_data['sourceTypeID'] = car_id
+    moves_link_source_data['sourceTypeHourFraction'] = 1
+    return moves_link_source_data
+
+
+# TODO: delete after confirming not necessary (10/18/22)
+def estimate_volume_per_link(vehicles_per_lane: int,
+                             link_data: pd.DataFrame):
+    link_data.set_index('number', inplace=True)
+    link_data['volume'] = 0
+    # Input links
+    input_link_names = {'in', 'main_start'}
+    input_link_index = link_data['name'].isin(input_link_names)
+    link_data.loc[input_link_index, 'volume'] = (
+            link_data.loc[input_link_index, 'number_of_lanes']
+            * vehicles_per_lane)
+    # Main highway section
+    link_data.loc[link_data['name'] == 'main_middle', 'volume'] = (
+        link_data.loc[input_link_index, 'volume'].sum())
+    # Output links
+    off_ramp_percentage = 0.10
+
+    link_data.loc[link_data['name'] == 'out', 'volume'] = (
+            vehicles_per_lane * off_ramp_percentage
+    )
+    link_data.loc[link_data['name'] == 'main_end', 'volume'] = (
+            (link_data.loc[link_data['name'] == 'main_end', 'number_of_lanes'] -
+             off_ramp_percentage) * vehicles_per_lane
+    )
+    from_links = link_data.loc[link_data['is_connector'] == 1,
+                               'from_link'].astype(int)
+    to_links = link_data.loc[link_data['is_connector'] == 1,
+                             'to_link'].astype(int)
+    link_data.loc[link_data['is_connector'] == 1, 'volume_in'] = (
+        link_data['volume'][from_links].to_numpy())
+    link_data.loc[link_data['is_connector'] == 1, 'volume_out'] = (
+        link_data['volume'][to_links].to_numpy())
+    link_data.loc[link_data['is_connector'] == 1, 'volume'] = (
+        link_data.loc[link_data['is_connector'] == 1,
+                      ['volume_in', 'volume_out']].min(axis=1)
+    )
+    # TODO: still incorrect because we have per-lane connectors between
+    #  multi lane links
+
+
 # ============================= Traffic Lights =============================== #
+
 def find_traffic_light_violations_all(network_name: str,
                                       vehicle_type: List[VehicleType],
                                       controlled_vehicle_percentage: List[int],
@@ -771,6 +891,7 @@ def find_traffic_light_violations(vehicle_record: pd.DataFrame,
 
 
 # ========================= Lane change methods ============================== #
+
 def complement_lane_change_data(network_name: str,
                                 veh_data: pd.DataFrame, lc_data: pd.DataFrame,
                                 risky_maneuver_data: pd.DataFrame):
@@ -2262,8 +2383,7 @@ class PostProcessor:
 
 
 class SSMProcessor(PostProcessor):
-
-    _writer = data_writer.PostProcessedDataWriter
+    _writer = data_writer.SSMDataWriter
 
     def __init__(self, scenario_name, vehicle_type):
         PostProcessor.__init__(self, scenario_name, vehicle_type, 'SSM',
@@ -2305,7 +2425,6 @@ class SSMProcessor(PostProcessor):
 
 
 class RiskyManeuverProcessor(PostProcessor):
-
     _writer = data_writer.RiskyManeuverWriter
 
     def __init__(self, scenario_name, vehicle_type):
@@ -2415,7 +2534,6 @@ class RiskyManeuverProcessor(PostProcessor):
 
 
 class ViolationProcessor(PostProcessor):
-
     _writer = data_writer.TrafficLightViolationWriter
 
     def __init__(self, scenario_name, vehicle_type):
@@ -2430,7 +2548,6 @@ class ViolationProcessor(PostProcessor):
 
 
 class DiscomfortProcessor(PostProcessor):
-
     _writer = data_writer.DiscomfortWriter
 
     def __init__(self, scenario_name, vehicle_type):
@@ -2473,7 +2590,6 @@ class DiscomfortProcessor(PostProcessor):
 
 
 class LaneChangeIssuesProcessor(PostProcessor):
-
     _writer = data_writer.LaneChangeIssuesWriter
 
     def __init__(self, scenario_name, vehicle_type):

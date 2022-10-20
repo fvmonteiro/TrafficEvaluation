@@ -247,7 +247,7 @@ def main():
     # =============== Scenario Definition =============== #
     # Options: i710, us101, in_and_out, in_and_merge,
     # platoon_lane_change, traffic_lights
-    network_name = 'in_and_out_safe'
+    scenario_name = 'in_and_out_safe'
     vehicle_type = [
         VehicleType.ACC,
         VehicleType.AUTONOMOUS,
@@ -264,7 +264,7 @@ def main():
 
     # =============== Running =============== #
     # vi = VissimInterface()
-    # vi.load_simulation(network_name)
+    # vi.load_simulation(scenario_name)
     # for ipl in inputs_per_lane:
     #     vi.run_multiple_scenarios(simulation_percentages,
     #                               [ipl],
@@ -276,10 +276,19 @@ def main():
     #     vehicle_types = list(item.keys())
     #     percentages = list(item.values())
     #     post_processing.create_summary_with_risks(
-    #         network_name, vehicle_types, percentages, inputs_per_lane,
+    #         scenario_name, vehicle_types, percentages, inputs_per_lane,
     #         accepted_risks)
-    #
-    # file_handler = file_handling.FileHandler(network_name)
+
+    # MOVES
+    # for sp in simulation_percentages:
+    #     for ipl in inputs_per_lane:
+    #         post_processing.translate_links_from_vissim_to_moves(
+    #             scenario_name, ipl, sp)
+
+    # r = readers.MOVESDatabaseReader(scenario_name)
+    # r.load_data_with_controlled_percentage(simulation_percentages, [1000, 2000])
+
+    # file_handler = file_handling.FileHandler(scenario_name)
     # try:
     #     file_handler.copy_results_from_multiple_scenarios(
     #         simulation_percentages, inputs_per_lane, accepted_risks)
@@ -289,13 +298,13 @@ def main():
 
     # =============== Check results graphically =============== #
     all_inputs = [1000, 1200, 1500, 2000]
-    # all_plots_for_scenarios_with_risk(network_name, simulation_percentages,
+    # all_plots_for_scenarios_with_risk(scenario_name, simulation_percentages,
     #                                   inputs_per_lane, accepted_risks,
     #                                   save_fig=False)
-    ra = result_analysis.ResultAnalyzer(network_name, False)
-    # ra.plot_fundamental_diagram([1000, 2000], simulation_percentages,
-    #                             accepted_risks=[0],
-    #                             flow_sensor_name=['out_ramp'])
+    ra = result_analysis.ResultAnalyzer(scenario_name, False)
+    ra.plot_fundamental_diagram([1000, 2000], simulation_percentages,
+                                accepted_risks=[0],
+                                flow_sensor_name=['in'])
     ra.box_plot_y_vs_vehicle_type('flow', 'vehicles_per_lane', all_inputs,
                                   simulation_percentages, [0])
     # ra.plot_lane_change_risk_histograms_risk_as_hue('total_lane_change_risk',
@@ -309,14 +318,9 @@ def main():
     # plot_acc_av_and_cav_results(False)
     # plot_cav_varying_percentage_results(False)
     # plot_traffic_lights_results(False)
-    # percentages = [0, 25, 50, 75, 100]
-    # simulation_percentages = create_vehicle_percentages_dictionary(
-    #     vehicle_type, percentages, 1)
-    # simulation_percentages += create_vehicle_percentages_dictionary(
-    #     vehicle_type, percentages, 2)
 
     # save_fig = False
-    # ra = result_analysis.ResultAnalyzer(network_name, save_fig)
+    # ra = result_analysis.ResultAnalyzer(scenario_name, save_fig)
     # ra.plot_lane_change_risks(None, None, 0)
 
 

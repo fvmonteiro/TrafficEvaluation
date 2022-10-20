@@ -1,5 +1,5 @@
 import os
-from typing import List, Union
+from typing import Dict, List, Union
 
 import numpy as np
 import pandas as pd
@@ -10,39 +10,56 @@ import file_handling
 
 
 class DataWriter:
-    # file_extension = '.csv'
 
     def __init__(self, data_type_identifier: str, file_extension: str,
-                 scenario_name: str, vehicle_type: List[VehicleType]):
+                 scenario_name: str):
         self.file_handler = file_handling.FileHandler(scenario_name)
         self.file_base_name = (self.file_handler.get_file_name() + '_'
                                + data_type_identifier)
         self.file_extension = file_extension
-        self.vehicle_type = vehicle_type
+        # self.vehicle_type = vehicle_type
         #  [vt.name.lower() for vt in vehicle_type]
 
     @staticmethod
     def _save_as_csv(data: pd.DataFrame, folder_path: str,
                      file_name: str):
-
         full_address = os.path.join(folder_path, file_name)
         try:
             data.to_csv(full_address, index=False)
-        except FileNotFoundError:
+        except OSError:
             print('Could not save at', full_address, '. Saving at: ',
                   file_handling.get_networks_folder(), 'instead.')
             data.to_csv(os.path.join(file_handling.get_networks_folder(),
                                      file_name), index=False)
 
+    @staticmethod
+    def _save_as_xls(data: pd.DataFrame, folder_path: str,
+                     file_name: str, sheet_name: str):
+        if not os.path.isdir(folder_path):
+            os.makedirs(folder_path)
+        full_address = os.path.join(folder_path, file_name)
+        try:
+            data.to_excel(full_address, sheet_name, index=False)
+        except OSError:
+            print('Could not save at', full_address, '. Saving at: ',
+                  file_handling.get_moves_folder(), 'instead.')
+            data.to_csv(os.path.join(file_handling.get_networks_folder(),
+                                     file_name), index=False)
+
 
 class PostProcessedDataWriter(DataWriter):
-    """Helps saving aggregated SSM results to files"""
-    _data_type_identifier = 'SSM Results'
+    """Helps saving results obtained after processing VISSIM results to files"""
     _file_extension = '.csv'
 
-    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
-        DataWriter.__init__(self, self._data_type_identifier,
-                            self._file_extension, scenario_name, vehicle_type)
+    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType],
+                 data_type_identifier: str):
+        DataWriter.__init__(self, data_type_identifier,
+                            self._file_extension, scenario_name)
+        self.vehicle_type = vehicle_type
+
+    # TODO: how to refactor the class to receive only a Dict[VehicleType,
+    #  int] instead of separate lists of VehicleTypes and percentages? We can
+    #  pass the dict as a param in the constructor or to the save function.
 
     def save_as_csv(self, data: pd.DataFrame,
                     controlled_vehicles_percentage: Union[List[int], None],
@@ -60,61 +77,101 @@ class PostProcessedDataWriter(DataWriter):
         :return: Nothing, just saves the data
         """
         file_name = self.file_base_name + self.file_extension
-        folder_path = self.file_handler.get_data_folder(
+        folder_path = self.file_handler.get_vissim_data_folder(
             self.vehicle_type, controlled_vehicles_percentage,
             vehicles_per_lane, accepted_risk)
-        # percentage_folder = file_handling.create_percent_folder_name(
-        #     controlled_vehicles_percentage, self.vehicle_type)
-        # vehicles_per_lane_folder = (
-        #     file_handling.create_vehs_per_lane_folder_name(
-        #         vehicles_per_lane))
-        # folder_path = os.path.join(self.network_data_dir, percentage_folder,
-        #                            vehicles_per_lane_folder)
         self._save_as_csv(data, folder_path, file_name)
+
+
+class SSMDataWriter(PostProcessedDataWriter):
+    """Helps saving aggregated SSM results to files"""
+    _data_type_identifier = 'SSM Results'
+
+    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
+        PostProcessedDataWriter.__init__(self, scenario_name, vehicle_type,
+                                         self._data_type_identifier)
 
 
 class RiskyManeuverWriter(PostProcessedDataWriter):
     _data_type_identifier = 'Risky Maneuvers'
 
     def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
-        DataWriter.__init__(self, self._data_type_identifier,
-                            self._file_extension, scenario_name, vehicle_type)
+        PostProcessedDataWriter.__init__(self, scenario_name, vehicle_type,
+                                         self._data_type_identifier)
 
 
 class TrafficLightViolationWriter(PostProcessedDataWriter):
     _data_type_identifier = 'Traffic Light Violations'
-    _file_extension = '.csv'
 
     def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
-        DataWriter.__init__(self, self._data_type_identifier,
-                            self._file_extension, scenario_name, vehicle_type)
+        PostProcessedDataWriter.__init__(self, scenario_name, vehicle_type,
+                                         self._data_type_identifier)
 
 
 class DiscomfortWriter(PostProcessedDataWriter):
     _data_type_identifier = 'Discomfort'
-    _file_extension = '.csv'
 
     def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
-        DataWriter.__init__(self, self._data_type_identifier,
-                            self._file_extension, scenario_name, vehicle_type)
+        PostProcessedDataWriter.__init__(self, scenario_name, vehicle_type,
+                                         self._data_type_identifier)
 
 
 class LaneChangeWriter(PostProcessedDataWriter):
     _data_type_identifier = 'Lane Changes'
-    _file_extension = '.csv'
 
     def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
-        DataWriter.__init__(self, self._data_type_identifier,
-                            self._file_extension, scenario_name, vehicle_type)
+        PostProcessedDataWriter.__init__(self, scenario_name, vehicle_type,
+                                         self._data_type_identifier)
 
 
 class LaneChangeIssuesWriter(PostProcessedDataWriter):
     _data_type_identifier = 'Lane Change Issues'
-    _file_extension = '.csv'
 
     def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
-        DataWriter.__init__(self, self._data_type_identifier,
-                            self._file_extension, scenario_name, vehicle_type)
+        PostProcessedDataWriter.__init__(self, scenario_name, vehicle_type,
+                                         self._data_type_identifier)
+
+
+class MOVESDataWriter(DataWriter):
+    _file_extension = '.xlsx'
+
+    def __init__(self, scenario_name: str, data_type_identifier: str,
+                 sheet_name: str, vehicle_type: List[VehicleType],):
+        DataWriter.__init__(self, 'MOVES_' + data_type_identifier,
+                            self._file_extension, scenario_name)
+        self.sheet_name = sheet_name
+        self.vehicle_type = vehicle_type
+
+    def save_data(self, data: pd.DataFrame,
+                  controlled_vehicles_percentage: Union[List[int], None],
+                  vehicles_per_lane: Union[int, None],
+                  accepted_risk: Union[int, None] = None):
+        folder_path = self.file_handler.get_moves_data_folder(
+            self.vehicle_type, controlled_vehicles_percentage,
+            vehicles_per_lane, accepted_risk
+        )
+        file_name = self.file_base_name + self.file_extension
+        self._save_as_xls(data, folder_path, file_name, self.sheet_name)
+
+
+class MOVESLinksWriter(MOVESDataWriter):
+    _data_type_identifier = 'links'
+    _sheet_name = 'link'
+
+    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
+        MOVESDataWriter.__init__(self, scenario_name,
+                                 self._data_type_identifier, self._sheet_name,
+                                 vehicle_type)
+
+
+class MOVESLinkSourceWriter(MOVESDataWriter):
+    _data_type_identifier = 'linksource'
+    _sheet_name = 'linkSourceTypeHour'
+
+    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
+        MOVESDataWriter.__init__(self, scenario_name,
+                                 self._data_type_identifier, self._sheet_name,
+                                 vehicle_type)
 
 
 class SyntheticDataWriter:
