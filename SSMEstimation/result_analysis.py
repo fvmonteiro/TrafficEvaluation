@@ -12,18 +12,17 @@ import readers
 from vehicle import VehicleType, vehicle_type_to_str_map
 
 
-def list_of_dicts_to_2d_lists(dict_list: List[Dict]):
-    keys = []
-    values = []
-    for d in dict_list:
-        keys.append(list(d.keys()))
-        values.append(list(d.values()))
-    return keys, values
+# # No longer in use [20/10/22]
+# def list_of_dicts_to_2d_lists(dict_list: List[Dict]):
+#     keys = []
+#     values = []
+#     for d in dict_list:
+#         keys.append(list(d.keys()))
+#         values.append(list(d.values()))
+#     return keys, values
 
 
 def list_of_dicts_to_1d_list(dict_list: List[Dict]):
-    # Note: slow solution because of the summing of lists, but shouldn't
-    #  impact performance
     keys = []
     values = []
     for d in dict_list:
@@ -32,18 +31,13 @@ def list_of_dicts_to_1d_list(dict_list: List[Dict]):
     return keys, values
 
 
-# TODO: the management of these dictionaries is getting messy. Try to make
-#  it more uniform
 def vehicle_percentage_dict_to_string(vp_dict: Dict[VehicleType, int]) -> str:
-    # TODO: the resulting string is not sorted. You can get 25% AV 25% CAV
-    #  or 25% CAV 25% AV
     if sum(vp_dict.values()) == 0:
         return 'no control'
-    ret_str = ''
-    for veh_type in vp_dict.keys():
-        ret_str += (str(vp_dict[veh_type]) + '% '
-                    + vehicle_type_to_str_map[veh_type])
-    return ret_str
+    ret_str = []
+    for veh_type, p in vp_dict.items():
+        ret_str.append(str(p) + '% ' + vehicle_type_to_str_map[veh_type])
+    return ' '.join(sorted(ret_str))
 
 
 class ResultAnalyzer:
@@ -73,7 +67,8 @@ class ResultAnalyzer:
         'initial_risk_to_lo': readers.LaneChangeReader,
         'initial_risk_to_ld': readers.LaneChangeReader,
         'initial_risk_to_fd': readers.LaneChangeReader,
-        'lane_change_issues': readers.LaneChangeIssuesReader
+        'lane_change_issues': readers.LaneChangeIssuesReader,
+        'average_speed': readers.LinkEvaluationReader
     }
 
     sensor_name_map = {
@@ -122,7 +117,7 @@ class ResultAnalyzer:
                            Dict[VehicleType, int]],
                        vehicles_per_lane: int,
                        # controlled_percentage: Union[int, List[int]],
-                       warmup_time: int = 0):
+                       warmup_time: int = 10):
         """Plots averaged y over several runs with the same vehicle input 
         versus time.
         
@@ -144,7 +139,7 @@ class ResultAnalyzer:
         # Plot
         sns.set_style('whitegrid')
         ax = sns.lineplot(data=relevant_data, x='time', y=y,
-                          hue='control_percentages', ci='sd')
+                          hue='simulation_number', errorbar='sd')
         ax.set_title('Input: ' + str(vehicles_per_lane) + ' vehs per lane')
         if self.should_save_fig:
             self.save_fig(plt.gcf(), 'time_plot', y, [vehicles_per_lane],
@@ -313,13 +308,13 @@ class ResultAnalyzer:
         plt.show()
 
     def plot_risky_maneuver_histogram_per_vehicle_type(
-            self, percentages_per_vehicle_types: List[Dict[VehicleType, int]],
+            self, vehicle_percentages: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int],
             warmup_time: int = 10, min_total_risk: float = 1):
         """
         Plots histograms of risky maneuvers' total risk.
 
-        :param percentages_per_vehicle_types: each dictionary in the list must
+        :param vehicle_percentages: each dictionary in the list must
          define the percentage of different vehicles type in the simulation
         :param vehicles_per_lane: input per lane used to generate the data.
          If this is a list, a single plot with different colors for each
@@ -333,11 +328,9 @@ class ResultAnalyzer:
         # if not isinstance(vehicles_per_lane, list):
         #     vehicles_per_lane = [vehicles_per_lane]
 
-        vehicle_types, percentages = list_of_dicts_to_2d_lists(
-            percentages_per_vehicle_types)
         risky_maneuver_reader = readers.RiskyManeuverReader(self.network_name)
         data = risky_maneuver_reader.load_data_with_controlled_percentage(
-            vehicle_types, percentages, vehicles_per_lane)
+            vehicle_percentages, vehicles_per_lane)
         warmup_time *= 60  # minutes to seconds
         data.drop(index=data[data['total_risk'] < min_total_risk].index,
                   inplace=True)
@@ -386,7 +379,7 @@ class ResultAnalyzer:
 
     def plot_lane_change_risk_histograms(
             self, risk_type: str,
-            percentages_per_vehicle_types: List[Dict[VehicleType, int]],
+            vehicle_percentages: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int], accepted_risks: List[int],
             warmup_time: int = 10, min_risk: int = 0.1
     ):
@@ -396,7 +389,8 @@ class ResultAnalyzer:
 
         :param risk_type: Options: total_risk, total_lane_change_risk and
          initial_risk
-        :param percentages_per_vehicle_types:
+        :param vehicle_percentages: Describes the percentages of controlled
+         vehicles in the simulations.
         :param vehicles_per_lane:
         :param accepted_risks:
         :param warmup_time:
@@ -404,7 +398,7 @@ class ResultAnalyzer:
         :return:
         """
         data = self._load_data(risk_type,
-                               percentages_per_vehicle_types,
+                               vehicle_percentages,
                                vehicles_per_lane, accepted_risks)
         self._prepare_data_for_plotting(data, warmup_time*60)
         relevant_data = self._ensure_data_source_is_uniform(
@@ -415,7 +409,7 @@ class ResultAnalyzer:
         plt.rc('font', size=30)
         # sns.set(font_scale=2)
         # for cp in control_percentages:
-        for item in percentages_per_vehicle_types:
+        for item in vehicle_percentages:
             cp = vehicle_percentage_dict_to_string(item)
             for ar in accepted_risks:
                 if cp == 'no control' and ar > 0:
@@ -616,24 +610,22 @@ class ResultAnalyzer:
         plt.show()
 
     def hist_plot_lane_change_initial_risks(
-            self, percentages_per_vehicle_types: List[Dict[VehicleType, int]],
+            self, vehicle_percentages: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int],
             warmup_time: int = 0):
         """
 
-        :param percentages_per_vehicle_types:
+        :param vehicle_percentages:
         :param vehicles_per_lane:
         :param warmup_time:
         :return:
         """
         lane_change_reader = readers.LaneChangeReader(self.network_name)
-        if percentages_per_vehicle_types is None and vehicles_per_lane is None:
+        if vehicle_percentages is None and vehicles_per_lane is None:
             data = lane_change_reader.load_test_data()
         else:
-            vehicle_types, percentages = list_of_dicts_to_2d_lists(
-                percentages_per_vehicle_types)
             data = lane_change_reader.load_data_with_controlled_percentage(
-                vehicle_types, percentages, vehicles_per_lane)
+                vehicle_percentages, vehicles_per_lane)
         warmup_time *= 60  # minutes to seconds
         self._create_single_control_percentage_column(data)
         data.drop(index=data[data['start_time'] < warmup_time].index,
@@ -756,14 +748,15 @@ class ResultAnalyzer:
         print(issue_count)
 
     # Traffic Light Scenario Plots =========================================== #
+
     def plot_violations_per_control_percentage(
-            self, percentages_per_vehicle_types: List[Dict[VehicleType, int]],
+            self, vehicle_percentages: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int],
             warmup_time: int = 10):
         """
         Plots number of violations .
 
-        :param percentages_per_vehicle_types: each dictionary in the list must
+        :param vehicle_percentages: each dictionary in the list must
          define the percentage of different vehicles type in the simulation
         :param vehicles_per_lane: input per lane used to generate the data.
          If this is a list, a single plot with different colors for each
@@ -776,11 +769,9 @@ class ResultAnalyzer:
         #     vehicles_per_lane = [vehicles_per_lane]
 
         n_simulations = 10
-        vehicle_types, percentages = list_of_dicts_to_2d_lists(
-            percentages_per_vehicle_types)
         violations_reader = readers.ViolationsReader(self.network_name)
         data = violations_reader.load_data_with_controlled_percentage(
-            vehicle_types, percentages, vehicles_per_lane)
+            vehicle_percentages, vehicles_per_lane)
 
         # TODO: temporary
         data.drop(index=data[data['simulation_number'] == 11].index,
@@ -944,49 +935,6 @@ class ResultAnalyzer:
                 plt.tight_layout()
                 fig.savefig(os.path.join(self._figure_folder, fig_name))
             plt.show()
-        # full_data = pd.concat(full_data)
-
-    def plot_double_y_axes(self,  # controlled_percentage: int,
-                           percentages_per_vehicle_types: List[Dict[
-                               VehicleType, int]],
-                           x: str,
-                           y: List[str], warmup_time=0):
-        """Loads data from the simulation with the indicated controlled vehicles
-        percentage and plots two variables against the same x axis
-
-        :param percentages_per_vehicle_types: each dictionary in the list must
-         define the percentage of different vehicles type in the simulation
-        :param x: Options: flow, density, or any of the surrogate safety
-         measures, namely, risk, low_TTC, high_DRAC
-        :param y: Must be a two-element list. Options: flow, density, or any of
-         the surrogate safety measures, namely, risk, low_TTC, high_DRAC
-        :param warmup_time: must be given in minutes. Samples before start_time
-         are ignored.
-         """
-        raise NotImplementedError
-        # if len(percentages_per_vehicle_types) > 1:
-        #     raise ValueError('This function does not work when class member '
-        #                      '_vehicle_type has more than one element.')
-        # if len(y) != 2:
-        #     raise ValueError('Parameter y should be a list with two strings.')
-        #
-        # data = self._load_all_merged_data(percentages_per_vehicle_types)
-        # self._prepare_data_for_plotting(data, warmup_time * 60)
-        # fig, ax1 = plt.subplots()
-        # ax2 = ax1.twinx()
-        #
-        # sns.scatterplot(data=data, ax=ax1, x=x, y=y[0], color='b')
-        # ax1.yaxis.label.set_color('b')
-        # sns.scatterplot(data=data, ax=ax2, x=x, y=y[1], color='r')
-        # ax2.yaxis.label.set_color('r')
-        #
-        # ax1.set_title(
-        #     str(controlled_percentage) + '% '
-        #     + self._vehicle_types[0].name.lower())
-        # fig.tight_layout()
-        # plt.show()
-        #
-        # return ax1, ax2
 
     def speed_color_map(self, vehicles_per_lane: int,
                         percentages_per_vehicle_types: List[
@@ -1012,13 +960,13 @@ class ResultAnalyzer:
         #         min_file, max_file =
         #             veh_record_reader.find_min_max_file_number(
         #             vehicle_type, p, vehicles_per_lane)
-        #         # TODO: for now just one file. We'll see later if aggregating
-        #         #  makes sense
+        #         # For now just one file. We'll see later if aggregating
+        #         # makes sense
         #         veh_record = veh_record_reader.load_data(max_file,
         #                                                  vehicle_type, p,
         #                                                  vehicles_per_lane)
         #         # Get only main segment.
-        #         # TODO: this must change for other scenarios
+        #         # This must change for other scenarios
         #         veh_record.drop(
         #             index=veh_record[(veh_record['link'] != 3)
         #                              | (veh_record['time'] < 300)].index,
@@ -1314,10 +1262,12 @@ class ResultAnalyzer:
 
     # Data integrity checks ================================================== #
 
-    def find_unfinished_simulations(self,
-                                    vehicle_types: List[List[VehicleType]],
-                                    percentage: List[List[int]],
-                                    vehicle_inputs):
+    def find_unfinished_simulations(
+            self,
+            vehicle_percentages: List[Dict[VehicleType, int]],
+            # vehicle_types: List[List[VehicleType]],
+            # percentage: List[List[int]],
+            vehicle_inputs):
         """ Checks whether simulations crashed. This is necessary because,
         when doing multiple runs from the COM interface, VISSIM does not
         always indicate that a simulation crashed. """
@@ -1325,12 +1275,12 @@ class ResultAnalyzer:
         # We must check either SSM results
         reader = readers.SSMDataReader(self.network_name)
         data_no_control = (reader.load_data_with_controlled_percentage(
-            vehicle_types, [[0]], vehicle_inputs))
+            [{VehicleType.ACC: 0}], vehicle_inputs))
         end_time = data_no_control.iloc[-1]['time_interval']
-        for vt in vehicle_types:  # reader in data_collection_readers:
-            # print(vt.name)
+        for vp in vehicle_percentages:  # reader in data_collection_readers:
+            # print(vp.name)
             data = reader.load_data_with_controlled_percentage(
-                [vt], percentage, vehicle_inputs)
+                [vp], vehicle_inputs)
             all_random_seeds = data['random_seed'].unique()
             all_inputs = data['vehicles_per_lane'].unique()
             for veh_input in all_inputs:

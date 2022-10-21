@@ -1,3 +1,4 @@
+import warnings
 from dataclasses import dataclass
 import os
 import shutil
@@ -158,61 +159,56 @@ class FileHandler:
     def get_merging_links(self):
         return self.scenario_info.network_info.merging_link
 
+    def get_vissim_test_folder(self):
+        return os.path.join(self.get_results_base_folder(), 'test')
+
     def get_vissim_data_folder(self,
-                               vehicle_type: List[VehicleType],
-                               controlled_percentage: List[int],
+                               vehicle_percentages: Dict[VehicleType, int],
                                vehicles_per_lane: int,
-                               accepted_risk: int) -> str:
+                               accepted_risk: Union[int, None]) -> str:
         """
         Creates a string with the full path of the VISSIM simulation results
         data folder. If all parameters are None, returns the test data folder
 
-        :param vehicle_type: list of enums indicating the vehicle (controller)
-         type
-        :param controlled_percentage: Percentage of autonomous vehicles
-         in the simulation. Current possible values: 0:25:100
+        :param vehicle_percentages: Describes the percentages of controlled
+         vehicles in the simulations.
         :param vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
          values depend on the controlled_vehicles_percentage: 500:500:2500
         :param accepted_risk: maximum lane changing risk in m/s
         :return: string with the folder where the data is
         """
-        if sum(controlled_percentage) == 0:
+        if sum(vehicle_percentages.values()) == 0:
             accepted_risk = None
             results_base_folder = self.get_network_file_folder()
         else:
             results_base_folder = self.get_results_base_folder()
         return create_file_path(
-            results_base_folder, vehicle_type, controlled_percentage,
+            results_base_folder, vehicle_percentages,
             vehicles_per_lane, accepted_risk)
 
     def get_moves_data_folder(self,
-                              vehicle_type: List[VehicleType],
-                              controlled_percentage: List[int],
+                              vehicle_percentages: Dict[VehicleType, int],
                               vehicles_per_lane: int,
                               accepted_risk: int) -> str:
         """
         Creates a string with the full path of the MOVES data
         folder. If all parameters are None, returns the test data folder
 
-        :param vehicle_type: list of enums indicating the vehicle (controller)
-         type
-        :param controlled_percentage: Percentage of autonomous vehicles
-         in the simulation. Current possible values: 0:25:100
+        :param vehicle_percentages: Describes the percentages of controlled
+         vehicles in the simulations.
         :param vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
          values depend on the controlled_vehicles_percentage: 500:500:2500
         :param accepted_risk: maximum lane changing risk in m/s
         :return: string with the folder where the data is
         """
         return create_file_path(
-            self.get_moves_default_data_folder(), vehicle_type,
-            controlled_percentage, vehicles_per_lane, accepted_risk)
+            self.get_moves_default_data_folder(), vehicle_percentages,
+            vehicles_per_lane, accepted_risk)
 
     def find_min_max_file_number(self,
                                  data_identifier: str,
                                  file_format: str,
                                  vehicle_percentages: Dict[VehicleType, int],
-                                 # vehicle_type: List[VehicleType],
-                                 # percentage: List[int],
                                  vehicles_per_lane: int,
                                  accepted_risk: int = None) -> (int, int):
         """"
@@ -221,19 +217,17 @@ class FileHandler:
 
         :param data_identifier: last part of the file name
         :param file_format: file extension
-        :param vehicle_type: Enum to indicate the vehicle (controller) type
-        :param percentage: Percentage of autonomous vehicles
-         in the simulation.
+        :param vehicle_percentages: Describes the percentages of controlled
+         vehicles in the simulations.
         :param vehicles_per_lane: Vehicle input per lane used in simulation
         :param accepted_risk: accepted lane change risk
         :return: highest simulation number.
         """
         max_simulation_number = -1
         min_simulation_number = 10000
-        vehicle_type = list(vehicle_percentages.keys())
-        percentage = list(vehicle_percentages.values())
+
         results_folder = self.get_vissim_data_folder(
-            vehicle_type, percentage, vehicles_per_lane, accepted_risk)
+            vehicle_percentages, vehicles_per_lane, accepted_risk)
         network_file = self.get_file_name()
         for file in os.listdir(results_folder):
             file_str = os.fsdecode(file)
@@ -267,19 +261,14 @@ class FileHandler:
 
     def copy_result_files(self,
                           vehicle_percentages: Dict[VehicleType, int],
-                          # vehicle_types: List[VehicleType],
-                          # controlled_percentages: List[int],
                           vehicles_per_lane: int,
                           accepted_risk: int):
         """Copies data collections, link segments, lane change data, SSMs,
         Risky Maneuvers and Violations files to a similar folder structure in
         Google Drive. """
 
-        vehicle_types = list(vehicle_percentages.keys())
-        controlled_percentages = list(vehicle_percentages.values())
         source_dir = self.get_vissim_data_folder(
-            vehicle_types, controlled_percentages, vehicles_per_lane,
-            accepted_risk)
+            vehicle_percentages, vehicles_per_lane, accepted_risk)
         target_dir = os.path.join(
             get_shared_folder(),
             source_dir.split(get_networks_folder() + "\\")[1]
@@ -311,20 +300,25 @@ class FileHandler:
             shutil.copy(os.path.join(source_dir, file_name), target_dir)
 
 
-def create_percent_folder_name(percentage: List[int],
-                               vehicle_type: List[VehicleType]) -> str:
+def create_percent_folder_name(
+        vehicle_percentages: Dict[VehicleType, int]) -> str:
     """Creates the name of the folder which contains results for the
     given percentage of controlled vehicles (not the full path)"""
 
-    if sum(percentage) == 0:
+    if sum(vehicle_percentages.values()) == 0:
         return '0_percent_'
-    vehicle_type_names = [v.name.lower() for v in vehicle_type]
-    percentage_folder = ''
-    for v, p in sorted(zip(vehicle_type_names, percentage)):
+    all_strings = []
+    for vt, p in vehicle_percentages.items():
         if p > 0:
-            percentage_folder += str(int(p)) + '_percent_' + v + '_'
-
-    return percentage_folder[:-1]  # remove last '_'
+            all_strings += [str(int(p)), 'percent', vt.name.lower()]
+    return '_'.join(all_strings)
+    # vehicle_type_names = [v.name.lower() for v in vehicle_type]
+    # percentage_folder = ''
+    # for v, p in sorted(zip(vehicle_type_names, percentage)):
+    #     if p > 0:
+    #         percentage_folder += str(int(p)) + '_percent_' + v + '_'
+    #
+    # return percentage_folder[:-1]  # remove last '_'
 
 
 def get_networks_folder() -> str:
@@ -352,7 +346,7 @@ def create_vehs_per_lane_folder_name(vehicles_per_lane: Union[int, str]) -> str:
     return vehs_per_lane_folder
 
 
-def create_accepted_risk_folder_name(accepted_risk: int) -> str:
+def create_accepted_risk_folder_name(accepted_risk: Union[int, None]) -> str:
     """
     Creates the name of the folder which contains the results for the given
     maximum accepted lane change risk
@@ -364,30 +358,28 @@ def create_accepted_risk_folder_name(accepted_risk: int) -> str:
 
 
 def create_file_path(base_folder: str,
-                     vehicle_type: List[VehicleType],
-                     controlled_percentage: List[int],
+                     vehicle_percentages: Dict[VehicleType, int],
                      vehicles_per_lane: int,
-                     accepted_risk: int) -> str:
+                     accepted_risk: Union[int, None]) -> str:
     """
     Creates a string with the full path of the data
     folder. If all parameters are None, returns the test data folder
 
     :param base_folder: full path of the base folder where the data is
-    :param vehicle_type: list of enums indicating the vehicle (controller)
-     type
-    :param controlled_percentage: Percentage of autonomous vehicles
-     in the simulation. Current possible values: 0:25:100
+    :param vehicle_percentages: Describes the percentages of controlled
+         vehicles in the simulations.
     :param vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
      values depend on the controlled_vehicles_percentage: 500:500:2500
     :param accepted_risk: maximum lane changing risk in m/s
     :return: string with the folder where the data is
     """
-    if (vehicle_type is None and controlled_percentage is None
+    if (vehicle_percentages is None
             and vehicles_per_lane is None):
+        warnings.warn("Using create_file_path to obtain the test folder"
+                      " is deprecated. Use get_vissim_test_folder instead.")
         return os.path.join(base_folder, 'test')
 
-    percent_folder = create_percent_folder_name(
-        controlled_percentage, vehicle_type)
+    percent_folder = create_percent_folder_name(vehicle_percentages)
     vehicle_input_folder = create_vehs_per_lane_folder_name(
         vehicles_per_lane)
     accepted_risk_folder = create_accepted_risk_folder_name(

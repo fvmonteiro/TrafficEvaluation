@@ -51,35 +51,31 @@ class PostProcessedDataWriter(DataWriter):
     """Helps saving results obtained after processing VISSIM results to files"""
     _file_extension = '.csv'
 
-    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType],
+    def __init__(self, scenario_name: str,  # vehicle_type: List[VehicleType],
                  data_type_identifier: str):
         DataWriter.__init__(self, data_type_identifier,
                             self._file_extension, scenario_name)
-        self.vehicle_type = vehicle_type
-
-    # TODO: how to refactor the class to receive only a Dict[VehicleType,
-    #  int] instead of separate lists of VehicleTypes and percentages? We can
-    #  pass the dict as a param in the constructor or to the save function.
 
     def save_as_csv(self, data: pd.DataFrame,
-                    controlled_vehicles_percentage: Union[List[int], None],
+                    vehicle_percentages: Union[Dict[VehicleType, int], None],
                     vehicles_per_lane: Union[int, None],
                     accepted_risk: Union[int, None] = None):
         """
         Saves the data on the proper results folder based on the simulated
         network, controlled vehicles percentage and vehicle input.
         Parameters with None value are only accepted for test runs.
+
         :param data: data to be saved
-        :param controlled_vehicles_percentage: percentage of controlled
-         vehicles in the simulation
+        :param vehicle_percentages: Describes the percentages of controlled
+         vehicles in the simulations.
         :param vehicles_per_lane: vehicle input per lane of the simulation
         :param accepted_risk: maximum lane changing risk
         :return: Nothing, just saves the data
         """
+
         file_name = self.file_base_name + self.file_extension
         folder_path = self.file_handler.get_vissim_data_folder(
-            self.vehicle_type, controlled_vehicles_percentage,
-            vehicles_per_lane, accepted_risk)
+            vehicle_percentages, vehicles_per_lane, accepted_risk)
         self._save_as_csv(data, folder_path, file_name)
 
 
@@ -87,48 +83,48 @@ class SSMDataWriter(PostProcessedDataWriter):
     """Helps saving aggregated SSM results to files"""
     _data_type_identifier = 'SSM Results'
 
-    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
-        PostProcessedDataWriter.__init__(self, scenario_name, vehicle_type,
+    def __init__(self, scenario_name: str):
+        PostProcessedDataWriter.__init__(self, scenario_name,
                                          self._data_type_identifier)
 
 
 class RiskyManeuverWriter(PostProcessedDataWriter):
     _data_type_identifier = 'Risky Maneuvers'
 
-    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
-        PostProcessedDataWriter.__init__(self, scenario_name, vehicle_type,
+    def __init__(self, scenario_name: str):
+        PostProcessedDataWriter.__init__(self, scenario_name,
                                          self._data_type_identifier)
 
 
 class TrafficLightViolationWriter(PostProcessedDataWriter):
     _data_type_identifier = 'Traffic Light Violations'
 
-    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
-        PostProcessedDataWriter.__init__(self, scenario_name, vehicle_type,
+    def __init__(self, scenario_name: str):
+        PostProcessedDataWriter.__init__(self, scenario_name,
                                          self._data_type_identifier)
 
 
 class DiscomfortWriter(PostProcessedDataWriter):
     _data_type_identifier = 'Discomfort'
 
-    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
-        PostProcessedDataWriter.__init__(self, scenario_name, vehicle_type,
+    def __init__(self, scenario_name: str):
+        PostProcessedDataWriter.__init__(self, scenario_name,
                                          self._data_type_identifier)
 
 
 class LaneChangeWriter(PostProcessedDataWriter):
     _data_type_identifier = 'Lane Changes'
 
-    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
-        PostProcessedDataWriter.__init__(self, scenario_name, vehicle_type,
+    def __init__(self, scenario_name: str):
+        PostProcessedDataWriter.__init__(self, scenario_name,
                                          self._data_type_identifier)
 
 
 class LaneChangeIssuesWriter(PostProcessedDataWriter):
     _data_type_identifier = 'Lane Change Issues'
 
-    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
-        PostProcessedDataWriter.__init__(self, scenario_name, vehicle_type,
+    def __init__(self, scenario_name: str):
+        PostProcessedDataWriter.__init__(self, scenario_name,
                                          self._data_type_identifier)
 
 
@@ -136,19 +132,17 @@ class MOVESDataWriter(DataWriter):
     _file_extension = '.xlsx'
 
     def __init__(self, scenario_name: str, data_type_identifier: str,
-                 sheet_name: str, vehicle_type: List[VehicleType],):
+                 sheet_name: str):
         DataWriter.__init__(self, 'MOVES_' + data_type_identifier,
                             self._file_extension, scenario_name)
         self.sheet_name = sheet_name
-        self.vehicle_type = vehicle_type
 
     def save_data(self, data: pd.DataFrame,
-                  controlled_vehicles_percentage: Union[List[int], None],
+                  vehicle_percentages: Union[Dict[VehicleType, int], None],
                   vehicles_per_lane: Union[int, None],
                   accepted_risk: Union[int, None] = None):
         folder_path = self.file_handler.get_moves_data_folder(
-            self.vehicle_type, controlled_vehicles_percentage,
-            vehicles_per_lane, accepted_risk
+            vehicle_percentages, vehicles_per_lane, accepted_risk
         )
         file_name = self.file_base_name + self.file_extension
         self._save_as_xls(data, folder_path, file_name, self.sheet_name)
@@ -158,20 +152,18 @@ class MOVESLinksWriter(MOVESDataWriter):
     _data_type_identifier = 'links'
     _sheet_name = 'link'
 
-    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
+    def __init__(self, scenario_name: str):
         MOVESDataWriter.__init__(self, scenario_name,
-                                 self._data_type_identifier, self._sheet_name,
-                                 vehicle_type)
+                                 self._data_type_identifier, self._sheet_name)
 
 
 class MOVESLinkSourceWriter(MOVESDataWriter):
     _data_type_identifier = 'linksource'
     _sheet_name = 'linkSourceTypeHour'
 
-    def __init__(self, scenario_name: str, vehicle_type: List[VehicleType]):
+    def __init__(self, scenario_name: str):
         MOVESDataWriter.__init__(self, scenario_name,
-                                 self._data_type_identifier, self._sheet_name,
-                                 vehicle_type)
+                                 self._data_type_identifier, self._sheet_name)
 
 
 class SyntheticDataWriter:

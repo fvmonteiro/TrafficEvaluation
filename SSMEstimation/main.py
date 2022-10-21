@@ -247,7 +247,7 @@ def main():
     # =============== Scenario Definition =============== #
     # Options: i710, us101, in_and_out, in_and_merge,
     # platoon_lane_change, traffic_lights
-    scenario_name = 'in_and_out_safe'
+    scenario_name = 'in_and_out'
     vehicle_type = [
         VehicleType.ACC,
         VehicleType.AUTONOMOUS,
@@ -302,11 +302,12 @@ def main():
     #                                   inputs_per_lane, accepted_risks,
     #                                   save_fig=False)
     ra = result_analysis.ResultAnalyzer(scenario_name, False)
-    ra.plot_fundamental_diagram([1000, 2000], simulation_percentages,
-                                accepted_risks=[0],
-                                flow_sensor_name=['in'])
-    ra.box_plot_y_vs_vehicle_type('flow', 'vehicles_per_lane', all_inputs,
-                                  simulation_percentages, [0])
+    ra.plot_y_vs_time('average_speed', [simulation_percentages[-1]], 2000)
+    # ra.plot_fundamental_diagram([1000, 2000], simulation_percentages,
+    #                             accepted_risks=[0],
+    #                             flow_sensor_name=['in'])
+    # ra.box_plot_y_vs_vehicle_type('flow', 'vehicles_per_lane', all_inputs,
+    #                               simulation_percentages, [0])
     # ra.plot_lane_change_risk_histograms_risk_as_hue('total_lane_change_risk',
     #                                                 simulation_percentages,
     #                                                 inputs_per_lane,

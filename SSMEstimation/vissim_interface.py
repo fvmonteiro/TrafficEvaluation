@@ -1036,8 +1036,7 @@ class VissimInterface:
         # self.set_results_folder(result_folder)
 
     def use_debug_folder_for_results(self):
-        debug_log_folder = os.path.join(
-            self.file_handler.get_results_base_folder(), 'test')
+        debug_log_folder = self.file_handler.get_vissim_test_folder()
         self.set_results_folder(debug_log_folder)
 
     def get_max_decel_data(self):
