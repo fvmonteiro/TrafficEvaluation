@@ -166,6 +166,15 @@ class MOVESLinkSourceWriter(MOVESDataWriter):
                                  self._data_type_identifier, self._sheet_name)
 
 
+class MOVESLinkDriveWriter(MOVESDataWriter):
+    _data_type_identifier = 'linkdrive'
+    _sheet_name = 'driveSchedule'
+
+    def __init__(self, scenario_name: str):
+        MOVESDataWriter.__init__(self, scenario_name,
+                                 self._data_type_identifier, self._sheet_name)
+
+
 class SyntheticDataWriter:
     """Creates synthetic data to help checking if the SSM computation is
     correct

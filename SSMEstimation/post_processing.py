@@ -97,7 +97,7 @@ def post_process_ngsim_data(vehicle_records):
     # Define warm up time as the first moment some vehicle has a leader
     warm_up_time = min(vehicle_records.loc[vehicle_records['leader_id'] > 0,
                                            'time'])
-    remove_early_samples(warm_up_time, vehicle_records)
+    remove_early_samples_from_vehicle_records(warm_up_time, vehicle_records)
     # By convention, if vehicle has no leader, we set it as its own leader
     no_leader_idx = vehicle_records['leader_id'] == 0
     vehicle_records.loc[no_leader_idx,
@@ -258,7 +258,7 @@ def create_simulation_summary(network_name: str,
     for vi in vehicle_inputs:
         print('Start of safety summary creation for network {}, vehicle '
               'percentages {}, and input {}'.format(
-                network_name, vehicle_percentages, vi))
+            network_name, vehicle_percentages, vi))
         data_generator = vehicle_record_reader.generate_data(
             vehicle_percentages, [vi], n_rows=n_rows)
         lane_change_data = (
@@ -344,7 +344,7 @@ def create_summary_with_risks(scenario_name: str,
         for ar in accepted_risks:
             print('Start of safety summary creation for network {}, vehicle '
                   'percentages {}, input {}, risk {}'.format(
-                    scenario_name, vehicle_percentages, vi, ar))
+                scenario_name, vehicle_percentages, vi, ar))
             data_generator = vehicle_record_reader.generate_data(
                 vehicle_percentages, [vi], ar, n_rows=n_rows)
 
@@ -537,6 +537,7 @@ def add_main_ssms(vehicle_records: pd.DataFrame, ssm_names: List[str]):
     # elif network_name in ['traffic_lights']:
     #     ssm_estimator.include_barrier_function_risk()
 
+
 def create_time_bins_and_labels(period, vehicle_records):
     """Creates equally spaced time intervals, generates labels
     that go with them and includes a time_interval column to the
@@ -628,8 +629,8 @@ def compute_distance_to_leader(data_source: str, veh_data: pd.DataFrame,
     return distance
 
 
-def remove_early_samples(vehicle_records: pd.DataFrame,
-                         warm_up_time: float):
+def remove_early_samples_from_vehicle_records(vehicle_records: pd.DataFrame,
+                                              warm_up_time: float):
     """Remove samples with time below some warm up time
 
     :param vehicle_records: vehicle records loaded from VISSIM
@@ -641,47 +642,79 @@ def remove_early_samples(vehicle_records: pd.DataFrame,
     veh_data.drop(index=below_warmup, inplace=True)
 
 
+def remove_early_samples_from_sensors(data: pd.DataFrame, warmup_time: int):
+    """
+    Removes samples from link evaluation and data collection output files.
+
+    :param data: the dataframe containing the data
+    :param warmup_time: time, in minutes, below which samples are removed
+    :returns: nothing; alters data in place
+    """
+    data['interval_init_time'] = (data['time_interval'].str.split('-').str[
+                                      0].astype(int))
+    data.drop(index=data[data['interval_init_time'] < warmup_time * 60].index,
+              inplace=True)
+
+
 # ========================= Interfacing with MOVES =========================== #
 
 def translate_links_from_vissim_to_moves(
-        scenario_name: str, vehicles_per_lane: int,
+        scenario_name: str,
+        vehicles_per_lane: int,
         vehicle_percentages: Dict[VehicleType, int],
-        accepted_risk: int = None):
-
+        accepted_risk: int = None,
+        warmup_minutes: int = 10):
     # Load VISSIM data
     link_evaluation_reader = readers.LinkEvaluationReader(scenario_name)
-    link_evaluation_data = (link_evaluation_reader.
-                            load_data_with_controlled_percentage(
-                                [vehicle_percentages],
-                                vehicles_per_lane, [0])
-                            )
-    relevant_link_data = link_evaluation_data.groupby('link_number')[[
-        'link_number', 'link_length', 'volume', 'average_speed']].mean()
+    link_evaluation_data = (
+        link_evaluation_reader.load_data_with_controlled_percentage(
+            [vehicle_percentages], vehicles_per_lane, [accepted_risk])
+    )
+    remove_early_samples_from_sensors(link_evaluation_data, warmup_time=10)
+    # We will pretend each simulation is a new set of links to avoid having to
+    # run MOVES over and over again.
+    n_links_per_simulation = len(link_evaluation_data['link_number'].unique())
+    link_evaluation_data['link_id'] = (
+            (link_evaluation_data['simulation_number'] - 1)
+            * n_links_per_simulation + link_evaluation_data['link_number'])
+    link_evaluation_data.sort_values('link_id', kind='stable', inplace=True,
+                                     ignore_index=True)
 
-    moves_link_data = _fill_moves_link_data(scenario_name, relevant_link_data)
+    # Aggregated data files
+    aggregated_link_data = link_evaluation_data.groupby('link_id')[[
+        'link_id', 'link_length', 'volume', 'average_speed']].mean()
+    moves_link_data = _fill_moves_link_data(scenario_name, aggregated_link_data)
     link_writer = data_writer.MOVESLinksWriter(scenario_name)
     link_writer.save_data(moves_link_data, vehicle_percentages,
                           vehicles_per_lane, accepted_risk)
 
     # For now, we only have one vehicle category. So, no need for this.
-    # moves_link_source_data = _fill_moves_link_source_data(
-    #     scenario_name, relevant_link_data['link_number'])
-    # link_source_writer = data_writer.MOVESLinkSourceWriter(scenario_name,
-    #                                                        vehicle_types)
-    # link_source_writer.save_data(moves_link_source_data,
-    #                              vehicle_types_percentages,
-    #                              vehicles_per_lane, accepted_risk)
+    moves_link_source_data = _fill_moves_link_source_data(
+        scenario_name, aggregated_link_data['link_id'])
+    link_source_writer = data_writer.MOVESLinkSourceWriter(scenario_name)
+    link_source_writer.save_data(moves_link_source_data,
+                                 vehicle_percentages,
+                                 vehicles_per_lane, accepted_risk)
+
+    # Get the speeds for each link per second
+    drive_sched = _create_speeds_from_link_evaluation(link_evaluation_data)
+    drive_sched_writer = data_writer.MOVESLinkDriveWriter(scenario_name)
+    drive_sched_writer.save_data(drive_sched, vehicle_percentages,
+                                 vehicles_per_lane, accepted_risk)
 
 
 def _fill_moves_link_data(scenario_name: str,
                           vissim_link_data: pd.DataFrame) -> pd.DataFrame:
+    # We will pretend each simulation is a different link to avoid having to
+    # run MOVES over and over again
     moves_link_reader = readers.MovesLinkReader(scenario_name)
     county_id = moves_link_reader.get_count_id()
     zone_id = moves_link_reader.get_zone_id()
     road_type_id = moves_link_reader.get_road_id()
     off_net_id = moves_link_reader.get_off_road_id()
     moves_link_data = pd.DataFrame()
-    moves_link_data['linkID'] = vissim_link_data['link_number']
+
+    moves_link_data['linkID'] = vissim_link_data['link_id']
     moves_link_data['countyID'] = county_id
     moves_link_data['zoneID'] = zone_id
     moves_link_data['roadTypeID'] = road_type_id
@@ -693,7 +726,7 @@ def _fill_moves_link_data(scenario_name: str,
     moves_link_data['linkDescription'] = 0
     moves_link_data['linkAvgGrade'] = 0
     # Add one off-network link
-    moves_link_data.loc[len(moves_link_data.index)] = [
+    moves_link_data.loc[max(moves_link_data.index)+1] = [
         moves_link_data['linkID'].max() + 1, county_id, zone_id, off_net_id,
         0, 0, 0, 0, 0]
     return moves_link_data
@@ -711,45 +744,25 @@ def _fill_moves_link_source_data(scenario_name: str,
     return moves_link_source_data
 
 
-# TODO: delete after confirming not necessary (10/18/22)
-def estimate_volume_per_link(vehicles_per_lane: int,
-                             link_data: pd.DataFrame):
-    link_data.set_index('number', inplace=True)
-    link_data['volume'] = 0
-    # Input links
-    input_link_names = {'in', 'main_start'}
-    input_link_index = link_data['name'].isin(input_link_names)
-    link_data.loc[input_link_index, 'volume'] = (
-            link_data.loc[input_link_index, 'number_of_lanes']
-            * vehicles_per_lane)
-    # Main highway section
-    link_data.loc[link_data['name'] == 'main_middle', 'volume'] = (
-        link_data.loc[input_link_index, 'volume'].sum())
-    # Output links
-    off_ramp_percentage = 0.10
-
-    link_data.loc[link_data['name'] == 'out', 'volume'] = (
-            vehicles_per_lane * off_ramp_percentage
-    )
-    link_data.loc[link_data['name'] == 'main_end', 'volume'] = (
-            (link_data.loc[link_data['name'] == 'main_end', 'number_of_lanes'] -
-             off_ramp_percentage) * vehicles_per_lane
-    )
-    from_links = link_data.loc[link_data['is_connector'] == 1,
-                               'from_link'].astype(int)
-    to_links = link_data.loc[link_data['is_connector'] == 1,
-                             'to_link'].astype(int)
-    link_data.loc[link_data['is_connector'] == 1, 'volume_in'] = (
-        link_data['volume'][from_links].to_numpy())
-    link_data.loc[link_data['is_connector'] == 1, 'volume_out'] = (
-        link_data['volume'][to_links].to_numpy())
-    link_data.loc[link_data['is_connector'] == 1, 'volume'] = (
-        link_data.loc[link_data['is_connector'] == 1,
-                      ['volume_in', 'volume_out']].min(axis=1)
-    )
-    # TODO: still incorrect because we have per-lane connectors between
-    #  multi lane links
-
+def _create_speeds_from_link_evaluation(
+        link_evaluation_data: pd.DataFrame) -> pd.DataFrame:
+    # Create the Moves-matching data. We consider the speed constant during
+    # the interval
+    interval_str = link_evaluation_data['time_interval'].iloc[0].split('-')
+    interval_duration = int(interval_str[1]) - int(interval_str[0])
+    drive_sched = pd.DataFrame(np.repeat(link_evaluation_data[[
+        'link_id', 'average_speed']].to_numpy(), interval_duration, axis=0))
+    drive_sched.columns = ['linkID', 'speed']
+    drive_sched.reset_index(drop=True, inplace=True)
+    drive_sched['speed'] *= km_to_mile
+    drive_sched['linkID'] = drive_sched['linkID'].astype(int)
+    first_link = drive_sched['linkID'].iloc[0]
+    samples_per_link = np.count_nonzero(drive_sched['linkID'] == first_link)
+    drive_sched['secondID'] = (drive_sched.index + 1 -
+                               (drive_sched['linkID'] - first_link)
+                               * samples_per_link).astype(int)
+    drive_sched['grade'] = 0
+    return drive_sched
 
 # ============================= Traffic Lights =============================== #
 
@@ -2560,6 +2573,5 @@ class LaneChangeIssuesProcessor(PostProcessor):
         issues_df = pd.concat([removed_vehicles, blocked_vehicles])
         issues_df['simulation_number'] = data['simulation_number'].iloc[0]
         return issues_df
-
 
 # TODO: class LaneChangePostProcessor
