@@ -658,19 +658,107 @@ def remove_early_samples_from_sensors(data: pd.DataFrame, warmup_time: int):
 
 # ========================= Interfacing with MOVES =========================== #
 
+def get_individual_vehicle_trajectories_to_moves(
+        scenario_name: str,
+        vehicles_per_lane: int,
+        vehicle_percentages: Dict[VehicleType, int],
+        accepted_risk: int = None,
+        first_minute: int = 10,
+        vehs_per_simulation: int = 10):
+    """
+    Finds the first vehicle entering the simulation link after the cut
+    off minute and save its info in MOVES format
+    """
+
+    accepted_links = {4, 10000, 10004}
+    last_minute = 20
+    first_second = first_minute * 60
+    interval = (last_minute - first_minute) * 60 / vehs_per_simulation
+    link_reader = readers.LinkReader(scenario_name)
+    vissim_link_data = link_reader.load_data()
+    link_id_map = dict()
+    new_id = 0
+    for link_id in vissim_link_data['number'].unique():
+        new_id += 1
+        link_id_map[link_id] = new_id
+
+    init_link_number = 0
+    vehicle_record_reader = readers.VehicleRecordReader(scenario_name)
+    data_generator = vehicle_record_reader.generate_data(
+        vehicle_percentages, [vehicles_per_lane], accepted_risk)
+    link_data_list = []
+    speed_data_list = []
+    for (vehicle_records, _) in data_generator:
+        vehicle_records['secondID'] = np.floor(vehicle_records['time']).astype(
+            int)
+        creation_time_and_link = vehicle_records.groupby('veh_id').agg(
+            {'time': 'min', 'link': 'first'})
+        for i in range(vehs_per_simulation):
+            cut_off_second = first_second + i * interval
+            veh_id = creation_time_and_link[
+                (creation_time_and_link['time'] >= cut_off_second)
+                & creation_time_and_link['link'].isin(accepted_links)].index[0]
+            vehicle_data = vehicle_records[vehicle_records['veh_id'] == veh_id]
+            single_veh_speed_data = _create_speed_from_vehicle_record(
+                vehicle_data)
+            single_veh_speed_data['secondID'] -= cut_off_second
+            single_veh_speed_data['linkID'] = (
+                    single_veh_speed_data['linkID'].map(link_id_map.get)
+                    + init_link_number)
+
+            single_veh_link_data = _fill_moves_link_data_from_vissim_links(
+                scenario_name, vissim_link_data, vehicle_data)
+            single_veh_link_data['linkID'] = (
+                    single_veh_link_data['linkID'].map(link_id_map.get)
+                    + init_link_number)
+            init_link_number = single_veh_link_data['linkID'].max() + 1
+
+            speed_data_list.append(single_veh_speed_data)
+            link_data_list.append(single_veh_link_data)
+        break
+
+    moves_link_data = pd.concat(link_data_list)
+    # Add mandatory Off-road link
+    last_row = moves_link_data.iloc[-1]
+    moves_link_data.loc[max(moves_link_data.index) + 1] = [
+        last_row['linkID'].max() + 1, last_row['countyID'],
+        last_row['zoneID'], 1, 0, 0, 0, 0, 0]
+    moves_speed_data = pd.concat(speed_data_list)
+    moves_link_source_data = _fill_moves_link_source_data(
+        scenario_name, moves_link_data['linkID'])
+
+    # Save all files
+    link_writer = data_writer.MOVESLinksWriter(scenario_name)
+    link_writer.save_data(moves_link_data, vehicle_percentages,
+                          vehicles_per_lane, accepted_risk)
+    link_source_writer = data_writer.MOVESLinkSourceWriter(scenario_name)
+    link_source_writer.save_data(moves_link_source_data,
+                                 vehicle_percentages,
+                                 vehicles_per_lane, accepted_risk)
+    drive_sched_writer = data_writer.MOVESLinkDriveWriter(scenario_name)
+    drive_sched_writer.save_data(moves_speed_data, vehicle_percentages,
+                                 vehicles_per_lane, accepted_risk)
+
+
 def translate_links_from_vissim_to_moves(
         scenario_name: str,
         vehicles_per_lane: int,
         vehicle_percentages: Dict[VehicleType, int],
         accepted_risk: int = None,
         warmup_minutes: int = 10):
+    """
+    Reads link evaluation output files from VISSIM and write link,
+    link source and drive schedule xls files for use in MOVES
+    """
+
     # Load VISSIM data
     link_evaluation_reader = readers.LinkEvaluationReader(scenario_name)
     link_evaluation_data = (
         link_evaluation_reader.load_data_with_controlled_percentage(
             [vehicle_percentages], vehicles_per_lane, [accepted_risk])
     )
-    remove_early_samples_from_sensors(link_evaluation_data, warmup_time=10)
+    remove_early_samples_from_sensors(link_evaluation_data, warmup_minutes)
+
     # We will pretend each simulation is a new set of links to avoid having to
     # run MOVES over and over again.
     n_links_per_simulation = len(link_evaluation_data['link_number'].unique())
@@ -683,12 +771,13 @@ def translate_links_from_vissim_to_moves(
     # Aggregated data files
     aggregated_link_data = link_evaluation_data.groupby('link_id')[[
         'link_id', 'link_length', 'volume', 'average_speed']].mean()
-    moves_link_data = _fill_moves_link_data(scenario_name, aggregated_link_data)
+    moves_link_data = _fill_moves_link_data_from_link_evaluation_data(
+        scenario_name, aggregated_link_data)
     link_writer = data_writer.MOVESLinksWriter(scenario_name)
     link_writer.save_data(moves_link_data, vehicle_percentages,
                           vehicles_per_lane, accepted_risk)
 
-    # For now, we only have one vehicle category. So, no need for this.
+    # Set all sources
     moves_link_source_data = _fill_moves_link_source_data(
         scenario_name, aggregated_link_data['link_id'])
     link_source_writer = data_writer.MOVESLinkSourceWriter(scenario_name)
@@ -703,8 +792,9 @@ def translate_links_from_vissim_to_moves(
                                  vehicles_per_lane, accepted_risk)
 
 
-def _fill_moves_link_data(scenario_name: str,
-                          vissim_link_data: pd.DataFrame) -> pd.DataFrame:
+def _fill_moves_link_data_from_link_evaluation_data(
+        scenario_name: str,
+        link_evaluation_data: pd.DataFrame) -> pd.DataFrame:
     # We will pretend each simulation is a different link to avoid having to
     # run MOVES over and over again
     moves_link_reader = readers.MovesLinkReader(scenario_name)
@@ -714,21 +804,51 @@ def _fill_moves_link_data(scenario_name: str,
     off_net_id = moves_link_reader.get_off_road_id()
     moves_link_data = pd.DataFrame()
 
-    moves_link_data['linkID'] = vissim_link_data['link_id']
+    moves_link_data['linkID'] = link_evaluation_data['link_id']
     moves_link_data['countyID'] = county_id
     moves_link_data['zoneID'] = zone_id
     moves_link_data['roadTypeID'] = road_type_id
-    moves_link_data['linkLength'] = (vissim_link_data['link_length']
+    moves_link_data['linkLength'] = (link_evaluation_data['link_length']
                                      / 1000 * km_to_mile)
-    moves_link_data['linkVolume'] = np.round(vissim_link_data['volume'])
-    moves_link_data['linkAvgSpeed'] = np.round(
-        vissim_link_data['average_speed'] * km_to_mile)
+    moves_link_data['linkVolume'] = np.round(link_evaluation_data['volume'])
+    moves_link_data['linkAvgSpeed'] = (
+        link_evaluation_data['average_speed'] * km_to_mile)
     moves_link_data['linkDescription'] = 0
     moves_link_data['linkAvgGrade'] = 0
     # Add one off-network link
     moves_link_data.loc[max(moves_link_data.index)+1] = [
         moves_link_data['linkID'].max() + 1, county_id, zone_id, off_net_id,
         0, 0, 0, 0, 0]
+    return moves_link_data
+
+
+def _fill_moves_link_data_from_vissim_links(
+        scenario_name: str, link_data: pd.DataFrame,
+        vehicle_data: pd.DataFrame):
+
+    used_links = vehicle_data['link'].unique()
+    used_links_idx = link_data[link_data['number'].isin(
+        used_links)].index
+
+    moves_link_reader = readers.MovesLinkReader(scenario_name)
+    county_id = moves_link_reader.get_count_id()
+    zone_id = moves_link_reader.get_zone_id()
+    road_type_id = moves_link_reader.get_road_id()
+    moves_link_data = pd.DataFrame()
+
+    # moves_link_data['linkID'] = (link_data.loc[used_links_idx, 'number'].
+    #                              reset_index().index)
+    moves_link_data['linkID'] = link_data.loc[used_links_idx, 'number']
+    # moves_link_data.drop(columns='link_number', inplace=True)
+    moves_link_data['countyID'] = county_id
+    moves_link_data['zoneID'] = zone_id
+    moves_link_data['roadTypeID'] = road_type_id
+    moves_link_data['linkLength'] = (link_data.loc[used_links_idx, 'length']
+                                     / 1000 * km_to_mile).to_numpy()
+    moves_link_data['linkVolume'] = 1
+    moves_link_data['linkAvgSpeed'] = 1
+    moves_link_data['linkDescription'] = 0
+    moves_link_data['linkAvgGrade'] = 0
     return moves_link_data
 
 
@@ -764,6 +884,16 @@ def _create_speeds_from_link_evaluation(
     drive_sched['grade'] = 0
     return drive_sched
 
+
+def _create_speed_from_vehicle_record(
+        vehicle_data: pd.DataFrame) -> pd.DataFrame:
+    speed_data = vehicle_data.groupby(
+        'secondID', as_index=False).agg({'link': 'first', 'vx': 'mean'})
+    speed_data['grade'] = 0
+    speed_data['vx'] *= km_to_mile
+    speed_data.rename(
+        columns={'link': 'linkID', 'vx': 'speed'}, inplace=True)
+    return speed_data
 # ============================= Traffic Lights =============================== #
 
 def find_traffic_light_violations_all(

@@ -209,8 +209,8 @@ def all_plots_for_scenarios_with_risk_and_varying_penetration(
 
     ra.box_plot_y_vs_vehicle_type('flow', 'accepted_risk', [inputs_per_lane],
                                   simulation_percentages, accepted_risks)
-    ra.plot_heatmap('lane_change_count', simulation_percentages,
-                    [inputs_per_lane], accepted_risks)
+    ra.plot_heatmap_risk_vs_control('lane_change_count', simulation_percentages,
+                                    [inputs_per_lane], accepted_risks)
 
 
 # TODO: move this to some other file
@@ -285,6 +285,8 @@ def main():
     #     for ipl in inputs_per_lane:
     #         post_processing.translate_links_from_vissim_to_moves(
     #             scenario_name, ipl, sp, 0)
+    post_processing.get_individual_vehicle_trajectories_to_moves(
+        scenario_name, 1000, simulation_percentages[1])
 
     # post_processing.translate_links_from_vissim_to_moves(
     #     scenario_name, inputs_per_lane[0], simulation_percentages[0])
@@ -306,8 +308,13 @@ def main():
     # all_plots_for_scenarios_with_risk(scenario_name, simulation_percentages,
     #                                   inputs_per_lane, accepted_risks,
     #                                   save_fig=False)
-    ra = result_analysis.ResultAnalyzer(scenario_name, False)
-    ra.environment_evaluation(simulation_percentages, [1000, 2000])
+    # ra = result_analysis.ResultAnalyzer(scenario_name, False)
+    # ra.plot_heatmap_input_vs_control(
+    #     'emission_per_volume', simulation_percentages, inputs_per_lane)
+    # ra.plot_heatmap_input_vs_control(
+    #     'vehicle_count', simulation_percentages, inputs_per_lane, [0])
+    # ra.plot_heatmap_input_vs_control(
+    #     'average_speed', simulation_percentages, inputs_per_lane, [0])
     # ra.plot_fundamental_diagram([1000, 2000], simulation_percentages,
     #                             accepted_risks=[0],
     #                             flow_sensor_name=['in'])
