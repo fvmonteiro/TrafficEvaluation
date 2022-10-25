@@ -245,6 +245,11 @@ class FileHandler:
                 if sim_number < min_simulation_number:
                     min_simulation_number = sim_number
 
+        if max_simulation_number == -1:
+            file_base_name = network_file + data_identifier + file_format
+            raise FileNotFoundError('File {} not found in directory {}'
+                                    .format(file_base_name, results_folder))
+
         return min_simulation_number, max_simulation_number
 
     def copy_results_from_multiple_scenarios(

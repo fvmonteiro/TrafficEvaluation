@@ -198,8 +198,6 @@ class VissimDataReader(DataReader):
                         self.file_handler.find_min_max_file_number(
                             self.data_identifier, self.file_format, vp,
                             veh_input, ar))
-                    if min_file_number > max_file_number:
-                        warnings.warn('Files not found')
                     # Since files contain cumulative data from all runs
                     # in a set, we only need to read the latest file.
                     new_data = self.load_data_from_scenario(
@@ -422,8 +420,6 @@ class VehicleRecordReader(VissimDataReader):
                 self.file_handler.find_min_max_file_number(
                     self.data_identifier, self.file_format,
                     vehicle_percentages, veh_input, accepted_risk))
-            if min_file_number > max_file_number:
-                warnings.warn('Files not found')
             for file_number in range(min_file_number,
                                      max_file_number + 1):
                 print('Loading file number {} / {}'.format(

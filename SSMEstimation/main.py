@@ -247,11 +247,11 @@ def main():
     # =============== Scenario Definition =============== #
     # Options: i710, us101, in_and_out, in_and_merge,
     # platoon_lane_change, traffic_lights
-    scenario_name = 'in_and_out_safe'
+    scenario_name = 'in_and_out'
     vehicle_type = [
         VehicleType.ACC,
-        # VehicleType.AUTONOMOUS,
-        # VehicleType.CONNECTED,
+        VehicleType.AUTONOMOUS,
+        VehicleType.CONNECTED,
         # VehicleType.TRAFFIC_LIGHT_ACC,
         # VehicleType.TRAFFIC_LIGHT_CACC
     ]
@@ -272,28 +272,16 @@ def main():
     # vi.close_vissim()
 
     # =============== Post processing =============== #
-    # for item in simulation_percentages:
-    #     vehicle_types = list(item.keys())
-    #     percentages = list(item.values())
+    # for sp in simulation_percentages:
+    #     print(sp)
     #     post_processing.create_summary_with_risks(
-    #         scenario_name, vehicle_types, percentages, inputs_per_lane,
-    #         accepted_risks)
-
-    # MOVES
-    for sp in simulation_percentages:
-        print(sp)
-        for ipl in inputs_per_lane:
-            post_processing.get_individual_vehicle_trajectories_to_moves(
-                scenario_name, ipl, sp, 0)
-    # post_processing.get_individual_vehicle_trajectories_to_moves(
-    #     scenario_name, 1000, simulation_percentages[1])
-
-    # post_processing.translate_links_from_vissim_to_moves(
-    #     scenario_name, inputs_per_lane[0], simulation_percentages[0])
-
-    # r = readers.MOVESDatabaseReader(scenario_name)
-    # r.load_data_with_controlled_percentage(simulation_percentages,
-    #                                        [1000, 2000])
+    #         scenario_name, sp, inputs_per_lane)
+    #     for ipl in inputs_per_lane:
+    #         post_processing.get_individual_vehicle_trajectories_to_moves(
+    #             scenario_name, ipl, sp, 0)
+    post_processing.create_summary_with_risks(
+        scenario_name, simulation_percentages[1], inputs_per_lane,
+        accepted_risks=None, analyze_lane_change=False)
 
     # file_handler = file_handling.FileHandler(scenario_name)
     # try:
@@ -308,9 +296,9 @@ def main():
     # all_plots_for_scenarios_with_risk(scenario_name, simulation_percentages,
     #                                   inputs_per_lane, accepted_risks,
     #                                   save_fig=False)
-    # ra = result_analysis.ResultAnalyzer(scenario_name, False)
-    # ra.plot_heatmap_input_vs_control(
-    #     'emission_per_volume', simulation_percentages, inputs_per_lane)
+    ra = result_analysis.ResultAnalyzer(scenario_name, False)
+    ra.plot_heatmap_input_vs_control(
+        'emission_per_volume', simulation_percentages, inputs_per_lane)
     # ra.plot_heatmap_input_vs_control(
     #     'vehicle_count', simulation_percentages, inputs_per_lane, [0])
     # ra.plot_heatmap_input_vs_control(
