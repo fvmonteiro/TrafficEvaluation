@@ -250,8 +250,8 @@ def main():
     scenario_name = 'in_and_out_safe'
     vehicle_type = [
         VehicleType.ACC,
-        VehicleType.AUTONOMOUS,
-        VehicleType.CONNECTED,
+        # VehicleType.AUTONOMOUS,
+        # VehicleType.CONNECTED,
         # VehicleType.TRAFFIC_LIGHT_ACC,
         # VehicleType.TRAFFIC_LIGHT_CACC
     ]
@@ -280,13 +280,13 @@ def main():
     #         accepted_risks)
 
     # MOVES
-    # for sp in simulation_percentages:
-    #     print(sp)
-    #     for ipl in inputs_per_lane:
-    #         post_processing.translate_links_from_vissim_to_moves(
-    #             scenario_name, ipl, sp, 0)
-    post_processing.get_individual_vehicle_trajectories_to_moves(
-        scenario_name, 1000, simulation_percentages[1])
+    for sp in simulation_percentages:
+        print(sp)
+        for ipl in inputs_per_lane:
+            post_processing.get_individual_vehicle_trajectories_to_moves(
+                scenario_name, ipl, sp, 0)
+    # post_processing.get_individual_vehicle_trajectories_to_moves(
+    #     scenario_name, 1000, simulation_percentages[1])
 
     # post_processing.translate_links_from_vissim_to_moves(
     #     scenario_name, inputs_per_lane[0], simulation_percentages[0])

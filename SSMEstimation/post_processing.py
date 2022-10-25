@@ -663,8 +663,8 @@ def get_individual_vehicle_trajectories_to_moves(
         vehicles_per_lane: int,
         vehicle_percentages: Dict[VehicleType, int],
         accepted_risk: int = None,
-        first_minute: int = 10,
-        vehs_per_simulation: int = 10):
+        first_minute: int = 15,
+        vehs_per_simulation: int = 1):
     """
     Finds the first vehicle entering the simulation link after the cut
     off minute and save its info in MOVES format
@@ -676,11 +676,10 @@ def get_individual_vehicle_trajectories_to_moves(
     interval = (last_minute - first_minute) * 60 / vehs_per_simulation
     link_reader = readers.LinkReader(scenario_name)
     vissim_link_data = link_reader.load_data()
-    link_id_map = dict()
-    new_id = 0
-    for link_id in vissim_link_data['number'].unique():
-        new_id += 1
-        link_id_map[link_id] = new_id
+    relevant_links = vissim_link_data[vissim_link_data['length'] > 20]
+    relevant_link_ids = relevant_links['number'].to_numpy()
+    link_id_map = dict(zip(relevant_links['number'],
+                       [i for i in range(relevant_links.shape[0])]))
 
     init_link_number = 0
     vehicle_record_reader = readers.VehicleRecordReader(scenario_name)
@@ -699,33 +698,34 @@ def get_individual_vehicle_trajectories_to_moves(
                 (creation_time_and_link['time'] >= cut_off_second)
                 & creation_time_and_link['link'].isin(accepted_links)].index[0]
             vehicle_data = vehicle_records[vehicle_records['veh_id'] == veh_id]
-            single_veh_speed_data = _create_speed_from_vehicle_record(
-                vehicle_data)
-            single_veh_speed_data['secondID'] -= cut_off_second
-            single_veh_speed_data['linkID'] = (
-                    single_veh_speed_data['linkID'].map(link_id_map.get)
-                    + init_link_number)
 
             single_veh_link_data = _fill_moves_link_data_from_vissim_links(
-                scenario_name, vissim_link_data, vehicle_data)
+                scenario_name, relevant_links, vehicle_data)
             single_veh_link_data['linkID'] = (
-                    single_veh_link_data['linkID'].map(link_id_map.get)
+                    single_veh_link_data['linkID'].map(link_id_map)
                     + init_link_number)
-            init_link_number = single_veh_link_data['linkID'].max() + 1
 
+            single_veh_speed_data = _create_moves_speeds_from_vehicle_record(
+                vehicle_data, relevant_link_ids)
+            single_veh_speed_data['secondID'] -= cut_off_second
+            single_veh_speed_data['linkID'] = (
+                    single_veh_speed_data['linkID'].map(link_id_map)
+                    + init_link_number)
+
+            init_link_number = single_veh_link_data['linkID'].max() + 1
             speed_data_list.append(single_veh_speed_data)
             link_data_list.append(single_veh_link_data)
-        break
 
     moves_link_data = pd.concat(link_data_list)
+    moves_speed_data = pd.concat(speed_data_list)
+    moves_link_source_data = _fill_moves_link_source_data(
+        scenario_name, moves_link_data['linkID'])
+
     # Add mandatory Off-road link
     last_row = moves_link_data.iloc[-1]
     moves_link_data.loc[max(moves_link_data.index) + 1] = [
         last_row['linkID'].max() + 1, last_row['countyID'],
         last_row['zoneID'], 1, 0, 0, 0, 0, 0]
-    moves_speed_data = pd.concat(speed_data_list)
-    moves_link_source_data = _fill_moves_link_source_data(
-        scenario_name, moves_link_data['linkID'])
 
     # Save all files
     link_writer = data_writer.MOVESLinksWriter(scenario_name)
@@ -786,7 +786,7 @@ def translate_links_from_vissim_to_moves(
                                  vehicles_per_lane, accepted_risk)
 
     # Get the speeds for each link per second
-    drive_sched = _create_speeds_from_link_evaluation(link_evaluation_data)
+    drive_sched = _create_moves_speeds_from_link_evaluation(link_evaluation_data)
     drive_sched_writer = data_writer.MOVESLinkDriveWriter(scenario_name)
     drive_sched_writer.save_data(drive_sched, vehicle_percentages,
                                  vehicles_per_lane, accepted_risk)
@@ -835,7 +835,7 @@ def _fill_moves_link_data_from_vissim_links(
     zone_id = moves_link_reader.get_zone_id()
     road_type_id = moves_link_reader.get_road_id()
     moves_link_data = pd.DataFrame()
-
+    avg_speed_per_link = vehicle_data.groupby('link')['vx'].mean()
     # moves_link_data['linkID'] = (link_data.loc[used_links_idx, 'number'].
     #                              reset_index().index)
     moves_link_data['linkID'] = link_data.loc[used_links_idx, 'number']
@@ -846,7 +846,10 @@ def _fill_moves_link_data_from_vissim_links(
     moves_link_data['linkLength'] = (link_data.loc[used_links_idx, 'length']
                                      / 1000 * km_to_mile).to_numpy()
     moves_link_data['linkVolume'] = 1
-    moves_link_data['linkAvgSpeed'] = 1
+    temp = moves_link_data[['linkID']].merge(avg_speed_per_link,
+                                             left_on='linkID',
+                                             right_index=True)
+    moves_link_data['linkAvgSpeed'] = temp['vx'] * km_to_mile
     moves_link_data['linkDescription'] = 0
     moves_link_data['linkAvgGrade'] = 0
     return moves_link_data
@@ -864,7 +867,7 @@ def _fill_moves_link_source_data(scenario_name: str,
     return moves_link_source_data
 
 
-def _create_speeds_from_link_evaluation(
+def _create_moves_speeds_from_link_evaluation(
         link_evaluation_data: pd.DataFrame) -> pd.DataFrame:
     # Create the Moves-matching data. We consider the speed constant during
     # the interval
@@ -885,15 +888,21 @@ def _create_speeds_from_link_evaluation(
     return drive_sched
 
 
-def _create_speed_from_vehicle_record(
-        vehicle_data: pd.DataFrame) -> pd.DataFrame:
+def _create_moves_speeds_from_vehicle_record(
+        vehicle_data: pd.DataFrame, link_ids: List) -> pd.DataFrame:
     speed_data = vehicle_data.groupby(
         'secondID', as_index=False).agg({'link': 'first', 'vx': 'mean'})
+    speed_data.drop(index=speed_data[~speed_data['link'].isin(link_ids)].index,
+                    inplace=True)
+    # speed_data.drop(index=speed_data[speed_data['link'].isin(short_links)],
+    #                 inplace=True)
     speed_data['grade'] = 0
     speed_data['vx'] *= km_to_mile
     speed_data.rename(
         columns={'link': 'linkID', 'vx': 'speed'}, inplace=True)
     return speed_data
+
+
 # ============================= Traffic Lights =============================== #
 
 def find_traffic_light_violations_all(
