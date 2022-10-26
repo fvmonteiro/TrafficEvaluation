@@ -85,9 +85,9 @@ class ResultAnalyzer:
     }
 
     _pollutant_id_to_string = {
-        1: 'Total Gaseous Hydrocarbons', 5: 'Methane (CH4)',
+        1: 'Gaseous Hydrocarbons', 5: 'Methane (CH4)',
         6: 'Nitrous Oxide (N2O)', 90: 'CO2',
-        91: 'Total Energy Consumption', 98: 'CO2 Equivalent',
+        91: 'Energy Consumption', 98: 'CO2 Equivalent',
     }
 
     def __init__(self, network_name: str, should_save_fig: bool = False):
@@ -730,6 +730,92 @@ class ResultAnalyzer:
                               vehicle_percentages, accepted_risks)
             plt.show()
 
+    def plot_heatmap_input_vs_control(
+            self, y: str,
+            vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicles_per_lane: List[int],
+            accepted_risks: List[int] = None):
+
+        data = self._load_data(y, vehicle_percentages,
+                               vehicles_per_lane, accepted_risks)
+        self._prepare_data_for_plotting(data, 600, sensor_name=['out'])
+        self.plot_heatmap(data, y, 'vehicles_per_lane')
+
+    def plot_total_output_heatmap(
+            self, vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicles_per_lane: List[int], accepted_risks: List[int] = None):
+        y = 'vehicle_count'
+        data = self._load_data('vehicle_count', vehicle_percentages,
+                               vehicles_per_lane, accepted_risks)
+        self._prepare_data_for_plotting(data, 600, ['out'])
+        normalizer = data.loc[
+            (data['control_percentages'] == 'no control')
+            & (data['vehicles_per_lane'] == data['vehicles_per_lane'].min()),
+            y].sum()
+        self.plot_heatmap(data, 'vehicle_count', 'vehicles_per_lane',
+                          normalizer, 'Output flow')
+
+    def plot_discomfort_heatmap(
+            self,
+            vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicles_per_lane: List[int], accepted_risks: List[int] = None,
+            max_brake: int = 4):
+        data = self._load_data('discomfort', vehicle_percentages,
+                               vehicles_per_lane, accepted_risks)
+        y = 'discomfort_' + str(max_brake)
+        self._prepare_data_for_plotting(data, 600)
+        normalizer = data.loc[
+            (data['control_percentages'] == 'no control')
+            & (data['vehicles_per_lane'] == data['vehicles_per_lane'].min()),
+            y].sum()
+        self.plot_heatmap(data, y, 'vehicles_per_lane', normalizer)
+
+    def plot_emission_heatmap(
+            self,
+            vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicles_per_lane: List[int],
+            accepted_risks: List[int] = None,
+            pollutant_id: int = 91
+    ):
+        y = 'emission_per_volume'
+        data = self._load_data(y, vehicle_percentages,
+                               vehicles_per_lane, accepted_risks)
+        data_to_plot = data.loc[(data['pollutant_id'] == pollutant_id)]
+        title = 'Normalized ' + self._pollutant_id_to_string[pollutant_id]
+        normalizer = data_to_plot.loc[
+            (data_to_plot['control_percentages'] == 'no control')
+            & (data_to_plot['vehicles_per_lane']
+               == data_to_plot['vehicles_per_lane'].min()),
+            y].sum()
+        self.plot_heatmap(data_to_plot, 'emission_per_volume',
+                          'vehicles_per_lane', normalizer, title)
+
+    def plot_heatmap(self, data, value, rows, normalizer: int = 1,
+                     title: str = None, agg_function=np.sum):
+        plt.rc('font', size=17)
+        if title is None:
+            title = value
+        table = data.pivot_table(values=value,
+                                 index=[rows],
+                                 columns=['control_percentages'],
+                                 aggfunc=agg_function)
+        table /= normalizer
+        sns.heatmap(table.sort_index(axis=0, ascending=False),
+                    annot=True,
+                    xticklabels=table.columns.get_level_values(
+                        'control_percentages'))
+        plt.title(title, fontsize=22)
+        plt.xlabel('Control Percentages')
+        if rows == 'vehicles_per_lane':
+            plt.ylabel('Input (veh/h)', fontsize=22)
+        plt.tight_layout()
+        # if self.should_save_fig:
+        #     self.save_fig(plt.gcf(), 'heatmap',
+        #                   self._pollutant_id_to_string[pollutant_id],
+        #                   vehicles_per_lane,
+        #                   vehicle_percentages, accepted_risks)
+        plt.show()
+
     def print_summary_of_issues(
             self, vehicle_percentages: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int], accepted_risks: List[int],
@@ -754,8 +840,6 @@ class ResultAnalyzer:
         issue_count /= n_simulations
         print(issue_count)
 
-    # MOVES (environmental) evaluations ====================================== #
-
     def plot_all_pollutant_heatmaps(
             self,
             vehicle_percentages: List[Dict[VehicleType, int]],
@@ -766,49 +850,6 @@ class ResultAnalyzer:
             self.plot_heatmap_input_vs_control(
                 'emission_per_volume', vehicle_percentages, vehicles_per_lane,
                 accepted_risks, p_id)
-
-    def plot_heatmap_input_vs_control(
-            self,
-            y: str,
-            vehicle_percentages: List[Dict[VehicleType, int]],
-            vehicles_per_lane: List[int],
-            accepted_risks: List[int] = None,
-            pollutant_id: int = 91):
-
-        data = self._load_data(y, vehicle_percentages,
-                               vehicles_per_lane, accepted_risks)
-        data.loc[data['control_percentages'] == 'no control',
-                 'control_percentages'] = '100% HD'
-
-        plt.rc('font', size=17)
-
-        if y == 'emission_per_volume':
-            data_to_plot = data.loc[(data['pollutant_id'] == pollutant_id)]
-            title = self._pollutant_id_to_string[pollutant_id]
-        else:
-            self._prepare_data_for_plotting(data, 600, sensor_name=['out'])
-            data_to_plot = data
-            title = y
-
-        table = data_to_plot.pivot_table(values=y,
-                                         index=['vehicles_per_lane'],
-                                         columns=['control_percentages'])
-        # for vpl in vehicles_per_lane:
-        #     table.loc[vpl] /= table.loc[vpl, '100% HD']
-        table /= table.loc[1000, '100% HD']
-
-        sns.heatmap(table.sort_index(axis=0, ascending=False),
-                    annot=True,
-                    xticklabels=table.columns.get_level_values(
-                        'control_percentages'))
-        plt.title(title, fontsize=22)
-        plt.tight_layout()
-        # if self.should_save_fig:
-        #     self.save_fig(plt.gcf(), 'heatmap',
-        #                   self._pollutant_id_to_string[pollutant_id],
-        #                   vehicles_per_lane,
-        #                   vehicle_percentages, accepted_risks)
-        plt.show()
 
     # Traffic Light Scenario Plots =========================================== #
 

@@ -833,12 +833,7 @@ class LaneChangeReader(PostProcessedDataReader):
         PostProcessedDataReader.__init__(self, scenario_name,
                                          self._data_identifier)
 
-    def load_data(self, file_identifier: str
-                  # Union[List[VehicleType], None],
-                  # controlled_vehicles_percentage: List[int] = None,
-                  # vehicles_per_lane: int = None,
-                  # accepted_risk: int = None
-    ) -> pd.DataFrame:
+    def load_data(self, file_identifier: str) -> pd.DataFrame:
         data = super().load_data(file_identifier)
         y = 'total_risk'
         data['total_lane_change_risk'] = (data[y + '_lo'] + data[y + '_ld']

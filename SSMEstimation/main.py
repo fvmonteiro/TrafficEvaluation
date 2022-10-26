@@ -247,7 +247,7 @@ def main():
     # =============== Scenario Definition =============== #
     # Options: i710, us101, in_and_out, in_and_merge,
     # platoon_lane_change, traffic_lights
-    scenario_name = 'in_and_out'
+    scenario_name = 'in_and_out_safe'
     vehicle_type = [
         VehicleType.ACC,
         VehicleType.AUTONOMOUS,
@@ -272,16 +272,16 @@ def main():
     # vi.close_vissim()
 
     # =============== Post processing =============== #
-    # for sp in simulation_percentages:
-    #     print(sp)
-    #     post_processing.create_summary_with_risks(
-    #         scenario_name, sp, inputs_per_lane)
+    for sp in simulation_percentages:
+        print(sp)
+        post_processing.create_summary_with_risks(
+            scenario_name, sp, inputs_per_lane, accepted_risks)
     #     for ipl in inputs_per_lane:
     #         post_processing.get_individual_vehicle_trajectories_to_moves(
     #             scenario_name, ipl, sp, 0)
-    post_processing.create_summary_with_risks(
-        scenario_name, simulation_percentages[1], inputs_per_lane,
-        accepted_risks=None, analyze_lane_change=False)
+    # post_processing.create_summary_with_risks(
+    #     scenario_name, simulation_percentages[0], [1000],
+    #     accepted_risks=None, analyze_lane_change=True, debugging=True)
 
     # file_handler = file_handling.FileHandler(scenario_name)
     # try:
@@ -297,8 +297,15 @@ def main():
     #                                   inputs_per_lane, accepted_risks,
     #                                   save_fig=False)
     ra = result_analysis.ResultAnalyzer(scenario_name, False)
-    ra.plot_heatmap_input_vs_control(
-        'emission_per_volume', simulation_percentages, inputs_per_lane)
+
+    # ra.plot_emission_heatmap(simulation_percentages, inputs_per_lane,
+    #                          accepted_risks)
+    # ra.plot_discomfort_heatmap(simulation_percentages, inputs_per_lane,
+    #                            accepted_risks)
+    # ra.plot_total_output_heatmap(simulation_percentages, inputs_per_lane,
+    #                              accepted_risks)
+    # ra.print_summary_of_issues(simulation_percentages, inputs_per_lane,
+    #                            accepted_risks)
     # ra.plot_heatmap_input_vs_control(
     #     'vehicle_count', simulation_percentages, inputs_per_lane, [0])
     # ra.plot_heatmap_input_vs_control(

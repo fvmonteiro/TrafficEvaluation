@@ -223,17 +223,15 @@ def create_simulation_summary_test(network_name: str):
     #     single_pp.writer.save_as_csv(all_simulations_data, None, None)
 
 
-def create_simulation_summary(network_name: str,
-                              vehicle_percentages: Dict[VehicleType, int],
-                              vehicle_inputs: List[int] = None,
-                              debugging: bool = False):
+def create_summary_traffic_light_simulations(
+        vehicle_percentages: Dict[VehicleType, int],
+        vehicle_inputs: List[int] = None,
+        debugging: bool = False):
     """Reads multiple vehicle record data files, postprocesses them,
     computes and aggregates SSMs results, extracts risky maneuvers, and
     find traffic light violations. SSMs, risky maneuvers and
     violations are saved as csv files per vehicle input.
 
-    :param network_name: Currently available: in_and_out, in_and_merge,
-     i710, us101, traffic_lights
     :param vehicle_percentages: Describes the percentages of controlled
          vehicles in the simulations.
     :param vehicle_inputs: Vehicle inputs for which we want SSMs
@@ -243,17 +241,16 @@ def create_simulation_summary(network_name: str,
      records and do not save results.
     :return: Nothing. SSM results are saved to as csv files"""
 
+    network_name = 'traffic_lights'
     check_already_processed_vehicle_inputs(
         network_name, vehicle_percentages,
         vehicle_inputs)
 
     pp = [SSMProcessor(network_name),
-          RiskyManeuverProcessor(network_name)]
-    if network_name in TRAFFIC_LIGHT_SCENARIOS:
-        pp += [ViolationProcessor(network_name),
-               DiscomfortProcessor(network_name)]
+          RiskyManeuverProcessor(network_name),
+          ViolationProcessor(network_name),
+          DiscomfortProcessor(network_name)]
 
-    lane_change_reader = readers.VissimLaneChangeReader(network_name)
     vehicle_record_reader = readers.VehicleRecordReader(network_name)
     n_rows = 10 ** 5 if debugging else None
     for vi in vehicle_inputs:
@@ -262,10 +259,6 @@ def create_simulation_summary(network_name: str,
                   network_name, vehicle_percentages, vi))
         data_generator = vehicle_record_reader.generate_data(
             vehicle_percentages, [vi], n_rows=n_rows)
-        lane_change_data = (
-            lane_change_reader.load_data_with_controlled_percentage(
-                [vehicle_percentages], [vi]
-            ))
 
         data = defaultdict(list)
         for (vehicle_records, file_number) in data_generator:
@@ -275,15 +268,6 @@ def create_simulation_summary(network_name: str,
                 data[single_pp.data_name].append(single_pp.post_process(
                     vehicle_records))
             print('-' * 79)
-            if not lane_change_data.empty:
-                warnings.warn("Must change this code (check the next method)")
-                simulation_lc_data = lane_change_data[
-                    lane_change_data['simulation'] == file_number
-                    ]
-                complement_lane_change_data(network_name, vehicle_records,
-                                            simulation_lc_data,
-                                            data['risky_maneuver'][-1])
-                data['lane_change'].append(lane_change_data)
 
         if not debugging:
             for single_pp in pp:
@@ -292,12 +276,6 @@ def create_simulation_summary(network_name: str,
                 all_simulations_data['vehicles_per_lane'] = vi
                 single_pp.writer.save_as_csv(all_simulations_data,
                                              vehicle_percentages, vi)
-        if 'lane_change' in data:
-            lc_writer = data_writer.LaneChangeWriter(network_name)
-            all_simulations_data = pd.concat(data['lane_change'])
-            all_simulations_data['vehicles_per_lane'] = vi
-            lc_writer.save_as_csv(all_simulations_data, vehicle_percentages,
-                                  vi)
 
 
 # TODO: repeated coding
@@ -340,8 +318,8 @@ def create_summary_with_risks(scenario_name: str,
     pp = [
         SSMProcessor(scenario_name),
         RiskyManeuverProcessor(scenario_name),
-        LaneChangeIssuesProcessor(scenario_name),
-        DiscomfortProcessor(scenario_name)
+        # LaneChangeIssuesProcessor(scenario_name),
+        # DiscomfortProcessor(scenario_name)
     ]
 
     lane_change_reader = readers.VissimLaneChangeReader(scenario_name)
@@ -997,14 +975,15 @@ def find_traffic_light_violations(vehicle_record: pd.DataFrame,
 # ========================= Lane change methods ============================== #
 
 def complement_lane_change_data(network_name: str,
-                                veh_data: pd.DataFrame, lc_data: pd.DataFrame,
+                                vehicle_record: pd.DataFrame,
+                                lc_data: pd.DataFrame,
                                 risky_maneuver_data: pd.DataFrame):
     """
     Add lane change crossing and end times, and initial and total risks to
     surrounding vehicles to the lane change data.
 
     :param network_name: network name
-    :param veh_data: vehicle records of a single simulation
+    :param vehicle_record: vehicle records of a single simulation
     :param lc_data: data for all lane changes during the simulation
     :param risky_maneuver_data:
     :return: Nothing, modifies lc_data in place.
@@ -1012,21 +991,21 @@ def complement_lane_change_data(network_name: str,
 
     # Steps that can be done on the entire dataframe:
     lc_data.drop(index=(
-        lc_data[lc_data['time'] + 5 > veh_data['time'].iloc[-1]]).index,
+        lc_data[lc_data['time'] + 5 > vehicle_record['time'].iloc[-1]]).index,
                  inplace=True)
-    remove_false_lane_change_starts(veh_data, lc_data)
+    remove_false_lane_change_starts(vehicle_record, lc_data)
     print('Getting attributes of {} lane changes'.format(lc_data.shape[0]))
     lc_data['lc_direction'] = lc_data['dest_lane'] - lc_data['origin_lane']
     if np.any(lc_data['lc_direction'].abs() > 1):
         warnings.warn('Vehicle changing two lanes at a time?',
                       RuntimeWarning)
         lc_data['lc_direction'] /= lc_data['lc_direction'].abs()
-    veh_data['relative_vy'] = veh_data['y'].diff()
-    add_vehicle_types_to_lc_data(veh_data, lc_data)
-    label_lane_changes(network_name, veh_data, lc_data)
+    vehicle_record['relative_vy'] = vehicle_record['y'].diff()
+    add_vehicle_types_to_lc_data(vehicle_record, lc_data)
+    label_lane_changes(network_name, vehicle_record, lc_data)
 
     # Steps that require checking the data of each lane change in detail
-    data_by_veh = veh_data.groupby('veh_id')
+    data_by_veh = vehicle_record.groupby('veh_id')
     new_data = []
     notes = []
     # times = np.zeros(4)
@@ -1034,14 +1013,14 @@ def complement_lane_change_data(network_name: str,
     #  functions can probably be optimized.
     for i, single_lc_data in lc_data.iterrows():
         # print(i)
-        single_veh_data = data_by_veh.get_group(single_lc_data['veh_id'])
+        veh_data = data_by_veh.get_group(single_lc_data['veh_id'])
         # start_time = time.perf_counter()
-        tc, tf = get_lane_change_crossing_and_end_times(single_veh_data,
+        tc, tf = get_lane_change_crossing_and_end_times(veh_data,
                                                         single_lc_data)
         # times[0] += time.perf_counter() - start_time
         # start_time = time.perf_counter()
-        note = check_surrounding_vehicle_changes(veh_data, single_lc_data,
-                                                 tc, tf)
+        note = check_surrounding_vehicle_changes(vehicle_record,
+                                                 single_lc_data, tc, tf)
         # times[1] += time.perf_counter() - start_time
         # start_time = time.perf_counter()
         risk_lo, risk_ld, risk_fd = compute_initial_lane_change_risks(
@@ -1052,14 +1031,18 @@ def complement_lane_change_data(network_name: str,
             get_total_lane_change_risk(
                 risky_maneuver_data, single_lc_data, tf))
         # times[3] += time.perf_counter() - start_time
+
+        fd_discomfort = compute_fd_discomfort(data_by_veh, single_lc_data)
         new_data.append([tc, tf, risk_lo, risk_ld, risk_fd,
-                         total_risk_lo, total_risk_ld, total_risk_fd])
+                         total_risk_lo, total_risk_ld, total_risk_fd,
+                         fd_discomfort])
         notes.append(note)
     # print(times)
 
     lc_data[['crossing_time', 'end_time', 'initial_risk_to_lo',
              'initial_risk_to_ld', 'initial_risk_to_fd',
-             'total_risk_lo', 'total_risk_ld', 'total_risk_fd']] = new_data
+             'total_risk_lo', 'total_risk_ld', 'total_risk_fd',
+             'fd_discomfort']] = new_data
     lc_data['note'] = notes
     lc_data.dropna(inplace=True)
 
@@ -1360,6 +1343,30 @@ def label_lane_changes(scenario_name: str, veh_data: pd.DataFrame,
                             & took_off_ramp_mask)
     lc_data.loc[left_mandatory_mask | right_mandatory_mask,
                 'mandatory'] = True
+
+
+def compute_fd_discomfort(data_by_veh,
+                          lc_data: pd.Series) -> List:
+    max_braking = [-i for i in range(4, 8)]
+    if lc_data['fd_id'] == 0:
+        return [0]*len(max_braking)
+
+    fd_data = data_by_veh.get_group(lc_data['fd_id'])
+    sampling_interval = fd_data['time'].iloc[1] - fd_data['time'].iloc[0]
+
+    fd_discomfort = []
+    fd_accel = fd_data.loc[
+            (fd_data['time'] > lc_data['time'])
+            & (fd_data['time'] < lc_data['time'] + 10),
+            'ax']
+    for b in max_braking:
+        strong_braking = fd_accel[fd_accel < b]
+        if strong_braking.empty:
+            fd_discomfort.append(0)
+        else:
+            fd_discomfort.append(sum(b - strong_braking.to_numpy())
+                                 * sampling_interval)
+    return fd_discomfort
 
 
 # TODO: move methods to proper location in file
@@ -2670,6 +2677,8 @@ class DiscomfortProcessor(PostProcessor):
         'aggregation period' seconds
         """
         vehicle_records = data
+        sampling_interval = (vehicle_records['time'].iloc[1]
+                             - vehicle_records['time'].iloc[0])
         discomfort_columns = []
         for b in self.comfortable_brake:
             discomfort_idx = vehicle_records['ax'] < b
@@ -2688,6 +2697,7 @@ class DiscomfortProcessor(PostProcessor):
             create_time_bins_and_labels(aggregation_period, vehicle_records)
             aggregated_acceleration = vehicle_records.groupby(
                 ['veh_type', 'time_interval'])[discomfort_columns].sum()
+        aggregated_acceleration *= sampling_interval
         aggregated_acceleration.reset_index(inplace=True)
         aggregated_acceleration.insert(
             0, 'simulation_number',
