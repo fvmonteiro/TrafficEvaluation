@@ -396,7 +396,7 @@ class VissimInterface:
 
     def run_multiple_scenarios(
             self,
-            percentages_per_vehicle_types: List[Dict[VehicleType, int]],
+            vehicle_percentages: List[Dict[VehicleType, int]],
             inputs_per_lane: List[int],
             accepted_risks: List[int] = None,
             runs_per_scenario: int = 10,
@@ -428,25 +428,26 @@ class VissimInterface:
         self.set_simulation_period(simulation_period)
         self.set_number_of_runs(runs_per_scenario)
         if not is_debugging:
-            self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode",
-                                                                  1)
+            self.vissim.Graphics.CurrentNetworkWindow.SetAttValue(
+                "QuickMode", 1)
             self.vissim.SuspendUpdateGUI()
 
         print("Starting multiple-scenario run.")
-        for item in percentages_per_vehicle_types:
-            vehicle_types = list(item.keys())
-            percentages = list(item.values())
-            self.set_controlled_vehicles_percentage(percentages, vehicle_types)
+        for vp in vehicle_percentages:
+            self.set_controlled_vehicles_percentage(vp)
             for ipl in inputs_per_lane:
                 self.set_uniform_vehicle_input_for_all_lanes(ipl)
-                for ar in (accepted_risks if sum(percentages) > 0
-                           else [0]):  # accepted risk does not impact
-                    # simulations without any AVs
+                # accepted risk does not impact simulations without any AVs
+                relevant_risks = (accepted_risks if sum(vp.values()) > 0
+                                  else [0])
+                for ar in relevant_risks:
                     self.reset_saved_simulations(warning_active=False)
                     self.set_accepted_lane_change_risk_to_leaders(ar)
                     self.set_accepted_lane_change_risk_to_follower(ar / 2)
+                    self.file_handler.get_vissim_data_folder()
+
                     results_folder = self.file_handler.get_vissim_data_folder(
-                        vehicle_types, percentages, ipl, ar)
+                        vp, ipl, ar)
                     if is_debugging:
                         self.use_debug_folder_for_results()
                     else:
@@ -694,7 +695,7 @@ class VissimInterface:
         # return composition_number
 
     def set_controlled_vehicles_percentage(
-            self, percentages: List[int], vehicle_types: List[VehicleType]):
+            self, vehicle_percentages: Dict[VehicleType, int]):
         """
         Looks for the specified vehicle composition and sets the
         percentage of autonomous vehicles in it. The rest of the composition
@@ -703,27 +704,32 @@ class VissimInterface:
         exists and it contains two vehicle types: regular car and the
         controlled vehicle type
 
-        :param percentages: This should be expressed either as
-         an integer between 0 and 100.
-        :param vehicle_types: enum to indicate the vehicle (controller) type
+        :param vehicle_percentages: Describes the percentages of controlled
+         vehicles in the simulation.
         """
         # The percentage of non-controlled vehicles must be human
-        total_controlled_percentage = sum(percentages)
-        if total_controlled_percentage == 0:
-            vehicle_types = [VehicleType.HUMAN_DRIVEN]
-            percentages = [100]
-        elif total_controlled_percentage < 100:
-            vehicle_types.append(VehicleType.HUMAN_DRIVEN)
-            percentages.append(100 - total_controlled_percentage)
+        total_controlled_percentage = sum(vehicle_percentages.values())
+        # if total_controlled_percentage == 0:
+        #     vehicle_types = [VehicleType.HUMAN_DRIVEN]
+        #     percentages = [100]
+        # elif total_controlled_percentage < 100:
+        #     vehicle_types.append(VehicleType.HUMAN_DRIVEN)
+        #     percentages.append(100 - total_controlled_percentage)
+        vehicle_percentages[VehicleType.HUMAN_DRIVEN] = (
+                100 - total_controlled_percentage)
+        non_zero_percentages = {vt: p for vt, p
+                                in vehicle_percentages.items() if p > 0}
         composition_number = self.find_matching_vehicle_composition(
-            vehicle_types)
+            list(non_zero_percentages.keys()))
         self.set_vehicle_inputs_composition(composition_number)
 
         # Modify the relative flows
-        desired_flows = dict()
-        for i in range(len(vehicle_types)):
-            vehicle_type_id = Vehicle.ENUM_TO_VISSIM_ID[vehicle_types[i]]
-            desired_flows[vehicle_type_id] = percentages[i]
+        desired_flows = {Vehicle.ENUM_TO_VISSIM_ID[vt]: p for vt, p
+                         in non_zero_percentages.items()}
+        # desired_flows = dict()
+        # for vt, percentage in non_zero_percentages.items():
+        #     # vehicle_type_id = Vehicle.ENUM_TO_VISSIM_ID[vt]
+        #     desired_flows[Vehicle.ENUM_TO_VISSIM_ID[vt]] = percentage
         veh_composition = self.vissim.Net.VehicleCompositions.ItemByKey(
             composition_number)
         for relative_flow in veh_composition.VehCompRelFlows:

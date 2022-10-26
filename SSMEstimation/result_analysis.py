@@ -337,11 +337,11 @@ class ResultAnalyzer:
 
         risky_maneuver_reader = readers.RiskyManeuverReader(self.network_name)
         data = risky_maneuver_reader.load_data_with_controlled_percentage(
-            vehicle_percentages, vehicles_per_lane)
+            vehicle_percentages, vehicles_per_lane, accepted_risks=[0])
         warmup_time *= 60  # minutes to seconds
         data.drop(index=data[data['total_risk'] < min_total_risk].index,
                   inplace=True)
-        self._prepare_data_for_plotting(data, warmup_time * 60)
+        self._prepare_data_for_plotting(data, warmup_time)
 
         # data['duration'] = data['end_time'] - data['time']
         # variables_list = [  # 'duration',
