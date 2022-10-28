@@ -133,7 +133,7 @@ class ResultAnalyzer:
                        vehicles_per_lane: int,
                        warmup_time: int = 10):
         """Plots averaged y over several runs with the same vehicle input 
-        versus time.
+        versus time.fi
         
         :param y: name of the variable being plotted.
         :param vehicle_percentages: each dictionary in the list must
@@ -1421,33 +1421,29 @@ class ResultAnalyzer:
     def find_unfinished_simulations(
             self,
             vehicle_percentages: List[Dict[VehicleType, int]],
-            # vehicle_types: List[List[VehicleType]],
-            # percentage: List[List[int]],
             vehicle_inputs):
         """ Checks whether simulations crashed. This is necessary because,
         when doing multiple runs from the COM interface, VISSIM does not
         always indicate that a simulation crashed. """
-
-        # We must check either SSM results
-        reader = readers.SSMDataReader(self.network_name)
-        data_no_control = (reader.load_data_with_controlled_percentage(
-            [{VehicleType.ACC: 0}], vehicle_inputs))
-        end_time = data_no_control.iloc[-1]['time_interval']
-        for vp in vehicle_percentages:  # reader in data_collection_readers:
-            # print(vp.name)
-            data = reader.load_data_with_controlled_percentage(
-                [vp], vehicle_inputs)
-            all_random_seeds = data['random_seed'].unique()
-            all_inputs = data['vehicles_per_lane'].unique()
-            for veh_input in all_inputs:
-                # print('veh input=', veh_input)
-                for random_seed in all_random_seeds:
-                    # print('random seed=', random_seed)
-                    sim_data = data.loc[
-                        (data['random_seed'] == random_seed)
-                        & (data['vehicles_per_lane'] == veh_input)]
-                    if sim_data.iloc[-1]['time_interval'] != end_time:
-                        last_time = sim_data.iloc[-1]['time_interval']
-                        print('Simulation with input {} random seed {} '
-                              'stopped at {}'.format(veh_input, random_seed,
-                                                     last_time))
+        reader = readers.DataCollectionReader(self.network_name)
+        raw_data = reader.load_data_with_controlled_percentage(
+            vehicle_percentages, vehicle_inputs, [0])
+        data = self._prepare_data_collection_data(raw_data, 'in', 0, 60)
+        grouped = data.groupby(
+            ['control_percentages', 'vehicles_per_lane', 'accepted_risk',
+             'simulation_number'])['flow']
+        all_end_times = grouped.last()
+        issues = all_end_times[all_end_times == 0]
+        if issues.empty:
+            print('All simulations seem to have run till the end')
+            return
+        # Find the last valid simulation time
+        issue_time = []
+        for i in issues.index:
+            print(i)
+            s = grouped.get_group(i)
+            issue_time.append(data.loc[s.index[s.to_numpy().nonzero()[0][-1]],
+                                       'time'])
+            print(issue_time[-1])
+        print("Min issue time {} at simulation {}".format(min(issue_time),
+              issues.index[np.argmin(issue_time)]))
