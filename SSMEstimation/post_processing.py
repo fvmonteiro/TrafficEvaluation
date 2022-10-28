@@ -278,7 +278,6 @@ def create_summary_traffic_light_simulations(
                                              vehicle_percentages, vi)
 
 
-# TODO: repeated coding
 def create_summary_with_risks(scenario_name: str,
                               vehicle_percentages: Dict[VehicleType, int],
                               vehicle_inputs: List[int],
@@ -911,19 +910,7 @@ def find_traffic_light_violations_all(
      records and do not save results.
     :return: Nothing. Violation results are saved to as csv files"""
 
-    traffic_light_reader = readers.TrafficLightSourceReader(network_name)
-    try:
-        traffic_light_data = traffic_light_reader.load_data()
-    except FileNotFoundError:
-        print('No traffic light source file, so no violations.')
-        return
-
-    if 'starts_red' not in traffic_light_data.columns:
-        traffic_light_data['starts_red'] = True
-    traffic_light_data['cycle_time'] = (
-            traffic_light_data['red duration']
-            + traffic_light_data['green duration']
-            + traffic_light_data['amber duration'])
+    violation_pp = ViolationProcessor(network_name)
 
     violations_list = []
     vehicle_record_reader = readers.VehicleRecordReader(network_name)
@@ -933,43 +920,10 @@ def find_traffic_light_violations_all(
         n_rows)
     for (vehicle_records, file_number) in data_generator:
         violations_list.append(
-            find_traffic_light_violations(vehicle_records, traffic_light_data))
+            violation_pp.post_process(vehicle_records))
     violations = pd.concat(violations_list)
-
-    tf_violation_writer = data_writer.TrafficLightViolationWriter(
-        network_name)
-    tf_violation_writer.save_as_csv(violations, vehicle_percentages, 0)
-
-
-def find_traffic_light_violations(vehicle_record: pd.DataFrame,
-                                  traffic_light_data: pd.DataFrame):
-    """
-    Finds red light running violations in a single simulation.
-
-    :param vehicle_record: dataframe with step by step vehicle data
-    :param traffic_light_data: dataframe where each row describes a
-     traffic light
-    :return: dataframe where each row represents one traffic light violation
-    """
-
-    violations_list = []
-    warmup_time = vehicle_record['time'].iloc[0]
-    for _, tf in traffic_light_data.iterrows():
-        vehicle_record['dist_to_tf'] = (vehicle_record['x']
-                                        - tf['position'])
-        after_tf = vehicle_record[vehicle_record['dist_to_tf'] > 0]
-        crossing_time = after_tf.loc[
-            after_tf.groupby('veh_id').dist_to_tf.idxmin(), 'time']
-        crossing_time = crossing_time[crossing_time > warmup_time]
-        tf_cycle = tf['cycle_time']
-        violation_idx = crossing_time[(crossing_time % tf_cycle) <
-                                      tf['red duration']].index
-        violations_per_tf = vehicle_record.loc[
-            violation_idx, ['simulation_number', 'veh_id', 'veh_type', 'time',
-                            'vehicles_per_lane']]
-        violations_per_tf['traffic_light'] = tf['id']
-        violations_list.append(violations_per_tf)
-    return pd.concat(violations_list)
+    violation_pp.writer(network_name)
+    violation_pp.writer.save_as_csv(violations, vehicle_percentages, 0)
 
 
 # ========================= Lane change methods ============================== #
@@ -1027,22 +981,29 @@ def complement_lane_change_data(network_name: str,
             single_lc_data)
         # times[2] += time.perf_counter() - start_time
         # start_time = time.perf_counter()
+
+        # if risk_lo > 0 or risk_ld > 0 or risk_fd > 0:
+        #     print('some risk')
+
+        # TODO: some issue here. Total risks coming as zero
         total_risk_lo, total_risk_ld, total_risk_fd = (
             get_total_lane_change_risk(
                 risky_maneuver_data, single_lc_data, tf))
         # times[3] += time.perf_counter() - start_time
 
+        vissim_in_control = veh_data.loc[
+            veh_data['time'] == single_lc_data['time'], 'vissim_control']
         fd_discomfort = compute_fd_discomfort(data_by_veh, single_lc_data)
         new_data.append([tc, tf, risk_lo, risk_ld, risk_fd,
                          total_risk_lo, total_risk_ld, total_risk_fd,
-                         fd_discomfort])
+                         vissim_in_control, fd_discomfort])
         notes.append(note)
     # print(times)
 
     lc_data[['crossing_time', 'end_time', 'initial_risk_to_lo',
              'initial_risk_to_ld', 'initial_risk_to_fd',
              'total_risk_lo', 'total_risk_ld', 'total_risk_fd',
-             'fd_discomfort']] = new_data
+             'vissim_in_control', 'fd_discomfort']] = new_data
     lc_data['note'] = notes
     lc_data.dropna(inplace=True)
 
@@ -1287,26 +1248,30 @@ def get_total_lane_change_risk(
      destination lane, and follower at the destination lane
     """
 
-    simulation_data = risky_maneuvers[risky_maneuvers['simulation_number']
-                                      == lc_data['simulation_number']]
-    time_filter = ((simulation_data['time'] >= lc_data['time'])
-                   & (simulation_data['time'] <= end_time))
+    # We check which "risky" maneuvers start during a lane change, and we
+    # assume that total risk of that risky maneuver is the lane change's risk.
+    # NOTE: not sure this is the best (most fair?) evaluation criteria
+
+    simulation_risk_data = risky_maneuvers[risky_maneuvers['simulation_number']
+                                           == lc_data['simulation_number']]
+    time_filter = ((simulation_risk_data['time'] >= lc_data['time'])
+                   & (simulation_risk_data['time'] <= end_time))
     risks = dict()
-    risks['lo'] = simulation_data.loc[(simulation_data['veh_id']
-                                       == lc_data['veh_id'])
-                                      & (simulation_data['leader_id']
-                                         == lc_data['lo_id']) & time_filter,
-                                      'total_risk']
-    risks['ld'] = simulation_data.loc[(simulation_data['veh_id']
-                                       == lc_data['veh_id'])
-                                      & (simulation_data['leader_id']
-                                         == lc_data['ld_id']) & time_filter,
-                                      'total_risk']
-    risks['fd'] = simulation_data.loc[(simulation_data['veh_id']
-                                       == lc_data['fd_id'])
-                                      & (simulation_data['leader_id']
-                                         == lc_data['veh_id']) & time_filter,
-                                      'total_risk']
+    risks['lo'] = simulation_risk_data.loc[
+        (simulation_risk_data['veh_id'] == lc_data['veh_id'])
+        & (simulation_risk_data['leader_id'] == lc_data['lo_id'])
+        & time_filter,
+        'total_risk']
+    risks['ld'] = simulation_risk_data.loc[
+        (simulation_risk_data['veh_id'] == lc_data['veh_id'])
+        & (simulation_risk_data['leader_id'] == lc_data['ld_id'])
+        & time_filter,
+        'total_risk']
+    risks['fd'] = simulation_risk_data.loc[
+        (simulation_risk_data['veh_id'] == lc_data['fd_id'])
+        & (simulation_risk_data['leader_id'] == lc_data['veh_id']) &
+        time_filter,
+        'total_risk']
     for key in risks:
         risks[key] = 0 if risks[key].empty else risks[key].sum()
     return risks['lo'], risks['ld'], risks['fd']
@@ -2469,7 +2434,7 @@ class SSMEstimator:
                 vehicle_effective_tau_j)
 
 
-class PostProcessor(ABC):
+class VISSIMDataPostProcessor(ABC):
     """[Probably change name] Class contains a name, a writer and function
     pointer to make creating and saving post-processed data more easy to
     handle"""
@@ -2492,12 +2457,12 @@ class PostProcessor(ABC):
         pass
 
 
-class SSMProcessor(PostProcessor):
+class SSMProcessor(VISSIMDataPostProcessor):
     _writer = data_writer.SSMDataWriter
 
     def __init__(self, scenario_name):
-        PostProcessor.__init__(self, scenario_name, 'SSM',
-                               self._writer)
+        VISSIMDataPostProcessor.__init__(self, scenario_name, 'SSM',
+                                         self._writer)
         network_name = self.file_handler.get_network_name()
         if network_name in HIGHWAY_SCENARIOS:
             self.ssm_names = ['low_TTC', 'high_DRAC', 'risk',
@@ -2536,11 +2501,11 @@ class SSMProcessor(PostProcessor):
         self.ssm_names = ssm_names
 
 
-class RiskyManeuverProcessor(PostProcessor):
+class RiskyManeuverProcessor(VISSIMDataPostProcessor):
     _writer = data_writer.RiskyManeuverWriter
 
     def __init__(self, scenario_name):
-        PostProcessor.__init__(self, scenario_name,
+        VISSIMDataPostProcessor.__init__(self, scenario_name,
                                'risky_maneuver', self._writer)
         network_name = self.file_handler.get_network_name()
         if network_name in HIGHWAY_SCENARIOS:
@@ -2645,25 +2610,59 @@ class RiskyManeuverProcessor(PostProcessor):
         self.risk_name = risk_name
 
 
-class ViolationProcessor(PostProcessor):
+class ViolationProcessor(VISSIMDataPostProcessor):
     _writer = data_writer.TrafficLightViolationWriter
 
     def __init__(self, scenario_name):
-        PostProcessor.__init__(self, scenario_name,
+        VISSIMDataPostProcessor.__init__(self, scenario_name,
                                'violation', self._writer)
         traffic_light_reader = readers.TrafficLightSourceReader(
             scenario_name)
         self.traffic_light_data = traffic_light_reader.load_data()
+        self._compute_cycle_times()
 
     def post_process(self, data):
-        return find_traffic_light_violations(data, self.traffic_light_data)
+        """
+        Finds red light running violations in a single simulation.
+
+        :param data: dataframe with step by step vehicle data
+        :return: dataframe where each row represents one traffic light violation
+        """
+        vehicle_record = data
+        violations_list = []
+        warmup_time = vehicle_record['time'].iloc[0]
+        for _, tf in self.traffic_light_data.iterrows():
+            vehicle_record['dist_to_tf'] = (vehicle_record['x']
+                                            - tf['position'])
+            after_tf = vehicle_record[vehicle_record['dist_to_tf'] > 0]
+            crossing_time = after_tf.loc[
+                after_tf.groupby('veh_id').dist_to_tf.idxmin(), 'time']
+            crossing_time = crossing_time[crossing_time > warmup_time]
+            tf_cycle = tf['cycle_time']
+            violation_idx = crossing_time[(crossing_time % tf_cycle) <
+                                          tf['red duration']].index
+            violations_per_tf = vehicle_record.loc[
+                violation_idx, ['simulation_number', 'veh_id', 'veh_type',
+                                'time',
+                                'vehicles_per_lane']]
+            violations_per_tf['traffic_light'] = tf['id']
+            violations_list.append(violations_per_tf)
+        return pd.concat(violations_list)
+
+    def _compute_cycle_times(self):
+        if 'starts_red' not in self.traffic_light_data.columns:
+            self.traffic_light_data['starts_red'] = True
+        self.traffic_light_data['cycle_time'] = (
+                self.traffic_light_data['red duration']
+                + self.traffic_light_data['green duration']
+                + self.traffic_light_data['amber duration'])
 
 
-class DiscomfortProcessor(PostProcessor):
+class DiscomfortProcessor(VISSIMDataPostProcessor):
     _writer = data_writer.DiscomfortWriter
 
     def __init__(self, scenario_name):
-        PostProcessor.__init__(self, scenario_name,
+        VISSIMDataPostProcessor.__init__(self, scenario_name,
                                'discomfort', self._writer)
         self.comfortable_brake = [-i for i in range(3, 10)]
 
@@ -2705,15 +2704,18 @@ class DiscomfortProcessor(PostProcessor):
         return aggregated_acceleration
 
 
-class LaneChangeIssuesProcessor(PostProcessor):
+class LaneChangeIssuesProcessor(VISSIMDataPostProcessor):
     _writer = data_writer.LaneChangeIssuesWriter
 
     def __init__(self, scenario_name):
-        PostProcessor.__init__(self, scenario_name,
+        VISSIMDataPostProcessor.__init__(self, scenario_name,
                                'lane_change_issues', self._writer)
         self.exit_links = [5, 6]  # exit links for the in_and_out scenario
 
     def post_process(self, data):
+        """
+        :param data: Vehicle record of a VISSIM simulation
+        """
         # Find removed vehicles
         max_time = data.iloc[-1]['time']
         last_entry_per_veh = data.groupby('veh_id', as_index=False).last()

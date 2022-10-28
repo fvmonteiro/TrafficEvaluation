@@ -112,18 +112,21 @@ def test_risk_computation():
 
 
 def plot_acc_av_and_cav_results(save_results=False):
-    network_name = 'in_and_out'
+    scenario_name = 'in_and_out_safe'
     vehicle_types = [
         VehicleType.ACC,
         VehicleType.AUTONOMOUS,
         VehicleType.CONNECTED
     ]
     percentage = [0, 100]
-    veh_inputs = [1000, 2000]
+    veh_inputs = [1000]
     simulation_percentages = create_vehicle_percentages_dictionary(
         vehicle_types, percentage, 1)
-    result_analyzer = result_analysis.ResultAnalyzer(network_name, save_results)
-    result_analyzer.get_flow_and_risk_plots(veh_inputs, simulation_percentages)
+    result_analyzer = result_analysis.ResultAnalyzer(scenario_name,
+                                                     save_results)
+    result_analyzer.get_flow_and_risk_plots(veh_inputs,
+                                            simulation_percentages,
+                                            )
 
 
 def plot_cav_varying_percentage_results(save_results=False):
@@ -272,16 +275,16 @@ def main():
     # vi.close_vissim()
 
     # =============== Post processing =============== #
-    for sp in simulation_percentages:
-        print(sp)
-        post_processing.create_summary_with_risks(
-            scenario_name, sp, inputs_per_lane, accepted_risks)
+    # for sp in simulation_percentages:
+    #     print(sp)
+    #     post_processing.create_summary_with_risks(
+    #         scenario_name, sp, inputs_per_lane, accepted_risks)
     #     for ipl in inputs_per_lane:
     #         post_processing.get_individual_vehicle_trajectories_to_moves(
     #             scenario_name, ipl, sp, 0)
     # post_processing.create_summary_with_risks(
-    #     scenario_name, simulation_percentages[0], [1000],
-    #     accepted_risks=None, analyze_lane_change=True, debugging=True)
+    #     scenario_name, {VehicleType.ACC: 0}, [1000],
+    #     accepted_risks=[0], analyze_lane_change=True, debugging=True)
 
     # file_handler = file_handling.FileHandler(scenario_name)
     # try:
@@ -297,6 +300,15 @@ def main():
     #                                   inputs_per_lane, accepted_risks,
     #                                   save_fig=False)
     ra = result_analysis.ResultAnalyzer(scenario_name, False)
+    ra.plot_lane_change_risk_histograms('total_lane_change_risk',
+                                        simulation_percentages,
+                                        inputs_per_lane, [0])
+    # ra.plot_flow_box_plot_vs_controlled_percentage(
+    #     inputs_per_lane, simulation_percentages, aggregation_period=60)
+    # ra.plot_risky_maneuver_histogram_per_vehicle_type(
+    #         simulation_percentages, inputs_per_lane, min_total_risk=1
+    #     )
+    # ra.plot_fd_discomfort(simulation_percentages, inputs_per_lane, [0])
 
     # ra.plot_emission_heatmap(simulation_percentages, inputs_per_lane,
     #                          accepted_risks)
@@ -306,10 +318,6 @@ def main():
     #                              accepted_risks)
     # ra.print_summary_of_issues(simulation_percentages, inputs_per_lane,
     #                            accepted_risks)
-    # ra.plot_heatmap_input_vs_control(
-    #     'vehicle_count', simulation_percentages, inputs_per_lane, [0])
-    # ra.plot_heatmap_input_vs_control(
-    #     'average_speed', simulation_percentages, inputs_per_lane, [0])
     # ra.plot_fundamental_diagram([1000, 2000], simulation_percentages,
     #                             accepted_risks=[0],
     #                             flow_sensor_name=['in'])

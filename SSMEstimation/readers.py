@@ -31,19 +31,25 @@ def match_sim_number_to_random_seed(data):
 
 
 def _add_vehicle_type_columns(data: pd.DataFrame,
-                              vehicle_type: List[VehicleType],
-                              controlled_vehicles_percentage: List[int]):
-    if vehicle_type is not None:
+                              vehicle_percentages: Dict[VehicleType, int]):
+                              # vehicle_type: List[VehicleType],
+                              # controlled_vehicles_percentage: List[int]):
+    if vehicle_percentages is not None:
         s = ''
-        if sum(controlled_vehicles_percentage) == 0:
+        if sum(vehicle_percentages.values()) == 0:
             s = 'no control'
-        for i in range(len(vehicle_type)):
-            data[vehicle_type[i].name.lower() + '_percentage'] = (
-                controlled_vehicles_percentage[i])
-            if controlled_vehicles_percentage[i] > 0:
-                s += (str(controlled_vehicles_percentage[i]) + '% '
-                      + vehicle_type_to_str_map[vehicle_type[i]])
+        for vt, p in vehicle_percentages.items():
+            data[vt.name.lower() + '_percentage'] = p
+            if p > 0:
+                s += str(p) + '% ' + vehicle_type_to_str_map[vt]
         data['control_percentages'] = s
+        # for i in range(len(vehicle_type)):
+        #     data[vehicle_type[i].name.lower() + '_percentage'] = (
+        #         controlled_vehicles_percentage[i])
+        #     if controlled_vehicles_percentage[i] > 0:
+        #         s += (str(controlled_vehicles_percentage[i]) + '% '
+        #               + vehicle_type_to_str_map[vehicle_type[i]])
+        # data['control_percentages'] = s
 
 
 def _add_vehicle_input_column(data: pd.DataFrame,
@@ -254,7 +260,7 @@ class VissimDataReader(DataReader):
         return pd.concat(sim_output, ignore_index=True)
 
     def load_data_from_scenario(
-            self, file_identifier: Union[int, str],
+            self, file_identifier: int,
             vehicle_percentages: Dict[VehicleType, int],
             vehicles_per_lane: int = None,
             accepted_risk: int = None,
@@ -263,8 +269,7 @@ class VissimDataReader(DataReader):
         Loads data from one file of a chosen network with given vehicle input
         and controlled vehicle percentage.
 
-        :param file_identifier: This can be either a integer indicating
-         the simulation number or the file name directly
+        :param file_identifier: An integer indicating the simulation number
         :param vehicle_percentages: Describes the percentages of controlled
          vehicles in the simulation.
         :param vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
@@ -275,16 +280,13 @@ class VissimDataReader(DataReader):
         :return: pandas dataframe with the data
         """
 
-        # TODO: change to using directly the dict
-        vehicle_type = list(vehicle_percentages.keys())
-        controlled_vehicles_percentage = list(vehicle_percentages.values())
-
         full_address = self._create_full_file_address(
             file_identifier, vehicle_percentages,
             vehicles_per_lane, accepted_risk)
         data = self.load_data(full_address, n_rows=n_rows)
-        _add_vehicle_type_columns(data, vehicle_type,
-                                  controlled_vehicles_percentage)
+        if 'simulation_number' not in data.columns:
+            data['simulation_number'] = file_identifier
+        _add_vehicle_type_columns(data, vehicle_percentages)
         _add_vehicle_input_column(data, vehicles_per_lane)
         _add_risk_column(data, accepted_risk)
         return data
@@ -564,10 +566,10 @@ class VissimLaneChangeReader(VissimDataReader):
                                   self._data_identifier,
                                   self._header_identifier, self._header_map)
 
-    def load_data(self, file_identifier, n_rows: int = None) -> pd.DataFrame:
-        data = super().load_data(file_identifier, n_rows)
-        data['simulation_number'] = file_identifier
-        return data
+    # def load_data(self, file_identifier, n_rows: int = None) -> pd.DataFrame:
+    #     data = super().load_data(file_identifier, n_rows)
+    #     data['simulation_number'] = file_identifier
+    #     return data
 
     def load_data_with_controlled_percentage(
             self,
@@ -757,11 +759,11 @@ class PostProcessedDataReader(DataReader):
 
         data_per_folder = []
         for vp in vehicle_percentages:
-            vt = list(vp.keys())
-            p = list(vp.values())
+            # vt = list(vp.keys())
+            # p = list(vp.values())
             for veh_input in vehicle_input:
-                for ar in (accepted_risks if sum(p) > 0
-                           else [0]):
+                relevant_risks = accepted_risks if sum(vp.values()) > 0 else [0]
+                for ar in relevant_risks:
                     data_folder = self.file_handler.get_vissim_data_folder(
                         vp, veh_input, ar)
                     network_file = self.file_handler.get_file_name()
@@ -769,7 +771,7 @@ class PostProcessedDataReader(DataReader):
                                  + self.file_format)
                     full_address = os.path.join(data_folder, file_name)
                     new_data = self.load_data(full_address)
-                    _add_vehicle_type_columns(new_data, vt, p)
+                    _add_vehicle_type_columns(new_data, vp)
                     _add_vehicle_input_column(new_data, veh_input)
                     _add_risk_column(new_data, ar)
                     data_per_folder.append(new_data)
@@ -840,6 +842,14 @@ class LaneChangeReader(PostProcessedDataReader):
                                           + data[y + '_fd'])
         y = 'initial_risk'
         data[y] = data[y + '_to_lo'] + data[y + '_to_ld'] + data[y + '_to_fd']
+
+        # TODO: temporary [Oct 27, 22]. I saved the file path instead of the
+        #  simulation number
+        if isinstance(data['simulation_number'].iloc[0], str):
+            data['simulation_number'] = (
+                data['simulation_number'].str.split('.').str[0].str[-3:].
+                astype(int))
+
         return data
 
 
@@ -1122,8 +1132,7 @@ class MOVESDatabaseReader:
                                    vt_str, str(3 * vehicles_per_lane), 'in'])
         data = self._load_pollutants(output_database)
         self._add_volume_data(input_database, data)
-        _add_vehicle_type_columns(data, list(vehicle_percentages.keys()),
-                                  list(vehicle_percentages.values()))
+        _add_vehicle_type_columns(data, vehicle_percentages)
         _add_vehicle_input_column(data, vehicles_per_lane)
         _add_risk_column(data, accepted_risk)
         data['emission_per_volume'] = data['emission'] / data['volume']
