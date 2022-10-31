@@ -1,3 +1,4 @@
+import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 import warnings
@@ -535,7 +536,7 @@ def create_time_bins_and_labels(period, vehicle_records):
     final_time = int(vehicle_records['time'].iloc[-1])
     interval_limits = []
     interval_labels = []
-    for i in range(period, final_time + period,
+    for i in range(0, final_time + period,
                    period):
         interval_limits.append(i)
         interval_labels.append(str(i) + '-'
@@ -962,14 +963,18 @@ def complement_lane_change_data(network_name: str,
     data_by_veh = vehicle_record.groupby('veh_id')
     new_data = []
     notes = []
+    max_comf_brake = [-i for i in range(4, 9)]
+    # fd_discomfort = {'fd_discomfort_' + str(-i): [] for i in max_comf_brake}
     # times = np.zeros(4)
     # TODO: slow loop. Not sure we can avoid iterating over rows, but some
     #  functions can probably be optimized.
     for i, single_lc_data in lc_data.iterrows():
         # print(i)
-        veh_data = data_by_veh.get_group(single_lc_data['veh_id'])
+        lc_veh_data = data_by_veh.get_group(single_lc_data['veh_id'])
+        fd_data = (data_by_veh.get_group(single_lc_data['fd_id']) if
+                   single_lc_data['fd_id'] > 0 else pd.DataFrame())
         # start_time = time.perf_counter()
-        tc, tf = get_lane_change_crossing_and_end_times(veh_data,
+        tc, tf = get_lane_change_crossing_and_end_times(lc_veh_data,
                                                         single_lc_data)
         # times[0] += time.perf_counter() - start_time
         # start_time = time.perf_counter()
@@ -985,25 +990,33 @@ def complement_lane_change_data(network_name: str,
         # if risk_lo > 0 or risk_ld > 0 or risk_fd > 0:
         #     print('some risk')
 
-        # TODO: some issue here. Total risks coming as zero
         total_risk_lo, total_risk_ld, total_risk_fd = (
-            get_total_lane_change_risk(
-                risky_maneuver_data, single_lc_data, tf))
+            get_risks_during_lane_change(lc_veh_data, fd_data,
+                                         single_lc_data, tf))
+            # get_total_lane_change_risk(
+            #     risky_maneuver_data, single_lc_data, tf))
         # times[3] += time.perf_counter() - start_time
 
-        vissim_in_control = veh_data.loc[
-            veh_data['time'] == single_lc_data['time'], 'vissim_control']
-        fd_discomfort = compute_fd_discomfort(data_by_veh, single_lc_data)
+        vissim_in_control = lc_veh_data.loc[
+            lc_veh_data['time'] == single_lc_data['time'],
+            'vissim_control'].iloc[0]
+        fd_discomfort = compute_fd_discomfort(fd_data, single_lc_data,
+                                              max_comf_brake)
+        # [fd_discomfort['fd_discomfort_' + str(-max_comf_brake[i])].append(
+        #     temp[i]) for i in range(len(max_comf_brake))]
+
         new_data.append([tc, tf, risk_lo, risk_ld, risk_fd,
                          total_risk_lo, total_risk_ld, total_risk_fd,
-                         vissim_in_control, fd_discomfort])
+                         vissim_in_control])
+        new_data[-1].extend(fd_discomfort)
         notes.append(note)
     # print(times)
-
-    lc_data[['crossing_time', 'end_time', 'initial_risk_to_lo',
-             'initial_risk_to_ld', 'initial_risk_to_fd',
-             'total_risk_lo', 'total_risk_ld', 'total_risk_fd',
-             'vissim_in_control', 'fd_discomfort']] = new_data
+    columns = ['crossing_time', 'end_time', 'initial_risk_to_lo',
+               'initial_risk_to_ld', 'initial_risk_to_fd',
+               'total_risk_lo', 'total_risk_ld', 'total_risk_fd',
+               'vissim_in_control']
+    [columns.append('fd_discomfort_' + str(-i)) for i in max_comf_brake]
+    lc_data[columns] = new_data
     lc_data['note'] = notes
     lc_data.dropna(inplace=True)
 
@@ -1196,37 +1209,44 @@ def compute_initial_lane_change_risks(lc_data: pd.Series) -> (float, float,
 
 
 def get_risks_during_lane_change(
-        veh_data: pd.DataFrame, lc_data: pd.Series,
-        end_time: float) -> (float, float, float):
+        lc_veh_data: pd.DataFrame, fd_data: pd.DataFrame,
+        lc_data: pd.Series, end_time: float) -> (float, float, float):
     """
     Returns the risks relative to each surrounding vehicle exclusively over
     the duration of the lane change. Note: this yields different results from
     'get_total_lane_change_risk', which returns the risks from the start of
     the lane change till the end of longitudinal adjustments.
 
-    :param veh_data: Vehicle records of simulation already containing risks
+    :param lc_veh_data: Data of the vehicle performing the lane change
+    :param fd_data: Data of the follower at the destination lane
     :param lc_data: data for a single lane change
     :param end_time: lane change end time
     :return: total risks to leader at the origin lane, leader at the
      destination lane, and follower at the destination lane
     """
-    delta_t = round(veh_data['time'].iloc[1] - veh_data['time'].iloc[0], 2)
-    time_filter = ((veh_data['time'] >= lc_data['time'])
-                   & (veh_data['time'] <= end_time))
-    lc_veh_data = veh_data.loc[(veh_data['veh_id'] == lc_data['veh_id'])
-                               & time_filter]
+    # lc_veh_data = veh_data.get_group(lc_data['veh_id'])
+    delta_t = round(lc_veh_data['time'].iloc[1]
+                    - lc_veh_data['time'].iloc[0], 2)
+    time_filter = ((lc_veh_data['time'] >= lc_data['time'])
+                   & (lc_veh_data['time'] <= end_time))
+    # lc_veh_data = veh_data.loc[(veh_data['veh_id'] == lc_data['veh_id'])
+    #                            & time_filter]
     risk_lo, risk_ld, risk_fd = 0, 0, 0
     if lc_data['lo_id'] != 0:
-        risk_lo = lc_veh_data.loc[lc_veh_data['leader_id'] == lc_data['lo_id'],
+        risk_lo = lc_veh_data.loc[(lc_veh_data['leader_id'] == lc_data['lo_id'])
+                                  & time_filter,
                                   'risk'].sum() * delta_t
     if lc_data['ld_id'] != 0:
-        risk_ld = lc_veh_data.loc[lc_veh_data['leader_id'] == lc_data['ld_id'],
+        risk_ld = lc_veh_data.loc[(lc_veh_data['leader_id'] == lc_data['ld_id'])
+                                  & time_filter,
                                   'risk'].sum() * delta_t
     if lc_data['fd_id'] != 0:
-        fd_veh_data = veh_data.loc[(veh_data['leader_id'] == lc_data['veh_id'])
-                                   & (veh_data['veh_id'] == lc_data['fd_id'])
+        time_filter = ((fd_data['time'] >= lc_data['time'])
+                       & (fd_data['time'] <= end_time))
+        fd_data = fd_data.loc[(fd_data['leader_id'] == lc_data['veh_id'])
+                                   # & (veh_data['veh_id'] == lc_data['fd_id'])
                                    & time_filter]
-        risk_fd = fd_veh_data['risk'].sum() * delta_t
+        risk_fd = fd_data['risk'].sum() * delta_t
 
     return risk_lo, risk_ld, risk_fd
 
@@ -1310,19 +1330,20 @@ def label_lane_changes(scenario_name: str, veh_data: pd.DataFrame,
                 'mandatory'] = True
 
 
-def compute_fd_discomfort(data_by_veh,
-                          lc_data: pd.Series) -> List:
-    max_braking = [-i for i in range(4, 8)]
+def compute_fd_discomfort(fd_data: pd.DataFrame,
+                          lc_data: pd.Series,
+                          max_braking: List[int]) -> List[float]:
     if lc_data['fd_id'] == 0:
         return [0]*len(max_braking)
 
-    fd_data = data_by_veh.get_group(lc_data['fd_id'])
+    # fd_data = data_by_veh.get_group(lc_data['fd_id'])
     sampling_interval = fd_data['time'].iloc[1] - fd_data['time'].iloc[0]
 
     fd_discomfort = []
     fd_accel = fd_data.loc[
             (fd_data['time'] > lc_data['time'])
-            & (fd_data['time'] < lc_data['time'] + 10),
+            & (fd_data['time'] < lc_data['time'] + 10)
+            & (fd_data['leader_id'] == lc_data['veh_id']),
             'ax']
     for b in max_braking:
         strong_braking = fd_accel[fd_accel < b]
@@ -2506,7 +2527,7 @@ class RiskyManeuverProcessor(VISSIMDataPostProcessor):
 
     def __init__(self, scenario_name):
         VISSIMDataPostProcessor.__init__(self, scenario_name,
-                               'risky_maneuver', self._writer)
+                                         'risky_maneuver', self._writer)
         network_name = self.file_handler.get_network_name()
         if network_name in HIGHWAY_SCENARIOS:
             self.risk_name = 'risk'
@@ -2515,7 +2536,7 @@ class RiskyManeuverProcessor(VISSIMDataPostProcessor):
         else:
             raise ValueError('Unknown network name.')
 
-    def post_process(self, data):
+    def post_process(self, data: pd.DataFrame):
         """
         Find risky maneuvers and write their information on a dataframe
         A risky maneuver is defined as a time interval during which risk is
@@ -2527,74 +2548,59 @@ class RiskyManeuverProcessor(VISSIMDataPostProcessor):
          including some risk measurement
         :return: dataframe where each row represents one risky maneuver
         """
-
-        # Note: some vehicles enter simulation with positive risk. This
-        # makes it hard to deal with the whole dataframe at once.
-        # Thus, we deal with one vehicle at a time.
-
         vehicle_record = data
         risk_name = self.risk_name
-
         risk_margin = 0.1  # ignore total risks below this margin
-        vehicle_record['is_risk_positive'] = vehicle_record[risk_name] > 0
-        all_ids = vehicle_record['veh_id'].unique()
-        risky_data_list = [pd.DataFrame(
-            columns=['veh_id', 'veh_type', 'leader_id', 'time', 'end_time',
-                     'total_risk', 'max_risk'])]
-        for veh_id in all_ids:
-            single_veh_record = vehicle_record[vehicle_record['veh_id']
-                                               == veh_id]
-            if (not any(single_veh_record['is_risk_positive'])
-                    or single_veh_record.shape[0] < 2
-                    or single_veh_record[risk_name].sum() < risk_margin):
-                continue
-            delta_t = round(single_veh_record['time'].iloc[1]
-                            - single_veh_record['time'].iloc[0], 2)
 
-            # TODO: compare computation speeds
-            risk_transition_idx = (single_veh_record['is_risk_positive'].diff()
-                                   != 0)
-            # risk_transition_idx = (
-            #   single_veh_record['is_risk_positive'].shift()
-            #   != single_veh_record['is_risk_positive'])
+        # Pad the data frame with zero risk entries between vehicles whenever
+        # a vehicle starts of ends the simulation with positive risk
+        grouped = vehicle_record.groupby('veh_id', as_index=False)
+        init_state = grouped.first()
+        final_state = grouped.last()
+        padding_rows_1 = init_state[init_state['risk'] > 0].copy()
+        padding_rows_1['risk'] = 0
+        padding_rows_1['time'] -= 0.01
+        padding_rows_2 = final_state[final_state['risk'] > 0].copy()
+        padding_rows_2['risk'] = 0
+        padding_rows_2['time'] += 0.01
+        padded_vehicle_records = (pd.concat([vehicle_record, padding_rows_1,
+                                             padding_rows_2]).
+                                  sort_values(['veh_id', 'time', 'risk']).
+                                  reset_index(drop=True))
 
-            # Dealing with cases where the vehicle enters simulation with
-            # positive risk:
-            risk_transition_idx.iloc[0] = (
-                single_veh_record['is_risk_positive'].iloc[0])
-            risk_transition_idx = risk_transition_idx[risk_transition_idx]
-            start_indices = risk_transition_idx.iloc[::2].index
-            end_indices = risk_transition_idx.iloc[1::2].index
-            # Dealing with cases where the vehicle leaves simulation with
-            # positive risk (should never occur with full simulation data):
-            if len(end_indices) == len(start_indices) - 1:
-                end_indices = end_indices.append(
-                    pd.Index([single_veh_record.index[-1]]))
+        # Now we can look for "groups" of positive risk
+        delta_t = round(padded_vehicle_records['time'].iloc[0:2].diff()[1], 2)
+        padded_vehicle_records['is_risk_positive'] = (
+            padded_vehicle_records[risk_name] > 0)
+        risk_transition_idx = padded_vehicle_records[
+            padded_vehicle_records['is_risk_positive'].diff().fillna(False)
+            != 0]
+        # To do a cumulative sum that resets every time there's a zero
+        # mask = padded_vehicle_records['risk'] != 0
+        # total_risk = (mask.cumsum()
+        #               - mask.cumsum().where(~mask).ffill().fillna(0).
+        #               astype(int)) * delta_t
+        risk = padded_vehicle_records['risk']
+        risk_grouped = risk.groupby((risk == 0).cumsum())
+        cumulative_risk = risk_grouped.cumsum() * delta_t
+        cumulative_max_risk = risk_grouped.cummax()
+        start_indices = risk_transition_idx.iloc[::2].index
+        end_indices = risk_transition_idx.iloc[1::2].index
 
-            # Build the df with data for each risky maneuver for this vehicle
-            temp_df = single_veh_record[
-                ['veh_id', 'veh_type', 'leader_id', 'time']].loc[start_indices]
-            try:
-                temp_df['end_time'] = single_veh_record['time'].loc[
-                    end_indices].to_numpy()
-            except ValueError:
-                end_times = single_veh_record['time'].loc[
-                    end_indices].to_numpy()
-                temp_df['end_time'] = 0
-                temp_df['end_time'].iloc[:len(end_times)] = end_times
-            risk = single_veh_record[risk_name]
-            risk_grouped = risk.groupby((risk == 0).cumsum())
-            cumulative_risk = risk_grouped.cumsum() * delta_t
-            cumulative_max_risk = risk_grouped.cummax()
-            temp_df['total_risk'] = cumulative_risk.shift().loc[
-                end_indices].to_numpy()
-            temp_df['max_risk'] = cumulative_max_risk.shift().loc[
-                end_indices].to_numpy()
-            temp_df.drop(
-                index=temp_df[temp_df['total_risk'] < risk_margin].index,
-                inplace=True)
-            risky_data_list.append(temp_df)
-        risky_data = pd.concat(risky_data_list)
+        # And finally create the data frame which contains one risky maneuver
+        # per row
+        risky_data = padded_vehicle_records[
+            ['veh_id', 'veh_type', 'leader_id', 'time']].loc[start_indices]
+        risky_data['end_time'] = padded_vehicle_records['time'].loc[
+            end_indices].to_numpy()
+        risky_data['total_risk'] = cumulative_risk.shift().loc[
+            end_indices].to_numpy()
+        risky_data['max_risk'] = cumulative_max_risk.shift().loc[
+            end_indices].to_numpy()
+        risky_data.drop(
+            index=risky_data[risky_data['total_risk'] < risk_margin].index,
+            inplace=True)
+
         if risky_data.empty:
             risky_data.loc[0] = 0
         risky_data['simulation_number'] = vehicle_record[
@@ -2736,5 +2742,3 @@ class LaneChangeIssuesProcessor(VISSIMDataPostProcessor):
         issues_df = pd.concat([removed_vehicles, blocked_vehicles])
         issues_df['simulation_number'] = data['simulation_number'].iloc[0]
         return issues_df
-
-# TODO: class LaneChangePostProcessor
