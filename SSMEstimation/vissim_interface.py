@@ -715,17 +715,16 @@ class VissimInterface:
         # elif total_controlled_percentage < 100:
         #     vehicle_types.append(VehicleType.HUMAN_DRIVEN)
         #     percentages.append(100 - total_controlled_percentage)
-        vehicle_percentages[VehicleType.HUMAN_DRIVEN] = (
-                100 - total_controlled_percentage)
-        non_zero_percentages = {vt: p for vt, p
-                                in vehicle_percentages.items() if p > 0}
+        percentages_with_humans = {VehicleType.HUMAN_DRIVEN:
+                                   100 - total_controlled_percentage}
+        percentages_with_humans.update(vehicle_percentages)
         composition_number = self.find_matching_vehicle_composition(
-            list(non_zero_percentages.keys()))
+            percentages_with_humans)
         self.set_vehicle_inputs_composition(composition_number)
 
         # Modify the relative flows
         desired_flows = {Vehicle.ENUM_TO_VISSIM_ID[vt]: p for vt, p
-                         in non_zero_percentages.items()}
+                         in percentages_with_humans.items()}
         # desired_flows = dict()
         # for vt, percentage in non_zero_percentages.items():
         #     # vehicle_type_id = Vehicle.ENUM_TO_VISSIM_ID[vt]
@@ -940,32 +939,34 @@ class VissimInterface:
     # HELPER FUNCTIONS --------------------------------------------------------#
 
     def find_matching_vehicle_composition(
-            self, vehicle_types: List[VehicleType]) -> int:
+            self, vehicle_percentages: Dict[VehicleType, int]) -> int:
         """
         Finds the vehicle composition that has exactly the same vehicle types
         listed in the parameter
 
-        :param vehicle_types: List of VehicleType enums
+        :param vehicle_percentages: List of VehicleType enums
         :return: The vehicle composition number
         """
         vehicle_type_ids = set([Vehicle.ENUM_TO_VISSIM_ID[vt] for vt in
-                                vehicle_types])
+                                vehicle_percentages
+                                if vehicle_percentages[vt] > 0])
         veh_compositions_container = self.vissim.Net.VehicleCompositions
         for veh_composition in veh_compositions_container:
             counter = 0
             relative_flows_container = veh_composition.VehCompRelFlows
             # We can skip compositions with different number of relative flows
-            if len(relative_flows_container) != len(vehicle_types):
+            if len(relative_flows_container) != len(vehicle_type_ids):
                 continue
             for relative_flow in relative_flows_container:
                 flow_vehicle_type = int(relative_flow.AttValue('VehType'))
                 if flow_vehicle_type not in vehicle_type_ids:
                     continue
                 counter += 1
-            if counter == len(vehicle_types):
+            if counter == len(vehicle_type_ids):
                 return veh_composition.AttValue('No')
-        raise ValueError('Client: Composition not found in {} '
+        raise ValueError('Client: Composition with {} not found in {} '
                          'network.'.format(
+                            vehicle_percentages,
                             self.file_handler.get_network_name()))
 
     def find_vehicle_composition_by_name(self, name) -> int:
