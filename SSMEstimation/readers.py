@@ -42,7 +42,7 @@ def _add_vehicle_type_columns(data: pd.DataFrame,
             data[vt.name.lower() + '_percentage'] = p
             if p > 0:
                 s += str(p) + '% ' + vehicle_type_to_str_map[vt]
-        data['control_percentages'] = s
+        data['control percentages'] = s
         # for i in range(len(vehicle_type)):
         #     data[vehicle_type[i].name.lower() + '_percentage'] = (
         #         controlled_vehicles_percentage[i])

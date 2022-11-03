@@ -318,8 +318,8 @@ def create_summary_with_risks(scenario_name: str,
     pp = [
         SSMProcessor(scenario_name),
         RiskyManeuverProcessor(scenario_name),
-        # LaneChangeIssuesProcessor(scenario_name),
-        # DiscomfortProcessor(scenario_name)
+        LaneChangeIssuesProcessor(scenario_name),
+        DiscomfortProcessor(scenario_name)
     ]
 
     lane_change_reader = readers.VissimLaneChangeReader(scenario_name)

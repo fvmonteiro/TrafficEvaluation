@@ -295,45 +295,34 @@ def main():
     #     # continue
 
     # =============== Check results graphically =============== #
-    all_inputs = [1000, 1200, 1500, 2000]
+    # all_inputs = [1000, 1200, 1500, 2000]
     # all_plots_for_scenarios_with_risk(scenario_name, simulation_percentages,
     #                                   inputs_per_lane, accepted_risks,
     #                                   save_fig=False)
     ra = result_analysis.ResultAnalyzer(scenario_name, False)
-    ra.plot_lane_change_risk_histograms('total_lane_change_risk',
-                                        simulation_percentages,
-                                        inputs_per_lane, [0])
+    # ra.find_unfinished_simulations(simulation_percentages, inputs_per_lane)
     # ra.plot_flow_box_plot_vs_controlled_percentage(
     #     inputs_per_lane, simulation_percentages, aggregation_period=60)
     # ra.plot_risky_maneuver_histogram_per_vehicle_type(
     #         simulation_percentages, inputs_per_lane, min_total_risk=1
     #     )
+    # ra.plot_lane_change_risk_histograms('total_lane_change_risk',
+    #                                     simulation_percentages,
+    #                                     inputs_per_lane, [0], min_risk=1)
     # ra.plot_fd_discomfort(simulation_percentages, inputs_per_lane, [0])
 
     # ra.plot_emission_heatmap(simulation_percentages, inputs_per_lane,
     #                          accepted_risks)
-    # ra.plot_discomfort_heatmap(simulation_percentages, inputs_per_lane,
-    #                            accepted_risks)
-    # ra.plot_total_output_heatmap(simulation_percentages, inputs_per_lane,
-    #                              accepted_risks)
+    # for b in range(4, 8):
+    #     ra.plot_discomfort_heatmap(simulation_percentages, inputs_per_lane,
+    #                                accepted_risks, max_brake=b)
     # ra.print_summary_of_issues(simulation_percentages, inputs_per_lane,
     #                            accepted_risks)
-    # ra.plot_fundamental_diagram([1000, 2000], simulation_percentages,
-    #                             accepted_risks=[0],
-    #                             flow_sensor_name=['in'])
-    # ra.box_plot_y_vs_vehicle_type('flow', 'vehicles_per_lane', all_inputs,
-    #                               simulation_percentages, [0],
-    #                               sensor_name='in')
-    # ra.box_plot_y_vs_vehicle_type('flow', 'vehicles_per_lane', all_inputs,
-    #                               simulation_percentages, [0],
-    #                               sensor_name='out')
-    # ra.plot_lane_change_risk_histograms_risk_as_hue('total_lane_change_risk',
-    #                                                 simulation_percentages,
-    #                                                 inputs_per_lane,
-    #                                                 accepted_risks,
-    #                                                 )
-    # ra.plot_heatmap('lane_change_count', simulation_percentages,
-    #                 inputs_per_lane, accepted_risks)
+    # ra.plot_heatmap_risk_vs_control('lane_change_count',
+    #                                 simulation_percentages,
+    #                                 inputs_per_lane, [0])
+    ra.count_lane_changes_from_vehicle_record(simulation_percentages[0],
+                                              [1000], [0])
 
     # plot_acc_av_and_cav_results(False)
     # plot_cav_varying_percentage_results(False)
