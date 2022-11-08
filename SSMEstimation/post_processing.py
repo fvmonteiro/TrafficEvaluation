@@ -28,6 +28,10 @@ km_to_mile = 0.6213712
 
 # =============================== Functions ================================== #
 
+def find_percent_variation(value_1: float, value_2: float) -> float:
+    return (value_2 - value_1) / value_1 * 100
+
+
 def post_process_data(data_source: str,
                       vehicle_records: pd.DataFrame):
     """Post processing includes:
@@ -257,7 +261,7 @@ def create_summary_traffic_light_simulations(
     for vi in vehicle_inputs:
         print('Start of safety summary creation for network {}, vehicle '
               'percentages {}, and input {}'.format(
-                  network_name, vehicle_percentages, vi))
+            network_name, vehicle_percentages, vi))
         data_generator = vehicle_record_reader.generate_data(
             vehicle_percentages, [vi], n_rows=n_rows)
 
@@ -316,10 +320,10 @@ def create_summary_with_risks(scenario_name: str,
         accepted_risks = [0]
 
     pp = [
-        SSMProcessor(scenario_name),
-        RiskyManeuverProcessor(scenario_name),
+        # SSMProcessor(scenario_name),
+        # RiskyManeuverProcessor(scenario_name),
         LaneChangeIssuesProcessor(scenario_name),
-        DiscomfortProcessor(scenario_name)
+        # DiscomfortProcessor(scenario_name)
     ]
 
     lane_change_reader = readers.VissimLaneChangeReader(scenario_name)
@@ -329,7 +333,7 @@ def create_summary_with_risks(scenario_name: str,
         for ar in accepted_risks:
             print('Start of safety summary creation for network {}, vehicle '
                   'percentages {}, input {}, risk {}'.format(
-                      scenario_name, vehicle_percentages, vi, ar))
+                scenario_name, vehicle_percentages, vi, ar))
             data_generator = vehicle_record_reader.generate_data(
                 vehicle_percentages, [vi], ar, n_rows=n_rows)
 
@@ -345,8 +349,7 @@ def create_summary_with_risks(scenario_name: str,
                         lane_change_reader.load_data_from_scenario(
                             file_number, vehicle_percentages, vi, ar))
                     complement_lane_change_data(scenario_name, vehicle_records,
-                                                lane_change_data,
-                                                data['risky_maneuver'][-1])
+                                                lane_change_data)
                     data['lane_change'].append(lane_change_data)
                 print('-' * 79)
 
@@ -598,10 +601,15 @@ def compute_distance_to_leader(data_source: str, veh_data: pd.DataFrame,
         rear_x_vector[adjusted_idx] = veh_data['rear_x']
         front_y_vector[adjusted_idx] = veh_data['front_y']
         rear_y_vector[adjusted_idx] = veh_data['rear_y']
-        distance = np.sqrt((rear_x_vector[adjusted_leader_idx]
-                            - front_x_vector[adjusted_idx]) ** 2
-                           + (rear_y_vector[adjusted_leader_idx]
-                              - front_y_vector[adjusted_idx]) ** 2)
+        distance = compute_gap_between_vehicles(
+            rear_x_vector[adjusted_leader_idx],
+            rear_y_vector[adjusted_leader_idx],
+            front_x_vector[adjusted_idx],
+            front_y_vector[adjusted_idx])
+        # distance = np.sqrt((rear_x_vector[adjusted_leader_idx]
+        #                     - front_x_vector[adjusted_idx]) ** 2
+        #                    + (rear_y_vector[adjusted_leader_idx]
+        #                       - front_y_vector[adjusted_idx]) ** 2)
         # Set gap to zero when there's no leader
         distance[adjusted_idx == adjusted_leader_idx] = 0
 
@@ -614,6 +622,12 @@ def compute_distance_to_leader(data_source: str, veh_data: pd.DataFrame,
         distance = veh_data['delta_x']
 
     return distance
+
+
+def compute_gap_between_vehicles(leader_rear_x, leader_rear_y,
+                                 follower_front_x, follower_front_y):
+    return np.sqrt((leader_rear_x - follower_front_x) ** 2
+                   + (leader_rear_y - follower_front_y) ** 2)
 
 
 def remove_early_samples_from_vehicle_records(vehicle_records: pd.DataFrame,
@@ -666,7 +680,7 @@ def get_individual_vehicle_trajectories_to_moves(
     relevant_links = vissim_link_data[vissim_link_data['length'] > 20]
     relevant_link_ids = relevant_links['number'].to_numpy()
     link_id_map = dict(zip(relevant_links['number'],
-                       [i for i in range(relevant_links.shape[0])]))
+                           [i for i in range(relevant_links.shape[0])]))
 
     init_link_number = 0
     vehicle_record_reader = readers.VehicleRecordReader(scenario_name)
@@ -773,7 +787,8 @@ def translate_links_from_vissim_to_moves(
                                  vehicles_per_lane, accepted_risk)
 
     # Get the speeds for each link per second
-    drive_sched = _create_moves_speeds_from_link_evaluation(link_evaluation_data)
+    drive_sched = _create_moves_speeds_from_link_evaluation(
+        link_evaluation_data)
     drive_sched_writer = data_writer.MOVESLinkDriveWriter(scenario_name)
     drive_sched_writer.save_data(drive_sched, vehicle_percentages,
                                  vehicles_per_lane, accepted_risk)
@@ -799,11 +814,11 @@ def _fill_moves_link_data_from_link_evaluation_data(
                                      / 1000 * km_to_mile)
     moves_link_data['linkVolume'] = np.round(link_evaluation_data['volume'])
     moves_link_data['linkAvgSpeed'] = (
-        link_evaluation_data['average_speed'] * km_to_mile)
+            link_evaluation_data['average_speed'] * km_to_mile)
     moves_link_data['linkDescription'] = 0
     moves_link_data['linkAvgGrade'] = 0
     # Add one off-network link
-    moves_link_data.loc[max(moves_link_data.index)+1] = [
+    moves_link_data.loc[max(moves_link_data.index) + 1] = [
         moves_link_data['linkID'].max() + 1, county_id, zone_id, off_net_id,
         0, 0, 0, 0, 0]
     return moves_link_data
@@ -812,7 +827,6 @@ def _fill_moves_link_data_from_link_evaluation_data(
 def _fill_moves_link_data_from_vissim_links(
         scenario_name: str, link_data: pd.DataFrame,
         vehicle_data: pd.DataFrame):
-
     used_links = vehicle_data['link'].unique()
     used_links_idx = link_data[link_data['number'].isin(
         used_links)].index
@@ -931,24 +945,26 @@ def find_traffic_light_violations_all(
 
 def complement_lane_change_data(network_name: str,
                                 vehicle_record: pd.DataFrame,
-                                lc_data: pd.DataFrame,
-                                risky_maneuver_data: pd.DataFrame):
+                                vissim_lc_data: pd.DataFrame,
+                                # risky_maneuver_data: pd.DataFrame
+                                ):
     """
     Add lane change crossing and end times, and initial and total risks to
     surrounding vehicles to the lane change data.
 
     :param network_name: network name
     :param vehicle_record: vehicle records of a single simulation
-    :param lc_data: data for all lane changes during the simulation
-    :param risky_maneuver_data:
+    :param vissim_lc_data: data for all lane changes during the simulation
     :return: Nothing, modifies lc_data in place.
     """
 
     # Steps that can be done on the entire dataframe:
-    lc_data.drop(index=(
-        lc_data[lc_data['time'] + 5 > vehicle_record['time'].iloc[-1]]).index,
-                 inplace=True)
-    remove_false_lane_change_starts(vehicle_record, lc_data)
+    vissim_lc_data.drop(index=(
+        vissim_lc_data[vissim_lc_data['time'] + 5
+                       > vehicle_record['time'].iloc[-1]]).index,
+                        inplace=True)
+    remove_false_lane_change_starts(vehicle_record, vissim_lc_data)
+    lc_data = add_overlooked_lane_changes(vehicle_record, vissim_lc_data)
     print('Getting attributes of {} lane changes'.format(lc_data.shape[0]))
     lc_data['lc_direction'] = lc_data['dest_lane'] - lc_data['origin_lane']
     if np.any(lc_data['lc_direction'].abs() > 1):
@@ -993,8 +1009,8 @@ def complement_lane_change_data(network_name: str,
         total_risk_lo, total_risk_ld, total_risk_fd = (
             get_risks_during_lane_change(lc_veh_data, fd_data,
                                          single_lc_data, tf))
-            # get_total_lane_change_risk(
-            #     risky_maneuver_data, single_lc_data, tf))
+        # get_total_lane_change_risk(
+        #     risky_maneuver_data, single_lc_data, tf))
         # times[3] += time.perf_counter() - start_time
 
         vissim_in_control = lc_veh_data.loc[
@@ -1061,11 +1077,121 @@ def remove_false_lane_change_starts(veh_data: pd.DataFrame,
     :param lane_change_data:
     :return: (intended) Nothing. The lane change dataframe is altered in place
     """
-
     merged_data = lane_change_data[['time', 'veh_id']].merge(
         veh_data[['time', 'veh_id', 'lane_change']], on=['time', 'veh_id'])
     remove_idx = merged_data[merged_data['lane_change'] == 'None'].index
     lane_change_data.drop(index=remove_idx, inplace=True)
+
+
+def add_overlooked_lane_changes(veh_data: pd.DataFrame,
+                                vissim_lane_change_data: pd.DataFrame):
+    """
+    Add lane changes not logged by VISSIM in the lane change file. This
+    happens often with autonomous lane changes.
+    """
+    # Note: we could do this using only the vehicle record and ignoring the
+    # lane change data from VISSIM. However, using VISSIM's lane change
+    # record saves some time.
+
+    # Check if the vehicle data has already been processed. If not, convert
+    # from km/h to m/s and 'mark' as processed.
+    if veh_data['leader_id'].isna().any():
+        veh_data['leader_id'].fillna(veh_data['veh_id'],
+                                     inplace=True, downcast='infer')
+        veh_data['vx'] /= 3.6  # km/h->m/s
+
+    # Find all the lane changes in the vehicle records data
+    veh_data_sorted = veh_data.sort_values('veh_id', kind='stable')
+    veh_data_sorted['absolute_lane'] = get_absolute_lane(
+        veh_data_sorted['lane'], veh_data_sorted['link'])
+    veh_data_sorted['is_lane_changing'] = (veh_data_sorted['lane_change']
+                                           != 'None')
+    veh_data_sorted['lc_transition'] = (veh_data_sorted['is_lane_changing'].
+                                        diff().fillna(False))
+    lc_data = (veh_data_sorted.loc[veh_data_sorted[
+        'lc_transition']].iloc[::2])
+
+    # vissim_lane_change_data['absolute_lane'] = get_absolute_lane(
+    #     vissim_lane_change_data['origin_lane'], vissim_lane_change_data['link'])
+
+    # Look for lane changes in lc_data but not in the lane_change_data
+    intermediary_df = lc_data.merge(vissim_lane_change_data,
+                                    on=['time', 'veh_id'], how='left',
+                                    indicator=True)
+    missing_lane_changes = lc_data.reset_index()[
+        intermediary_df['_merge'] == 'left_only']
+    # Look for the details of each lane change. No idea of how to do this
+    # without a loop
+    new_data = []
+    filler_series = pd.Series(data=[0, 0, 0, 0, 0, 0, 0, 0],
+                              index=['veh_id', 'vx', 'rear_x', 'front_x',
+                                     'rear_y', 'front_y', 'delta_v', 'delta_x']
+                              ).astype('int')
+    for i, lc in missing_lane_changes.iterrows():
+        data_now = veh_data_sorted[veh_data_sorted['time'] == lc['time']]
+
+        try:
+            lo_data = data_now[(data_now['veh_id'] == lc['leader_id'])
+                               & (data_now['leader_id'] != lc['veh_id'])
+                               ].iloc[0]
+        except IndexError:
+            lo_data = filler_series
+        try:
+            fo_data = data_now[(data_now['leader_id'] == lc['veh_id'])
+                               & (data_now['veh_id'] != lc['leader_id'])
+                               ].iloc[0]
+        except IndexError:
+            fo_data = filler_series
+        # Note: this will not work in networks with several multi lane links
+        dest_lane = lc['lane'] + (1 if lc['lane_change'] == 'Left' else -1)
+        absolute_dest_lane = lc['absolute_lane'] + (
+            1 if lc['lane_change'] == 'Left' else -1)
+        dest_lane_data = data_now[data_now['absolute_lane']
+                                  == absolute_dest_lane]
+        gaps = dest_lane_data['front_x'] - lc['front_x']
+        try:
+            ld_data = dest_lane_data.loc[gaps[gaps > 0].idxmin()]
+        except ValueError:  # there are no gaps > 0
+            ld_data = filler_series
+        try:
+            fd_data = dest_lane_data.loc[gaps[gaps < 0].idxmax()]
+        except ValueError:  # there are no gaps < 0
+            fd_data = filler_series
+
+        new_row = [lc['time'], lc['veh_id'], lc['vx'], lc['link'],
+                   lc['lane'], dest_lane]
+        for nearby_vehicle in [lo_data, fo_data, ld_data, fd_data]:
+            if nearby_vehicle['front_x'] > lc['front_x']:
+                leader, follower = nearby_vehicle, lc
+            else:
+                leader, follower = lc, nearby_vehicle
+            inter_vehicle_gap = compute_gap_between_vehicles(
+                leader['rear_x'], leader['rear_y'],
+                follower['front_x'], follower['front_y'])
+            new_row.extend(
+                [nearby_vehicle['veh_id'], nearby_vehicle['vx'],
+                 lc['vx'] - nearby_vehicle['vx'], inter_vehicle_gap])
+        new_data.append(new_row)
+    new_df = pd.DataFrame(data=new_data,
+                          columns=vissim_lane_change_data.columns[:len(
+                              new_data[0])])
+    links = vissim_lane_change_data['link'].unique()
+    new_df.drop(index=new_df[~new_df['link'].isin(links)].index, inplace=True)
+
+    ret_df = pd.concat([vissim_lane_change_data, new_df],
+                       ignore_index=True).fillna(method='ffill')
+    return ret_df.sort_values('time')
+
+
+def get_absolute_lane(lane: pd.Series, link: pd.Series):
+    """
+    Makes the lane number independent of the link. The links with only two
+    lanes have 'absolute lanes' equal to 2 and 3. The method only works with
+    the basic in and out lanes scenario.
+    """
+    absolute_lane = lane.copy()
+    absolute_lane[link.isin({4, 6, 10002})] += 1
+    return absolute_lane
 
 
 def get_lane_change_crossing_and_end_times(single_veh_data,
@@ -1090,6 +1216,8 @@ def get_lane_change_crossing_and_end_times(single_veh_data,
         time_filter
         & (lc_data['lc_direction'] * (single_veh_data['y'] - 0.5) < 0),
         'time'].iloc[0]
+    # We can't just check veh_data['lane_change'] because values in this
+    # column become None while the vehicle still has lateral speed.
     # Sometimes AVs don't go all the way to the middle of the dest lane. In
     # these cases we check when it stopped changing its lateral position
     end_time_candidate_1 = single_veh_data.loc[
@@ -1244,8 +1372,8 @@ def get_risks_during_lane_change(
         time_filter = ((fd_data['time'] >= lc_data['time'])
                        & (fd_data['time'] <= end_time))
         fd_data = fd_data.loc[(fd_data['leader_id'] == lc_data['veh_id'])
-                                   # & (veh_data['veh_id'] == lc_data['fd_id'])
-                                   & time_filter]
+                              # & (veh_data['veh_id'] == lc_data['fd_id'])
+                              & time_filter]
         risk_fd = fd_data['risk'].sum() * delta_t
 
     return risk_lo, risk_ld, risk_fd
@@ -1334,17 +1462,17 @@ def compute_fd_discomfort(fd_data: pd.DataFrame,
                           lc_data: pd.Series,
                           max_braking: List[int]) -> List[float]:
     if lc_data['fd_id'] == 0:
-        return [0]*len(max_braking)
+        return [0] * len(max_braking)
 
     # fd_data = data_by_veh.get_group(lc_data['fd_id'])
     sampling_interval = fd_data['time'].iloc[1] - fd_data['time'].iloc[0]
 
     fd_discomfort = []
     fd_accel = fd_data.loc[
-            (fd_data['time'] > lc_data['time'])
-            & (fd_data['time'] < lc_data['time'] + 10)
-            & (fd_data['leader_id'] == lc_data['veh_id']),
-            'ax']
+        (fd_data['time'] > lc_data['time'])
+        & (fd_data['time'] < lc_data['time'] + 10)
+        & (fd_data['leader_id'] == lc_data['veh_id']),
+        'ax']
     for b in max_braking:
         strong_braking = fd_accel[fd_accel < b]
         if strong_braking.empty:
@@ -2571,7 +2699,7 @@ class RiskyManeuverProcessor(VISSIMDataPostProcessor):
         # Now we can look for "groups" of positive risk
         delta_t = round(padded_vehicle_records['time'].iloc[0:2].diff()[1], 2)
         padded_vehicle_records['is_risk_positive'] = (
-            padded_vehicle_records[risk_name] > 0)
+                padded_vehicle_records[risk_name] > 0)
         risk_transition_idx = padded_vehicle_records[
             padded_vehicle_records['is_risk_positive'].diff().fillna(False)
             != 0]
@@ -2621,7 +2749,7 @@ class ViolationProcessor(VISSIMDataPostProcessor):
 
     def __init__(self, scenario_name):
         VISSIMDataPostProcessor.__init__(self, scenario_name,
-                               'violation', self._writer)
+                                         'violation', self._writer)
         traffic_light_reader = readers.TrafficLightSourceReader(
             scenario_name)
         self.traffic_light_data = traffic_light_reader.load_data()
@@ -2669,7 +2797,7 @@ class DiscomfortProcessor(VISSIMDataPostProcessor):
 
     def __init__(self, scenario_name):
         VISSIMDataPostProcessor.__init__(self, scenario_name,
-                               'discomfort', self._writer)
+                                         'discomfort', self._writer)
         self.comfortable_brake = [-i for i in range(3, 10)]
 
     def post_process(self, data):
@@ -2715,7 +2843,7 @@ class LaneChangeIssuesProcessor(VISSIMDataPostProcessor):
 
     def __init__(self, scenario_name):
         VISSIMDataPostProcessor.__init__(self, scenario_name,
-                               'lane_change_issues', self._writer)
+                                         'lane_change_issues', self._writer)
         self.exit_links = [5, 6]  # exit links for the in_and_out scenario
 
     def post_process(self, data):

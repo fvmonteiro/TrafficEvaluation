@@ -33,24 +33,28 @@ def vehicle_percentage_dict_to_string(vp_dict: Dict[VehicleType, int]) -> str:
     return ' '.join(sorted(ret_str))
 
 
-def _plot_heatmap(data, value, rows, normalizer: int = 1,
-                  title: str = None, agg_function=np.sum):
+def _plot_heatmap(data: pd.DataFrame, value: str, rows: str, columns: str,
+                  normalizer: int = 1,
+                  title: str = None, agg_function=np.sum,
+                  custom_colorbar_range=False):
     fig = plt.figure()
     plt.rc('font', size=17)
     if title is None:
         title = value
     table = data.pivot_table(values=value,
-                             index=[rows],
-                             columns=['control percentages'],
-                             aggfunc=agg_function)
+                             index=[columns],
+                             columns=[rows],
+                             aggfunc=agg_function, sort=False)
     table /= normalizer
-    sns.heatmap(table.sort_index(axis=0, ascending=False),
-                annot=True,
-                xticklabels=table.columns.get_level_values(
-                    'control percentages'))
+    if custom_colorbar_range:
+        vmin, vmax = np.floor(table.min().min()), np.ceil(table.max().max())
+    else:
+        vmin, vmax = None, None
+    sns.heatmap(table, annot=True, vmin=vmin, vmax=vmax)
     plt.title(title, fontsize=22)
     plt.xlabel('Control Percentages')
     plt.tight_layout()
+    plt.show()
     return fig
 
 
@@ -779,8 +783,10 @@ class ResultAnalyzer:
             & (data['vehicles per hour'] == data[
                 'vehicles per hour'].min()),
             col_name].sum()
-        fig = _plot_heatmap(data, col_name, 'vehicles per hour', normalizer,
-                                'Dest Lane Follower Discomfort')
+        fig = _plot_heatmap(data, col_name, 'vehicles per hour',
+                            'control percentages', 1,
+                            'Dest Lane Follower Discomfort',
+                            custom_colorbar_range=True)
         if self.should_save_fig:
             fig_name = self.create_figure_name(
                 'heatmap', col_name,
@@ -800,7 +806,8 @@ class ResultAnalyzer:
             (data['control percentages'] == 'no control')
             & (data['vehicles_per_lane'] == data['vehicles_per_lane'].min()),
             y].sum()
-        fig = _plot_heatmap(data, y, 'vehicles_per_lane', normalizer)
+        fig = _plot_heatmap(data, y, 'vehicles_per_lane',
+                            'control percentages', normalizer)
         if self.should_save_fig:
             fig_name = self.create_figure_name(
                 'heatmap', y,
@@ -820,7 +827,7 @@ class ResultAnalyzer:
                 'vehicles_per_lane'].min()),
             y].sum()
         fig = _plot_heatmap(data, 'vehicle_count', 'vehicles_per_lane',
-                            normalizer, 'Output flow')
+                            'control percentages', normalizer, 'Output flow')
         if self.should_save_fig:
             fig_name = self.create_figure_name(
                 'heatmap', 'vehicle_count', vehicles_per_lane,
@@ -845,7 +852,8 @@ class ResultAnalyzer:
                == data_to_plot['vehicles per hour'].min()),
             y].sum()
         fig = _plot_heatmap(data_to_plot, 'emission_per_volume',
-                            'vehicles per hour', normalizer, title)
+                            'vehicles per hour', 'control percentages',
+                            1, title)
         if self.should_save_fig:
             fig_name = self.create_figure_name(
                 'heatmap', self._pollutant_id_to_string[pollutant_id],
@@ -881,6 +889,14 @@ class ResultAnalyzer:
                  'accepted_risk', 'issue'])['veh_id'].count()
         issue_count /= n_simulations
         print(issue_count)
+        print('NOTE: the vissim intervention count from the result above is '
+              'not reliable')
+        data = self._load_data('lane_change_count',
+                               vehicle_percentages,
+                               vehicles_per_lane, accepted_risks)
+
+        print(data.groupby(['vehicles_per_lane', 'control percentages'])[
+            'vissim_in_control'].mean())
 
     def plot_all_pollutant_heatmaps(
             self,
