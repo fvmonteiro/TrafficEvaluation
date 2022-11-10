@@ -320,7 +320,7 @@ def create_summary_with_risks(scenario_name: str,
         accepted_risks = [0]
 
     pp = [
-        # SSMProcessor(scenario_name),
+        SSMProcessor(scenario_name),
         # RiskyManeuverProcessor(scenario_name),
         LaneChangeIssuesProcessor(scenario_name),
         # DiscomfortProcessor(scenario_name)
@@ -333,7 +333,7 @@ def create_summary_with_risks(scenario_name: str,
         for ar in accepted_risks:
             print('Start of safety summary creation for network {}, vehicle '
                   'percentages {}, input {}, risk {}'.format(
-                scenario_name, vehicle_percentages, vi, ar))
+                   scenario_name, vehicle_percentages, vi, ar))
             data_generator = vehicle_record_reader.generate_data(
                 vehicle_percentages, [vi], ar, n_rows=n_rows)
 
@@ -345,11 +345,11 @@ def create_summary_with_risks(scenario_name: str,
                     data[single_pp.data_name].append(single_pp.post_process(
                         vehicle_records))
                 if analyze_lane_change:
-                    lane_change_data = (
+                    vissim_lane_change_data = (
                         lane_change_reader.load_data_from_scenario(
                             file_number, vehicle_percentages, vi, ar))
-                    complement_lane_change_data(scenario_name, vehicle_records,
-                                                lane_change_data)
+                    lane_change_data = complement_lane_change_data(
+                        scenario_name, vehicle_records, vissim_lane_change_data)
                     data['lane_change'].append(lane_change_data)
                 print('-' * 79)
 
@@ -947,7 +947,7 @@ def complement_lane_change_data(network_name: str,
                                 vehicle_record: pd.DataFrame,
                                 vissim_lc_data: pd.DataFrame,
                                 # risky_maneuver_data: pd.DataFrame
-                                ):
+                                ) -> pd.DataFrame:
     """
     Add lane change crossing and end times, and initial and total risks to
     surrounding vehicles to the lane change data.
@@ -955,7 +955,7 @@ def complement_lane_change_data(network_name: str,
     :param network_name: network name
     :param vehicle_record: vehicle records of a single simulation
     :param vissim_lc_data: data for all lane changes during the simulation
-    :return: Nothing, modifies lc_data in place.
+    :return: Data with new columns
     """
 
     # Steps that can be done on the entire dataframe:
@@ -965,7 +965,8 @@ def complement_lane_change_data(network_name: str,
                         inplace=True)
     remove_false_lane_change_starts(vehicle_record, vissim_lc_data)
     lc_data = add_overlooked_lane_changes(vehicle_record, vissim_lc_data)
-    print('Getting attributes of {} lane changes'.format(lc_data.shape[0]))
+    print('Getting lane change attributes. {} from LC file, {} total'.format(
+          vissim_lc_data.shape[0], lc_data.shape[0]))
     lc_data['lc_direction'] = lc_data['dest_lane'] - lc_data['origin_lane']
     if np.any(lc_data['lc_direction'].abs() > 1):
         warnings.warn('Vehicle changing two lanes at a time?',
@@ -1034,7 +1035,7 @@ def complement_lane_change_data(network_name: str,
     [columns.append('fd_discomfort_' + str(-i)) for i in max_comf_brake]
     lc_data[columns] = new_data
     lc_data['note'] = notes
-    lc_data.dropna(inplace=True)
+    return lc_data.dropna()
 
 
 def add_vehicle_types_to_lc_data(veh_data: pd.DataFrame,
@@ -1110,9 +1111,6 @@ def add_overlooked_lane_changes(veh_data: pd.DataFrame,
                                         diff().fillna(False))
     lc_data = (veh_data_sorted.loc[veh_data_sorted[
         'lc_transition']].iloc[::2])
-
-    # vissim_lane_change_data['absolute_lane'] = get_absolute_lane(
-    #     vissim_lane_change_data['origin_lane'], vissim_lane_change_data['link'])
 
     # Look for lane changes in lc_data but not in the lane_change_data
     intermediary_df = lc_data.merge(vissim_lane_change_data,

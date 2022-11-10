@@ -914,14 +914,20 @@ class ResultAnalyzer:
             vehicles_per_lane: List[int],
             accepted_risks: List[int] = None
     ):
-        lc_reader = readers.VissimLaneChangeReader(self.scenario_name)
-        lc_data = lc_reader.load_data_with_controlled_percentage(
-            [vehicle_percentages], vehicles_per_lane, accepted_risks)
-        print(lc_data.groupby(['simulation_number'])['veh_id'].count())
+        print(vehicle_percentages)
+        warmup_time = 600
+        # lc_reader = readers.VissimLaneChangeReader(self.scenario_name)
+        # lc_data = lc_reader.load_data_with_controlled_percentage(
+        #     [vehicle_percentages], vehicles_per_lane, accepted_risks)
+        # # print(lc_data.groupby(['simulation_number'])['veh_id'].count())
+        # lc_data.drop(index=lc_data[lc_data['time'] < warmup_time].index,
+        #              inplace=True)
+        # print('LCs from LC file: ', lc_data.shape[0])
 
-        links = lc_data['link'].unique()
-
+        # links = lc_data['link'].unique()
+        links = [3, 10002]
         veh_reader = readers.VehicleRecordReader(self.scenario_name)
+        lc_counter = []
         for vpl in vehicles_per_lane:
             print('Vehicles per lane ', vpl)
             generator = veh_reader.generate_data(vehicle_percentages,
@@ -929,10 +935,13 @@ class ResultAnalyzer:
             for (data, i) in generator:
                 data.drop(index=data[~data['link'].isin(links)].index,
                           inplace=True)
+                data.drop(index=data[data['time'] < warmup_time].index,
+                          inplace=True)
                 data.sort_values('veh_id', kind='stable', inplace=True)
                 data['is_lane_changing'] = data['lane_change'] != 'None'
                 data['lc_transition'] = data['is_lane_changing'].diff()
-                print("LC count: ", np.count_nonzero(data['lc_transition']) / 2)
+                lc_counter.append(np.count_nonzero(data['lc_transition']) / 2)
+            print('LCs from veh records: ', sum(lc_counter))
 
     # Traffic Light Scenario Plots =========================================== #
 
