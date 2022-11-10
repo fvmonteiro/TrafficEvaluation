@@ -260,8 +260,10 @@ def main():
     ]
 
     percentages = [i for i in range(0, 101, 100)]
-    simulation_percentages = create_vehicle_percentages_dictionary(
+    full_penetration = create_vehicle_percentages_dictionary(
         vehicle_type, percentages, 1)
+    varied_cav_penetration = create_vehicle_percentages_dictionary(
+        [VehicleType.CONNECTED], [i for i in range(0, 76, 25)], 1)
     inputs_per_lane = [1000, 2000]
     accepted_risks = [0]  # [i for i in range(0, 31, 10)]
 
@@ -278,10 +280,10 @@ def main():
     # for sp in simulation_percentages:
     #     print(sp)
     #     post_processing.create_summary_with_risks(
-    #         scenario_name, sp, inputs_per_lane, accepted_risks)
-    #     for ipl in inputs_per_lane:
-    #         post_processing.get_individual_vehicle_trajectories_to_moves(
-    #             scenario_name, ipl, sp, 0)
+    #         scenario_name, sp, inputs_per_lane, accepted_risks, debugging=False)
+        # for ipl in inputs_per_lane:
+        #     post_processing.get_individual_vehicle_trajectories_to_moves(
+        #         scenario_name, ipl, sp, 0)
     # post_processing.create_summary_with_risks(
     #     scenario_name, {VehicleType.ACC: 0}, [1000],
     #     accepted_risks=[0], analyze_lane_change=True, debugging=True)
@@ -299,38 +301,36 @@ def main():
     # all_plots_for_scenarios_with_risk(scenario_name, simulation_percentages,
     #                                   inputs_per_lane, accepted_risks,
     #                                   save_fig=False)
+
+    simulation_percentages = full_penetration
+
     ra = result_analysis.ResultAnalyzer(scenario_name, False)
-    # ra.find_unfinished_simulations(simulation_percentages, inputs_per_lane)
+
+    # ra.plot_risk_histograms('total_risk', simulation_percentages,
+    #                         inputs_per_lane, [0], min_risk=1)
+    # ra.plot_risk_histograms('total_lane_change_risk', simulation_percentages,
+    #                         inputs_per_lane, [0], min_risk=1)
     # ra.plot_flow_box_plot_vs_controlled_percentage(
     #     inputs_per_lane, simulation_percentages, aggregation_period=60)
-    # ra.plot_risky_maneuver_histogram_per_vehicle_type(
-    #         simulation_percentages, inputs_per_lane, min_total_risk=1
-    #     )
-    # ra.plot_lane_change_risk_histograms('total_lane_change_risk',
-    #                                     simulation_percentages,
-    #                                     inputs_per_lane, [0], min_risk=1)
-    # ra.plot_fd_discomfort(simulation_percentages, inputs_per_lane, [0])
-
+    # ra.plot_fd_discomfort(full_penetration, inputs_per_lane, [0])
+    # ra.plot_fd_discomfort(varied_cav_penetration, inputs_per_lane, [0])
     # ra.plot_emission_heatmap(simulation_percentages, inputs_per_lane,
     #                          accepted_risks)
+
+    # ra.accel_vs_time_for_different_vehicle_pairs()
+
+    # ra.find_unfinished_simulations(simulation_percentages, inputs_per_lane)
+    # ra.plot_lane_change_count_heatmap(full_penetration, inputs_per_lane,
+    #                                   [0])
     # for b in range(4, 8):
     #     ra.plot_discomfort_heatmap(simulation_percentages, inputs_per_lane,
     #                                accepted_risks, max_brake=b)
-    # ra.print_summary_of_issues(simulation_percentages, inputs_per_lane,
-    #                            accepted_risks)
-    # ra.plot_heatmap_risk_vs_control('lane_change_count',
-    #                                 simulation_percentages,
-    #                                 inputs_per_lane, [0])
-    ra.count_lane_changes_from_vehicle_record(simulation_percentages[0],
-                                              [1000], [0])
+    ra.print_summary_of_issues(simulation_percentages, inputs_per_lane,
+                               accepted_risks)
 
     # plot_acc_av_and_cav_results(False)
     # plot_cav_varying_percentage_results(False)
     # plot_traffic_lights_results(False)
-
-    # save_fig = False
-    # ra = result_analysis.ResultAnalyzer(scenario_name, save_fig)
-    # ra.plot_lane_change_risks(None, None, 0)
 
 
 if __name__ == '__main__':
