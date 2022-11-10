@@ -1119,9 +1119,9 @@ class MOVESDatabaseReader:
         temp = []
         for vt in vehicle_percentages:
             p = vehicle_percentages[vt]
-            p_str = str(p) if p < 100 else ''
+            p_str = (str(p) + '_') if p < 100 else ''
             if p > 0:
-                temp.append(self._vehicle_type_str_map[vt] + p_str)
+                temp.append(p_str + self._vehicle_type_str_map[vt])
         if not temp:
             temp.append(self._vehicle_type_str_map[VehicleType.HUMAN_DRIVEN])
         vt_str = '_'.join(sorted(temp))

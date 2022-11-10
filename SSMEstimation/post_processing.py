@@ -657,6 +657,20 @@ def remove_early_samples_from_sensors(data: pd.DataFrame, warmup_time: int):
               inplace=True)
 
 
+# TODO [nov 8, 2022]: can probably replace the two preceeding functions
+def drop_warmup_samples(data: pd.DataFrame, warmup_time: int):
+    """
+    Drops samples with time below warmup time.
+    :param data: Any VISSIM output or post processed data
+    :param warmup_time: Time *in minutes*
+    """
+    warmup_time *= 60
+    if 'time' not in data.columns:
+        create_time_in_minutes_from_intervals(data)
+        data['time'] *= 60
+    data.drop(index=data[data['time'] < warmup_time].index, inplace=True)
+
+
 # ========================= Interfacing with MOVES =========================== #
 
 def get_individual_vehicle_trajectories_to_moves(

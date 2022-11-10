@@ -1,5 +1,3 @@
-from collections.abc import Callable
-from dataclasses import dataclass
 import os
 from typing import List, Dict
 from typing import Union
@@ -45,12 +43,16 @@ def _plot_heatmap(data: pd.DataFrame, value: str, rows: str, columns: str,
                              index=[columns],
                              columns=[rows],
                              aggfunc=agg_function, sort=False)
-    table /= normalizer
+    if normalizer > 0:
+        table /= normalizer
+    max_value = np.ceil(table.max().max())
+    min_value = np.floor(table.min().min())
     if custom_colorbar_range:
-        vmin, vmax = np.floor(table.min().min()), np.ceil(table.max().max())
+        vmin, vmax = min_value, max_value
     else:
         vmin, vmax = None, None
-    sns.heatmap(table, annot=True, vmin=vmin, vmax=vmax)
+    string_format = '.2f' if max_value < 1000 else '.2g'
+    sns.heatmap(table, annot=True, vmin=vmin, vmax=vmax, fmt=string_format)
     plt.title(title, fontsize=22)
     plt.xlabel('Control Percentages')
     plt.tight_layout()
@@ -62,20 +64,54 @@ def _box_plot_y_vs_controlled_percentage(relevant_data: pd.DataFrame,
                                          y: str):
     # Plot
     fig = plt.figure()
-    plt.rc('font', size=15)
+    plt.rc('font', size=30)
+    fig.set_size_inches(12, 6)
     sns.set_style('whitegrid')
-    sns.boxplot(data=relevant_data,  # orient='h',
-                x='control percentages', y=y,
-                hue='vehicles per hour')
+    ax = sns.boxplot(data=relevant_data,  # orient='h',
+                     x='control percentages', y=y,
+                     hue='vehicles per hour')
     # if self.should_save_fig:
     #     self.save_fig(plt.gcf(), 'box_plot', y, vehicles_per_lane,
     #                   vehicle_percentages)
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.1),
+              title='vehicles per hour', ncols=2)
     plt.tight_layout()
     plt.show()
-    # Direct output
-    print(relevant_data.groupby(['vehicles per hour',
-                                 'control percentages'])[y].median())
     return fig
+
+
+def _produce_console_output(
+        data: pd.DataFrame, y: str,
+        vehicle_percentages: List[Dict[VehicleType, int]],
+        accepted_risks: List[int], aggregation_functions,
+        show_variation: bool = False):
+    try:
+        n_simulations = len(data['simulation_number'].unique())
+    except KeyError:
+        n_simulations = 1
+    group_by_cols = ['vehicles per hour', 'control percentages']
+    varied_accepted_risk = len(accepted_risks) > 1
+    if varied_accepted_risk:
+        group_by_cols += ['accepted_risk']
+    mixed_traffic = False
+    for vp in vehicle_percentages:
+        mixed_traffic = mixed_traffic or any(
+            [0 < p < 100 for p in vp.values()])
+    # if mixed_traffic and 'veh_type' in data.columns:
+    #     group_by_cols += ['veh_type']
+    print(y)
+    # Easier to transfer results to paper in this order
+    data.sort_values('vehicles per hour',
+                     kind='stable', inplace=True)
+    result = data.groupby(group_by_cols, sort=False)[y].agg(
+        aggregation_functions) / n_simulations
+    if show_variation:
+        baselines = result.groupby(level=0).first()
+        variation = post_processing.find_percent_variation(baselines, result)
+        print(baselines)
+        print(variation)
+    else:
+        print(result)
 
 
 class ResultAnalyzer:
@@ -249,6 +285,12 @@ class ResultAnalyzer:
                 vehicle_percentages=vehicle_percentages)
             self.save_fig(fig, fig_name=fig_name)
 
+        _produce_console_output(relevant_data, 'flow', vehicle_percentages,
+                                accepted_risks, np.median)
+        # # Direct output
+        # print(relevant_data.groupby(['vehicles per hour',
+        #                              'control percentages'])[y].median())
+
     def box_plot_y_vs_controlled_percentage(
             self, y: str, vehicles_per_lane: Union[int, List[int]],
             vehicle_percentages: List[Dict[VehicleType, int]],
@@ -330,15 +372,6 @@ class ResultAnalyzer:
                              'Accepted Risk']].groupby(
             ['vehicles_per_lane', 'control percentages',
              'Accepted Risk']).median())
-        # for ct in relevant_data['control_type'].unique():
-        #     print('vehs per lane: {}, ct: {}, median {}: {}'.format(
-        #         vehicles_per_lane, ct, y,
-        #         relevant_data.loc[relevant_data['control_type'] == ct,
-        #                           y].median()
-        #     ))
-        # legend_len = len(relevant_data[hue].unique())
-        # n_legend_cols = (legend_len if legend_len < 5
-        #                  else legend_len // 2 + 1)
         plt.legend(title=hue, ncol=1,
                    bbox_to_anchor=(1.01, 1))
         plt.title(str(vehicles_per_lane) + ' vehs/h/lane', fontsize=22)
@@ -351,65 +384,72 @@ class ResultAnalyzer:
         plt.tight_layout()
         plt.show()
 
-    def plot_risky_maneuver_histogram_per_vehicle_type(
-            self, vehicle_percentages: List[Dict[VehicleType, int]],
-            vehicles_per_lane: List[int],
-            warmup_time: int = 10, min_total_risk: float = 1):
-        """
-        Plots histograms of risky maneuvers' total risk.
+    # def plot_risky_maneuver_histogram_per_vehicle_type(
+    #         self, vehicle_percentages: List[Dict[VehicleType, int]],
+    #         vehicles_per_lane: List[int],
+    #         warmup_time: int = 10, min_total_risk: float = 1):
+    #     """
+    #     Plots histograms of risky maneuvers' total risk.
+    #
+    #     :param vehicle_percentages: each dictionary in the list must
+    #      define the percentage of different vehicles type in the simulation
+    #     :param vehicles_per_lane: input per lane used to generate the data.
+    #      If this is a list, a single plot with different colors for each
+    #      value is drawn.
+    #     :param warmup_time: must be given in minutes. Samples before
+    #      warmup_time are ignored.
+    #     :param min_total_risk: risky maneuvers with total risk below this
+    #      value are ignored.
+    #     :return: Nothing, just plots figures
+    #     """
+    #
+    #     data = self._load_data('total_risk', vehicle_percentages,
+    #                            vehicles_per_lane, accepted_risks=[0])
+    #     warmup_time *= 60  # minutes to seconds
+    #     data.drop(index=data[data['total_risk'] < min_total_risk].index,
+    #               inplace=True)
+    #     self._prepare_data_for_plotting(data, warmup_time)
+    #
+    #     plt.rc('font', size=30)
+    #     for control_percentage, data_to_plot in data.groupby(
+    #             'control percentages'):
+    #         data_to_plot = data[data['control percentages']
+    #                             == control_percentage]
+    #         # min_bin = int(np.floor(min_total_risk))
+    #         # max_bin = int(np.ceil(data_to_plot['total_risk'].max()))
+    #         # interval = max_bin // 200 + 1
+    #         # bins = [i for i in range(min_bin, max_bin, interval)]
+    #         sns.histplot(data=data_to_plot, x='total_risk',
+    #                      stat='count', hue='vehicles per hour',
+    #                      palette='tab10',)  # bins=bins)
+    #         fig = plt.gcf()
+    #         fig.set_size_inches(12, 6)
+    #         plt.title(control_percentage)
+    #         plt.tight_layout()
+    #
+    #         if self.should_save_fig:
+    #             ctr_percent_string = str(control_percentage).replace(
+    #                 '% ', '_').lower()
+    #             fig_name = self.create_figure_name(
+    #                 'histogram', 'risky_intervals', vehicles_per_lane,
+    #                 control_percentage=ctr_percent_string)
+    #             self.save_fig(plt.gcf(), fig_name=fig_name)
+    #         plt.show()
+    #
+    #     # Direct output:
+    #     n_simulations = len(data['simulation_number'].unique())
+    #     group_by_cols = ['vehicles_per_lane', 'control percentages']
+    #     print('Risky Maneuvers')
+    #     mixed_traffic = False
+    #     for vp in vehicle_percentages:
+    #         mixed_traffic = mixed_traffic or any(
+    #             [0 < p < 100 for p in vp.values()])
+    #     if mixed_traffic:
+    #         group_by_cols += ['veh_type']
+    #     print(data.groupby(group_by_cols)
+    #           ['total_risk'].agg([np.size, np.sum]) / n_simulations)
 
-        :param vehicle_percentages: each dictionary in the list must
-         define the percentage of different vehicles type in the simulation
-        :param vehicles_per_lane: input per lane used to generate the data.
-         If this is a list, a single plot with different colors for each
-         value is drawn.
-        :param warmup_time: must be given in minutes. Samples before
-         warmup_time are ignored.
-        :param min_total_risk: risky maneuvers with total risk below this
-         value are ignored.
-        :return: Nothing, just plots figures
-        """
-
-        data = self._load_data('total_risk', vehicle_percentages,
-                               vehicles_per_lane, accepted_risks=[0])
-        warmup_time *= 60  # minutes to seconds
-        data.drop(index=data[data['total_risk'] < min_total_risk].index,
-                  inplace=True)
-        self._prepare_data_for_plotting(data, warmup_time)
-
-        plt.rc('font', size=30)
-        for control_percentage, data_to_plot in data.groupby(
-                'control percentages'):
-            data_to_plot = data[data['control percentages']
-                                == control_percentage]
-            min_bin = int(np.floor(min_total_risk))
-            max_bin = int(np.ceil(data_to_plot['total_risk'].max()))
-            interval = max_bin // 200 + 1
-            bins = [i for i in range(min_bin, max_bin, interval)]
-            sns.histplot(data=data_to_plot, x='total_risk',
-                         stat='count', hue='vehicles per hour',
-                         palette='tab10', bins=bins)
-            fig = plt.gcf()
-            fig.set_size_inches(12, 6)
-            plt.title(control_percentage)
-            plt.tight_layout()
-
-            if self.should_save_fig:
-                ctr_percent_string = str(control_percentage).replace(
-                    '% ', '_').lower()
-                fig_name = self.create_figure_name(
-                    'histogram', 'risky_intervals', vehicles_per_lane,
-                    control_percentage=ctr_percent_string)
-                self.save_fig(plt.gcf(), fig_name=fig_name)
-            plt.show()
-
-        # Direct output:
-        n_simulations = len(data['simulation_number'].unique())
-        print('Risky Maneuvers')
-        print(data.groupby(['vehicles_per_lane', 'control percentages'])
-              ['total_risk'].agg([np.size, np.sum]) / n_simulations)
-
-    def plot_lane_change_risk_histograms(
+    def plot_risk_histograms(
             self, risk_type: str,
             vehicle_percentages: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int], accepted_risks: List[int],
@@ -431,21 +471,22 @@ class ResultAnalyzer:
         """
         data = self._load_data(risk_type, vehicle_percentages,
                                vehicles_per_lane, accepted_risks)
-        self._prepare_data_for_plotting(data, warmup_time * 60)
-        relevant_data = self._ensure_data_source_is_uniform(
+        data = self._ensure_data_source_is_uniform(
             data, vehicles_per_lane)
-        relevant_data.drop(
-            index=relevant_data[relevant_data[risk_type] < min_risk].index,
-            inplace=True)
+        self._prepare_risk_data(data, risk_type, warmup_time, min_risk)
         plt.rc('font', size=30)
         if len(accepted_risks) <= 1:
-            grouped_data = relevant_data.groupby('control percentages')
+            grouped_data = data.groupby('control percentages')
         else:
-            grouped_data = relevant_data.groupby(['control percentages',
-                                                  'accepted_risk'])
+            grouped_data = data.groupby(['control percentages',
+                                         'accepted_risk'])
         for name, data_to_plot in grouped_data:
             if data_to_plot.empty:
                 continue
+            # min_bin = int(np.floor(min_total_risk))
+            # max_bin = int(np.ceil(data_to_plot['total_risk'].max()))
+            # interval = max_bin // 200 + 1
+            # bins = [i for i in range(min_bin, max_bin, interval)]
             sns.histplot(data=data_to_plot, x=risk_type,
                          stat='count', hue='vehicles per hour',
                          palette='tab10')
@@ -461,12 +502,8 @@ class ResultAnalyzer:
                 self.save_fig(fig, fig_name=fig_name)
             plt.show()
 
-        # Direct output
-        n_simulations = len(data['simulation_number'].unique())
-        print(risk_type)
-        print(relevant_data.groupby(
-            ['vehicles per hour', 'control percentages', 'accepted_risk']
-        )[risk_type].agg([np.size, np.sum]) / n_simulations)
+        _produce_console_output(data, risk_type, vehicle_percentages,
+                                accepted_risks, [np.size, np.sum])
 
     def plot_lane_change_risk_histograms_risk_as_hue(
             self, risk_type: str,
@@ -776,8 +813,7 @@ class ResultAnalyzer:
                                vehicles_per_lane, accepted_risks)
         self._prepare_data_for_plotting(data, 600)
         col_name = '_'.join([y, str(brake_threshold)])
-        # for col in data.columns:
-        #     if col.startswith(y):
+        agg_function = np.mean
         normalizer = data.loc[
             (data['control percentages'] == 'no control')
             & (data['vehicles per hour'] == data[
@@ -786,12 +822,17 @@ class ResultAnalyzer:
         fig = _plot_heatmap(data, col_name, 'vehicles per hour',
                             'control percentages', 1,
                             'Dest Lane Follower Discomfort',
+                            agg_function=agg_function,
                             custom_colorbar_range=True)
         if self.should_save_fig:
             fig_name = self.create_figure_name(
                 'heatmap', col_name,
                 vehicles_per_lane, vehicle_percentages)
             self.save_fig(fig, fig_name=fig_name)
+
+        _produce_console_output(data, col_name, vehicle_percentages,
+                                accepted_risks, agg_function,
+                                show_variation=True)
 
     def plot_discomfort_heatmap(
             self,
@@ -844,21 +885,44 @@ class ResultAnalyzer:
         y = 'emission_per_volume'
         data = self._load_data(y, vehicle_percentages,
                                vehicles_per_lane, accepted_risks)
-        data_to_plot = data.loc[(data['pollutant_id'] == pollutant_id)]
+        self._prepare_pollutant_data(data, pollutant_id)
         title = 'Normalized ' + self._pollutant_id_to_string[pollutant_id]
-        normalizer = data_to_plot.loc[
-            (data_to_plot['control percentages'] == 'no control')
-            & (data_to_plot['vehicles per hour']
-               == data_to_plot['vehicles per hour'].min()),
+        normalizer = data.loc[
+            (data['control percentages'] == 'no control')
+            & (data['vehicles per hour']
+               == data['vehicles per hour'].min()),
             y].sum()
-        fig = _plot_heatmap(data_to_plot, 'emission_per_volume',
-                            'vehicles per hour', 'control percentages',
-                            1, title)
+
+        fig = _plot_heatmap(data, y, 'vehicles per hour', 'control percentages',
+                            normalizer, title)
         if self.should_save_fig:
             fig_name = self.create_figure_name(
                 'heatmap', self._pollutant_id_to_string[pollutant_id],
                 vehicles_per_lane, vehicle_percentages)
             self.save_fig(fig, fig_name=fig_name)
+        _produce_console_output(data, y, vehicle_percentages,
+                                [0], np.sum, show_variation=True)
+
+    def plot_lane_change_count_heatmap(
+            self, vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicles_per_lane: List[int], accepted_risks: List[int] = None,
+            warmup_time: int = 10):
+        if accepted_risks is None:
+            accepted_risks = [0]
+        y = 'lane_change_count'
+        agg_function = np.count_nonzero
+        col_to_count = 'veh_id'
+
+        data = self._load_data(y, vehicle_percentages,
+                               vehicles_per_lane, accepted_risks)
+        post_processing.drop_warmup_samples(data, warmup_time)
+        n_simulations = len(data['simulation_number'].unique())
+        _plot_heatmap(data, col_to_count, 'vehicles per hour',
+                      'control percentages', normalizer=n_simulations,
+                      title='lane change count',
+                      agg_function=agg_function)
+        _produce_console_output(data, col_to_count, vehicle_percentages,
+                                accepted_risks, agg_function)
 
     def print_summary_of_issues(
             self, vehicle_percentages: List[Dict[VehicleType, int]],
@@ -896,7 +960,7 @@ class ResultAnalyzer:
                                vehicles_per_lane, accepted_risks)
 
         print(data.groupby(['vehicles_per_lane', 'control percentages'])[
-            'vissim_in_control'].mean())
+                  'vissim_in_control'].mean())
 
     def plot_all_pollutant_heatmaps(
             self,
@@ -1067,57 +1131,88 @@ class ResultAnalyzer:
         scenario with 25% CACC-equipped vehicles.
         :return:
         """
-        network_name = 'traffic_lights'
-        vehicle_percentage = {VehicleType.TRAFFIC_LIGHT_CACC: 25}
-        vehicles_per_lane = 500
-        cases = [
-            {'follower': 'human', 'leader': 'human', 'id': 202},
-            {'follower': 'human', 'leader': 'CAV', 'id': 203},
-            {'follower': 'CAV', 'leader': 'human', 'id': 201},
-            # {'follower': 'CAV', 'leader': 'CAV', 'id': 152},
-            {'follower': 'CAV', 'leader': 'CAV', 'id': 196},
-            # {'follower': 'CAV', 'leader': 'CAV', 'id': 208},
-            # {'follower': 'CAV', 'leader': 'CAV', 'id': 234},
-            # {'follower': 'CAV', 'leader': 'CAV', 'id': 239}
+        # scenario_name = 'traffic_lights'
+        # vehicle_percentage = {VehicleType.TRAFFIC_LIGHT_CACC: 25}
+        # vehicles_per_lane = 500
+        # all_cases = [
+        #     {'follower': 'human', 'leader': 'human', 'id': 202},
+        #     {'follower': 'human', 'leader': 'CAV', 'id': 203},
+        #     {'follower': 'CAV', 'leader': 'human', 'id': 201},
+        #     # {'follower': 'CAV', 'leader': 'CAV', 'id': 152},
+        #     {'follower': 'CAV', 'leader': 'CAV', 'id': 196},
+        #     # {'follower': 'CAV', 'leader': 'CAV', 'id': 208},
+        #     # {'follower': 'CAV', 'leader': 'CAV', 'id': 234},
+        #     # {'follower': 'CAV', 'leader': 'CAV', 'id': 239}
+        # ]
+        # time = [910, 950]
+        scenario_name = 'in_and_out_safe'
+        vehicle_percentage = {VehicleType.CONNECTED: 50}
+        vehicles_per_lane = 2000
+        all_cases = [
+            {'follower': 'human', 'leader': 'human',
+             'id': 35, 'time': [30, 40]},
+            {'follower': 'human', 'leader': 'CAV',
+             'id': 33, 'time': [30, 40]},
+            {'follower': 'CAV', 'leader': 'human',
+             'id': 53, 'time': [37, 53]},
+            {'follower': 'CAV', 'leader': 'CAV',
+             'id': 17, 'time': [22, 31]},
         ]
-        time = [910, 950]
-        reader = readers.VehicleRecordReader(network_name)
+        reader = readers.VehicleRecordReader(scenario_name)
         veh_record = reader.load_data_from_scenario(1, vehicle_percentage,
-                                                    vehicles_per_lane)
+                                                    vehicles_per_lane, 0)
         sns.set_style('whitegrid')
-        # fig, axes = plt.subplots(len(cases), 1)
+        # fig, axes = plt.subplots(len(all_cases), 1)
         # fig.set_size_inches(12, 16)
-        plt.rc('font', size=20)
-        full_data = []
-        for i in range(len(cases)):
-            case_dict = cases[i]
-            veh_id = case_dict['id']
-            follower_data = veh_record.loc[veh_record['veh_id'] == veh_id]
+        plt.rc('font', size=30)
+        # full_data = []
+        for case in all_cases:
+            # case = all_cases[i]
+            veh_id = case['id']
+            time = case['time']
+            veh_record_slice = veh_record[(veh_record['time'] > time[0])
+                                          & (veh_record['time'] < time[1])]
+            follower_data = veh_record_slice.loc[veh_record_slice['veh_id']
+                                                 == veh_id]
             leader_id = follower_data.iloc[0]['leader_id']
-            leader_data = veh_record.loc[veh_record['veh_id'] == leader_id]
+            leader_data = veh_record_slice.loc[veh_record_slice['veh_id']
+                                               == leader_id]
             data = pd.concat([follower_data, leader_data])
-            full_data.append(data)
-            sns.lineplot(data=data.loc[(data['time'] > time[0]) & (data[
-                                                                       'time'] <
-                                                                   time[1])],
-                         x='time', y='ax', hue='veh_id',
-                         palette='tab10', linewidth=3)
-            plt.legend(labels=[case_dict['leader'] + ' leader',
-                               case_dict['follower'] + ' follower'],
-                       fontsize=22, loc='upper center',
-                       bbox_to_anchor=(0.45, 1.3), ncol=2,
-                       frameon=False)
-            plt.xlabel('t [s]', fontsize=24)
-            plt.ylabel('a(t) [m/s^2]', fontsize=24)
+            data['name'] = ''
+            data.loc[data['veh_id'] == veh_id, 'name'] = (case['follower']
+                                                          + ' follower')
+            data.loc[data['veh_id'] == leader_id, 'name'] = (case['leader']
+                                                             + ' leader')
+            # data['gap'] = 0
+            # follower_gap = post_processing.compute_gap_between_vehicles(
+            #     leader_data['rear_x'].to_numpy(),
+            #     leader_data['rear_y'].to_numpy(),
+            #     follower_data['front_x'].to_numpy(),
+            #     follower_data['front_y'].to_numpy())
+            # data.loc[data['veh_id'] == veh_id, 'gap'] = follower_gap
+            # full_data.append(data)
+            fig, axes = plt.subplots(1, 1)
+            sns.lineplot(data=data,
+                         x='time', y='ax', hue='name',
+                         palette='tab10', linewidth=4, ax=axes)
+            axes.legend(fontsize=35, loc='upper center',
+                        bbox_to_anchor=(0.45, 1.2), ncol=2,
+                        frameon=False)
+            axes.set_xlabel('t [s]')
+            axes.set_ylabel('a(t) [m/s^2]')
+            # sns.lineplot(data=data.loc[data['veh_id'] == veh_id],
+            #              x='time', y='gap',
+            #              palette='tab10', linewidth=3, ax=axes[1])
+            # axes[1].set_xlabel('t [s]', fontsize=24)
+            # axes[1].set_ylabel('gap [m]', fontsize=24)
+            fig.set_size_inches(12, 8)
             plt.tight_layout()
             if self.should_save_fig:
                 fig = plt.gcf()
-                fig.set_dpi(600)
-                fig_name = ('accel_vs_time_'
-                            + case_dict['follower'] + '_follower_'
-                            + case_dict['leader'] + '_leader')
-                # fig.set_size_inches(12, 4)
-                plt.tight_layout()
+                fig.set_dpi(300)
+                fig_name = '_'.join(['accel_vs_time', scenario_name,
+                                     case['follower'], 'follower',
+                                     case['leader'], 'leader'])
                 fig.savefig(os.path.join(self._figure_folder, fig_name))
             plt.show()
 
@@ -1182,9 +1277,8 @@ class ResultAnalyzer:
         # self.box_plot_y_vs_controlled_percentage(
         #     'risk', veh_inputs, percentages_per_vehicle_types, warmup_time=10
         # )
-        self.plot_risky_maneuver_histogram_per_vehicle_type(
-            percentages_per_vehicle_types, veh_inputs, min_total_risk=1
-        )
+        self.plot_risk_histograms('total_risk', percentages_per_vehicle_types,
+                                  veh_inputs, [0], min_risk=1)
 
     # Support methods ======================================================== #
     def _load_data(self, y: str,
@@ -1276,15 +1370,27 @@ class ResultAnalyzer:
             data.drop(data[~data['lane'].isin(lanes)].index,
                       inplace=True)
         if ('pollutant_id' in data.columns) and pollutant_id is not None:
-            data.drop(data[~data['pollutant_id'] == pollutant_id].index,
+            data.drop(data[~(data['pollutant_id'] == pollutant_id)].index,
                       inplace=True)
         data.drop(index=data[data['time'] < warmup_time].index, inplace=True)
 
     def _prepare_pollutant_data(self, data: pd.DataFrame,
-                                pollutant_id: int = None):
-        if ('pollutant_id' in data.columns) and pollutant_id is not None:
-            data.drop(data[~data['pollutant_id'] == pollutant_id].index,
-                      inplace=True)
+                                pollutant_id: int):
+        data.drop(data[~(data['pollutant_id'] == pollutant_id)].index,
+                  inplace=True)
+
+    @staticmethod
+    def _prepare_risk_data(data: pd.DataFrame, risky_type: str,
+                           warmup_time: int, min_risk: float):
+        """
+        Removes samples before warmup time and with risk below min_risk
+        :param data: Any VISSIM output or post processed data
+        :param warmup_time: Must be in minutes
+        :param min_risk: Threshold value
+        """
+        data.drop(index=data[data[risky_type] < min_risk].index,
+                  inplace=True)
+        post_processing.drop_warmup_samples(data, warmup_time)
 
     @staticmethod
     def _ensure_data_source_is_uniform(data: pd.DataFrame,
