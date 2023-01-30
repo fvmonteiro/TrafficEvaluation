@@ -38,7 +38,7 @@ def _plot_heatmap(data: pd.DataFrame, value: str, rows: str, columns: str,
     fig = plt.figure()
     plt.rc('font', size=17)
     if title is None:
-        title = value
+        title = ' '.join(value.split('_'))
     table = data.pivot_table(values=value,
                              index=[columns],
                              columns=[rows],
@@ -51,10 +51,11 @@ def _plot_heatmap(data: pd.DataFrame, value: str, rows: str, columns: str,
         vmin, vmax = min_value, max_value
     else:
         vmin, vmax = None, None
-    string_format = '.2f' if max_value < 1000 else '.2g'
+    # string_format = '.2f' if max_value < 1000 else '.2g'
+    string_format = '.2f'
     sns.heatmap(table, annot=True, vmin=vmin, vmax=vmax, fmt=string_format)
     plt.title(title, fontsize=22)
-    plt.xlabel('Control Percentages')
+    # plt.xlabel('Control Percentages')
     plt.tight_layout()
     plt.show()
     return fig
@@ -64,8 +65,8 @@ def _box_plot_y_vs_controlled_percentage(relevant_data: pd.DataFrame,
                                          y: str):
     # Plot
     fig = plt.figure()
-    plt.rc('font', size=30)
-    fig.set_size_inches(12, 6)
+    plt.rc('font', size=20)
+    fig.set_size_inches(9, 6)
     sns.set_style('whitegrid')
     ax = sns.boxplot(data=relevant_data,  # orient='h',
                      x='control percentages', y=y,
@@ -84,11 +85,13 @@ def _produce_console_output(
         data: pd.DataFrame, y: str,
         vehicle_percentages: List[Dict[VehicleType, int]],
         accepted_risks: List[int], aggregation_functions,
-        show_variation: bool = False):
-    try:
-        n_simulations = len(data['simulation_number'].unique())
-    except KeyError:
-        n_simulations = 1
+        show_variation: bool = False,
+        normalizer: int = None):
+    if normalizer is None:
+        try:
+            normalizer = len(data['simulation_number'].unique())
+        except KeyError:
+            normalizer = 1
     group_by_cols = ['vehicles per hour', 'control percentages']
     varied_accepted_risk = len(accepted_risks) > 1
     if varied_accepted_risk:
@@ -97,14 +100,12 @@ def _produce_console_output(
     for vp in vehicle_percentages:
         mixed_traffic = mixed_traffic or any(
             [0 < p < 100 for p in vp.values()])
-    # if mixed_traffic and 'veh_type' in data.columns:
-    #     group_by_cols += ['veh_type']
     print(y)
     # Easier to transfer results to paper in this order
     data.sort_values('vehicles per hour',
                      kind='stable', inplace=True)
     result = data.groupby(group_by_cols, sort=False)[y].agg(
-        aggregation_functions) / n_simulations
+        aggregation_functions) / normalizer
     if show_variation:
         baselines = result.groupby(level=0).first()
         variation = post_processing.find_percent_variation(baselines, result)
@@ -112,6 +113,12 @@ def _produce_console_output(
         print(variation)
     else:
         print(result)
+    if mixed_traffic and 'veh_type' in data.columns:
+        group_by_cols += ['veh_type']
+        result_by_type = data.groupby(group_by_cols, sort=False)[y].agg(
+            aggregation_functions) / normalizer
+        print(result_by_type)
+        print(result_by_type / result)
 
 
 class ResultAnalyzer:
@@ -172,10 +179,10 @@ class ResultAnalyzer:
 
     def __init__(self, scenario_name: str, should_save_fig: bool = False):
         if os.environ['COMPUTERNAME'] == 'DESKTOP-626HHGI':
-            self._figure_folder = ('C:\\Users\\fvall\\Google Drive\\Lane '
-                                   'Change\\images')
+            self._figure_folder = ('C:\\Users\\fvall\\Google Drive\\'
+                                   'PhD Research\\Lane Change\\images')
         else:
-            self._figure_folder = ('G:\\My Drive\\Lane Change'
+            self._figure_folder = ('G:\\My Drive\\PhD Research\\Lane Change'
                                    '\\images')
         self.scenario_name = scenario_name
         self.should_save_fig = should_save_fig
@@ -283,7 +290,7 @@ class ResultAnalyzer:
             fig_name = self.create_figure_name(
                 'box_plot', 'flow', vehicles_per_lane,
                 vehicle_percentages=vehicle_percentages)
-            self.save_fig(fig, fig_name=fig_name)
+            self.save_fig(fig, fig_name=fig_name + '_presentation')
 
         _produce_console_output(relevant_data, 'flow', vehicle_percentages,
                                 accepted_risks, np.median)
@@ -474,7 +481,7 @@ class ResultAnalyzer:
         data = self._ensure_data_source_is_uniform(
             data, vehicles_per_lane)
         self._prepare_risk_data(data, risk_type, warmup_time, min_risk)
-        plt.rc('font', size=30)
+        plt.rc('font', size=20)
         if len(accepted_risks) <= 1:
             grouped_data = data.groupby('control percentages')
         else:
@@ -491,19 +498,25 @@ class ResultAnalyzer:
                          stat='count', hue='vehicles per hour',
                          palette='tab10')
             fig = plt.gcf()
-            fig.set_size_inches(12, 6)
-            plt.title(name)
+            # fig.set_size_inches(12, 6)
+            # plt.title(name)
             plt.tight_layout()
             if self.should_save_fig:
                 ctr_percent_string = str(name).replace('% ', '_').lower()
                 fig_name = self.create_figure_name(
                     'histogram', risk_type, vehicles_per_lane,
                     control_percentage=ctr_percent_string)
-                self.save_fig(fig, fig_name=fig_name)
+                self.save_fig(fig, fig_name=fig_name + '_presentation')
             plt.show()
 
+        normalizer = data.loc[
+                (data['control percentages'] == 'no control')
+                & (data['vehicles per hour'] == data[
+                    'vehicles per hour'].min()),
+                risk_type].sum()
         _produce_console_output(data, risk_type, vehicle_percentages,
-                                accepted_risks, [np.size, np.sum])
+                                accepted_risks, [np.size, np.sum],
+                                normalizer=normalizer)
 
     def plot_lane_change_risk_histograms_risk_as_hue(
             self, risk_type: str,
@@ -793,16 +806,57 @@ class ResultAnalyzer:
                               vehicle_percentages, accepted_risks)
             plt.show()
 
-    # def plot_heatmap_input_vs_control(
-    #         self, y: str,
-    #         vehicle_percentages: List[Dict[VehicleType, int]],
-    #         vehicles_per_lane: List[int],
-    #         accepted_risks: List[int] = None):
-    #
-    #     data = self._load_data(y, vehicle_percentages,
-    #                            vehicles_per_lane, accepted_risks)
-    #     self._prepare_data_for_plotting(data, 600, sensor_name=['out'])
-    #     self.plot_heatmap(data, y, 'vehicles_per_lane')
+    def plot_risk_heatmap(
+            self, risk_type: str,
+            vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicles_per_lane: List[int], accepted_risks: List[int] = None,
+            normalizer: float = None) -> float:
+        """
+        Plots a heatmap of the chosen risk type. Returns normalizer so that
+        we can reuse the value again if needed.
+        :param risk_type: total_risk, total_lane_change_risk or both. If
+         both, the lane change risk is normalized using the values from
+         total_risk
+        :param vehicle_percentages: Describes the percentages of controlled
+         vehicles in the simulations.
+        :param vehicles_per_lane: Vehicle inputs for which we want SSMs
+         computed.
+        :param accepted_risks: Accepted lane change risk.
+        :param normalizer: All values are divided by the normalizer
+        :returns: The value used to normalize all values
+        """
+        if accepted_risks is None:
+            accepted_risks = [0]
+
+        if risk_type == 'both':
+            normalizer = self.plot_risk_heatmap(
+                'total_risk', vehicle_percentages,
+                vehicles_per_lane, accepted_risks, normalizer)
+            self.plot_risk_heatmap('total_lane_change_risk',
+                                   vehicle_percentages, vehicles_per_lane,
+                                   accepted_risks, normalizer)
+            return normalizer
+
+        data = self._load_data(risk_type, vehicle_percentages,
+                               vehicles_per_lane, accepted_risks)
+        self._prepare_data_for_plotting(data, 600)
+        agg_function = np.sum
+        if normalizer is None:
+            normalizer = data.loc[
+                (data['control percentages'] == 'no control')
+                & (data['vehicles per hour'] == data[
+                    'vehicles per hour'].min()),
+                risk_type].sum()
+        title = ' '.join(risk_type.split('_')[1:])
+        fig = _plot_heatmap(data, risk_type, 'vehicles per hour',
+                            'control percentages', normalizer, title,
+                            agg_function=agg_function)
+        if self.should_save_fig:
+            fig_name = self.create_figure_name(
+                'heatmap', risk_type,
+                vehicles_per_lane, vehicle_percentages)
+            self.save_fig(fig, fig_name=fig_name)
+        return normalizer
 
     def plot_fd_discomfort(
             self, vehicle_percentages: List[Dict[VehicleType, int]],
@@ -818,9 +872,10 @@ class ResultAnalyzer:
             (data['control percentages'] == 'no control')
             & (data['vehicles per hour'] == data[
                 'vehicles per hour'].min()),
-            col_name].sum()
+            col_name].agg(agg_function)
+        # normalizer = 1
         fig = _plot_heatmap(data, col_name, 'vehicles per hour',
-                            'control percentages', 1,
+                            'control percentages', normalizer,
                             'Dest Lane Follower Discomfort',
                             agg_function=agg_function,
                             custom_colorbar_range=True)
@@ -1173,7 +1228,7 @@ class ResultAnalyzer:
         sns.set_style('whitegrid')
         # fig, axes = plt.subplots(len(all_cases), 1)
         # fig.set_size_inches(12, 16)
-        plt.rc('font', size=30)
+        plt.rc('font', size=25)
         # full_data = []
         for case in all_cases:
             # case = all_cases[i]
@@ -1203,10 +1258,12 @@ class ResultAnalyzer:
             fig, axes = plt.subplots(1, 1)
             sns.lineplot(data=data,
                          x='time', y='ax', hue='name',
-                         palette='tab10', linewidth=4, ax=axes)
-            axes.legend(fontsize=35, loc='upper center',
-                        bbox_to_anchor=(0.45, 1.2), ncol=2,
-                        frameon=False)
+                         palette='tab10', linewidth=4, ax=axes,
+                         legend=False
+                         )
+            # axes.legend(fontsize=35, loc='upper center',
+            #             bbox_to_anchor=(0.45, 1.2), ncol=2,
+            #             frameon=False)
             axes.set_xlabel('t [s]')
             axes.set_ylabel('a(t) [m/s^2]')
             # sns.lineplot(data=data.loc[data['veh_id'] == veh_id],
@@ -1214,7 +1271,7 @@ class ResultAnalyzer:
             #              palette='tab10', linewidth=3, ax=axes[1])
             # axes[1].set_xlabel('t [s]', fontsize=24)
             # axes[1].set_ylabel('gap [m]', fontsize=24)
-            fig.set_size_inches(12, 8)
+            # fig.set_size_inches(12, 8)
             plt.tight_layout()
             if self.should_save_fig:
                 fig = plt.gcf()
@@ -1222,8 +1279,41 @@ class ResultAnalyzer:
                 fig_name = '_'.join(['accel_vs_time', scenario_name,
                                      case['follower'], 'follower',
                                      case['leader'], 'leader'])
-                fig.savefig(os.path.join(self._figure_folder, fig_name))
+                fig.savefig(os.path.join(self._figure_folder, fig_name
+                                         + '_presentation'))
             plt.show()
+
+    def risk_vs_time_example(self):
+        scenario_name = 'in_and_out_safe'
+        vehicle_percentage = {VehicleType.CONNECTED: 0}
+        vehicles_per_lane = 1000
+        reader = readers.VehicleRecordReader(scenario_name)
+        veh_record = reader.load_data_from_scenario(1, vehicle_percentage,
+                                                    vehicles_per_lane, 0)
+        veh_id = 675
+        single_veh = veh_record[veh_record['veh_id'] == veh_id]
+        min_t = single_veh['time'].iloc[0]
+        max_t = single_veh['time'].iloc[-1]
+        relevant_data = veh_record[(veh_record['time'] >= min_t)
+                                   & (veh_record['time'] <= max_t)].copy()
+        pp = post_processing.SSMProcessor(scenario_name)
+        pp.post_process(relevant_data)
+        single_veh = relevant_data[relevant_data['veh_id'] == veh_id]
+
+        sns.set_style('whitegrid')
+        plt.rc('font', size=40)
+        sns.lineplot(data=single_veh, x='time', y='risk', linewidth=4)
+        plt.xlabel('time (s)')
+        plt.ylabel('risk (m/s)')
+        fig = plt.gcf()
+        fig.set_size_inches(16, 9)
+        plt.tight_layout()
+        if self.should_save_fig:
+            fig_name = 'risk_vs_time_example'
+            self.save_fig(fig, fig_name=fig_name)
+        plt.show()
+        sampling = single_veh['time'].diff().iloc[1]
+        print('total risk:',  single_veh['risk'].sum() * sampling)
 
     def speed_color_map(self, vehicles_per_lane: int,
                         vehicle_percentages: List[Dict[VehicleType, int]]):
