@@ -12,7 +12,7 @@ import result_analysis
 import vehicle
 from data_writer import SyntheticDataWriter
 import readers
-from vehicle import VehicleType, Vehicle
+from vehicle import VehicleType, Vehicle, PlatoonLaneChangeStrategy
 from vissim_interface import VissimInterface
 
 
@@ -22,7 +22,7 @@ def run_toy_example():
     vi = VissimInterface()
     if not vi.load_simulation(network_file):
         return
-    vi.set_evaluation_outputs()  # save nothing
+    vi.set_evaluation_options()  # save nothing
     vi.set_simulation_parameters(sim_params)
     vi.run_in_and_out_scenario()
     vi.close_vissim()
@@ -35,7 +35,7 @@ def run_i170_scenario(save_results=False):
     vi = VissimInterface()
     if not vi.load_simulation(network_file):
         return
-    vi.set_evaluation_outputs(save_vehicle_record=save_results,
+    vi.set_evaluation_options(save_vehicle_record=save_results,
                               save_ssam_file=False,
                               activate_data_collections=save_results,
                               activate_link_evaluation=save_results,
@@ -109,6 +109,51 @@ def test_risk_computation():
 #     plt.show()
 #     # save_post_processed_data(ssm_estimator.veh_data,
 #     #                          data_reader.data_source, data_reader.file_name)
+
+
+def run_all_safe_lane_change_scenarios():
+    # Scenario definition
+    scenario_name = 'in_and_out_safe'
+    vehicle_type = [
+        VehicleType.ACC,
+        VehicleType.AUTONOMOUS,
+        VehicleType.CONNECTED,
+    ]
+
+    percentages = [i for i in range(0, 101, 100)]
+    full_penetration = create_vehicle_percentages_dictionary(
+        vehicle_type, percentages, 1)
+    varied_cav_penetration = create_vehicle_percentages_dictionary(
+        [VehicleType.CONNECTED], [i for i in range(0, 76, 25)], 1)
+    inputs_per_lane = [1000, 2000]
+    accepted_risks = [0]
+
+    # Running
+    vi = VissimInterface()
+    vi.load_simulation(scenario_name)
+    for simulation_percentages in [full_penetration, varied_cav_penetration]:
+        for ipl in inputs_per_lane:
+            vi.run_multiple_scenarios(simulation_percentages, [ipl],
+                                      accepted_risks)
+        vi.close_vissim()
+
+        # Post processing
+        for sp in full_penetration:
+            print(sp)
+            post_processing.create_summary_with_risks(
+                scenario_name, sp, inputs_per_lane, accepted_risks)
+            # for ipl in inputs_per_lane:
+            #     post_processing.get_individual_vehicle_trajectories_to_moves(
+            #         scenario_name, ipl, sp, 0)
+
+        # Transfer files to the cloud
+        file_handler = file_handling.FileHandler(scenario_name)
+        try:
+            file_handler.copy_results_from_multiple_scenarios(
+                simulation_percentages, inputs_per_lane, accepted_risks)
+        except FileNotFoundError:
+            print("Couldn't copy files to shared folder.")
+            continue
 
 
 def plot_acc_av_and_cav_results(save_results=False):
@@ -248,36 +293,31 @@ def main():
     # image_folder = "G:\\My Drive\\Safety in Mixed Traffic\\images"
 
     # =============== Scenario Definition =============== #
-    # Options: i710, us101, in_and_out, in_and_merge,
-    # platoon_lane_change, traffic_lights
-    scenario_name = 'in_and_out_safe'
-    vehicle_type = [
-        VehicleType.ACC,
-        VehicleType.AUTONOMOUS,
-        VehicleType.CONNECTED,
-        # VehicleType.TRAFFIC_LIGHT_ACC,
-        # VehicleType.TRAFFIC_LIGHT_CACC
+    scenario_name = 'platoon_lane_change'
+    strategies = [
+        # PlatoonLaneChangeStrategy.no_strategy,
+        PlatoonLaneChangeStrategy.single_body_platoon,
+        # PlatoonLaneChangeStrategy.leader_first,
+        # PlatoonLaneChangeStrategy.last_vehicle_first,
+        PlatoonLaneChangeStrategy.leader_first_and_reverse
     ]
-
-    percentages = [i for i in range(0, 101, 100)]
-    full_penetration = create_vehicle_percentages_dictionary(
-        vehicle_type, percentages, 1)
-    varied_cav_penetration = create_vehicle_percentages_dictionary(
-        [VehicleType.CONNECTED], [i for i in range(0, 76, 25)], 1)
-    inputs_per_lane = [1000, 2000]
-    accepted_risks = [0]  # [i for i in range(0, 31, 10)]
+    vehicle_type = [
+        VehicleType.HUMAN_DRIVEN,
+        VehicleType.CONNECTED
+    ]
+    main_road_speeds = ['slow', 'fast']
+    vehicle_inputs = [500, 1000]
 
     # =============== Running =============== #
-    # vi = VissimInterface()
-    # vi.load_simulation(scenario_name)
-    # for ipl in inputs_per_lane:
-    #     vi.run_multiple_scenarios(simulation_percentages,
-    #                               [ipl],
-    #                               accepted_risks)
-    # vi.close_vissim()
+    vi = VissimInterface()
+    vi.load_simulation(scenario_name)
+    vi.run_multiple_platoon_lane_change_scenarios(
+        strategies, vehicle_type, main_road_speeds, vehicle_inputs,
+        is_debugging=True)
+    vi.close_vissim()
 
     # =============== Post processing =============== #
-    # for sp in simulation_percentages:
+    # for sp in full_penetration:
     #     print(sp)
     #     post_processing.create_summary_with_risks(
     #         scenario_name, sp, inputs_per_lane, accepted_risks, debugging=False)
@@ -297,36 +337,38 @@ def main():
     #     # continue
 
     # =============== Check results graphically =============== #
-    # all_inputs = [1000, 1200, 1500, 2000]
     # all_plots_for_scenarios_with_risk(scenario_name, simulation_percentages,
     #                                   inputs_per_lane, accepted_risks,
     #                                   save_fig=False)
 
-    simulation_percentages = full_penetration
-
-    ra = result_analysis.ResultAnalyzer(scenario_name, False)
-
+    # simulation_percentages = varied_cav_penetration
+    #
+    # ra = result_analysis.ResultAnalyzer(scenario_name, False)
+    #
     # ra.plot_risk_histograms('total_risk', simulation_percentages,
     #                         inputs_per_lane, [0], min_risk=1)
     # ra.plot_risk_histograms('total_lane_change_risk', simulation_percentages,
     #                         inputs_per_lane, [0], min_risk=1)
     # ra.plot_flow_box_plot_vs_controlled_percentage(
     #     inputs_per_lane, simulation_percentages, aggregation_period=60)
-    # ra.plot_fd_discomfort(full_penetration, inputs_per_lane, [0])
-    # ra.plot_fd_discomfort(varied_cav_penetration, inputs_per_lane, [0])
+    # ra.plot_fd_discomfort(simulation_percentages, inputs_per_lane, [0])
     # ra.plot_emission_heatmap(simulation_percentages, inputs_per_lane,
     #                          accepted_risks)
+    # ra.plot_risk_heatmap('total_lane_change_risk', simulation_percentages,
+    #                      inputs_per_lane, [0])
+    # ra.plot_risk_heatmap('total_lane_change_risk', simulation_percentages,
+    #                      inputs_per_lane, [0])
 
     # ra.accel_vs_time_for_different_vehicle_pairs()
-
+    # ra.risk_vs_time_example()
     # ra.find_unfinished_simulations(simulation_percentages, inputs_per_lane)
     # ra.plot_lane_change_count_heatmap(full_penetration, inputs_per_lane,
     #                                   [0])
     # for b in range(4, 8):
     #     ra.plot_discomfort_heatmap(simulation_percentages, inputs_per_lane,
     #                                accepted_risks, max_brake=b)
-    ra.print_summary_of_issues(simulation_percentages, inputs_per_lane,
-                               accepted_risks)
+    # ra.print_summary_of_issues(simulation_percentages, inputs_per_lane,
+    #                            accepted_risks)
 
     # plot_acc_av_and_cav_results(False)
     # plot_cav_varying_percentage_results(False)

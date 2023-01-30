@@ -74,7 +74,7 @@ class PostProcessedDataWriter(DataWriter):
         """
 
         file_name = self.file_base_name + self.file_extension
-        folder_path = self.file_handler.get_vissim_data_folder(
+        folder_path = self.file_handler.get_vissim_data_folder_old(
             vehicle_percentages, vehicles_per_lane, accepted_risk)
         self._save_as_csv(data, folder_path, file_name)
 

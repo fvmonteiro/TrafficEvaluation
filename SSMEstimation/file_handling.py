@@ -2,9 +2,9 @@ import warnings
 from dataclasses import dataclass
 import os
 import shutil
-from typing import Dict, List, Union
+from typing import Dict, List, Tuple, Union
 
-from vehicle import VehicleType
+from vehicle import VehicleType, PlatoonLaneChangeStrategy
 
 
 @dataclass
@@ -79,7 +79,7 @@ _network_info = {
     'traffic_lights':
         _NetworkInfo('traffic_lights_study', 2, [], [], []),
     'platoon_lane_change':
-        _NetworkInfo('platoon_lane_change', 3, [2, 10001], [1003, 5], [3])
+        _NetworkInfo('platoon_lane_change', 2, [2, 10001], [1003, 5], [3])
 }
 
 _scenario_info = {
@@ -100,7 +100,7 @@ _scenario_info = {
     'traffic_lights':
         _ScenarioInfo('traffic_lights', 'traffic_lights_study'),
     'platoon_lane_change':
-        _ScenarioInfo('platoon_lane_change', 'platoon_lane_change')
+        _ScenarioInfo('platoon_lane_change', 'results')
 }
 
 
@@ -164,10 +164,53 @@ class FileHandler:
     def get_vissim_test_folder(self):
         return os.path.join(self.get_results_base_folder(), 'test')
 
-    def get_vissim_data_folder(self,
-                               vehicle_percentages: Dict[VehicleType, int],
-                               vehicles_per_lane: int,
-                               accepted_risk: Union[int, None]) -> str:
+    def get_vissim_data_folder(
+            self,
+            vehicle_percentages: Dict[VehicleType, int],
+            vehicle_input_per_lane: int,
+            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+            accepted_risk: int = None,
+            orig_and_dest_lane_speeds: Tuple[int, int] = None
+    ) -> str:
+        """
+        Creates a string with the full path of the VISSIM simulation results
+        data folder. TODO: If all parameters are None, returns the test data
+        folder of the current network
+        """
+
+        folder_list = []
+
+        if (vehicle_percentages is not None
+                and sum(vehicle_percentages.values()) == 0):
+            accepted_risk = None
+            folder_list.append(self.get_network_file_folder())
+        else:
+            folder_list.append(self.get_results_base_folder())
+
+        if vehicle_percentages is not None:
+            folder_list.append(create_percent_folder_name(vehicle_percentages))
+        if platoon_lane_change_strategy is not None:
+            folder_list.append(create_platoon_lc_strategy_folder_name(
+                platoon_lane_change_strategy))
+        # if vehicle_input_type is not None:
+        #     folder_list.append(create_vehicle_input_type_folder_name(
+        #         vehicle_input_type))
+        if vehicle_input_per_lane is not None:
+            folder_list.append(create_vehs_per_lane_folder_name(
+                vehicle_input_per_lane))
+        if accepted_risk is not None:
+            folder_list.append(create_accepted_risk_folder_name(
+                accepted_risk))
+        if orig_and_dest_lane_speeds is not None:
+            folder_list.append(create_speeds_folder_name(
+                orig_and_dest_lane_speeds))
+
+        return os.path.join(*folder_list)
+
+    def get_vissim_data_folder_old(self,
+                                   vehicle_percentages: Dict[VehicleType, int],
+                                   vehicles_per_lane: int,
+                                   accepted_risk: Union[int, None]) -> str:
         """
         Creates a string with the full path of the VISSIM simulation results
         data folder. If all parameters are None, returns the test data folder
@@ -366,6 +409,21 @@ def create_accepted_risk_folder_name(accepted_risk: Union[int, None]) -> str:
     """
     return ('' if accepted_risk is None
             else str(accepted_risk) + '_accepted_risk')
+
+
+def create_platoon_lc_strategy_folder_name(
+        platoon_lc_strategy: PlatoonLaneChangeStrategy) -> str:
+    return platoon_lc_strategy.name
+
+
+# def create_vehicle_input_type_folder_name(vehicle_input_type: VehicleType) -> str:
+#     return 'all_' + vehicle_input_type.name.lower()
+
+
+def create_speeds_folder_name(orig_and_dest_lane_speeds: Tuple[int, int]
+                              ) -> str:
+    return '_'.join(['origin_lane', str(orig_and_dest_lane_speeds[0]),
+                     'dest_lane', str(orig_and_dest_lane_speeds[1])])
 
 
 def create_file_path(base_folder: str,

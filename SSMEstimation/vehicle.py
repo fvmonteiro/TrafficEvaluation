@@ -72,6 +72,15 @@ class VehicleType(Enum):
     MOTORCYCLE = 9
 
 
+class PlatoonLaneChangeStrategy(Enum):
+    human_driven = -1  # baseline for comparison
+    no_strategy = 0  # baseline for comparison
+    single_body_platoon = 1
+    leader_first = 2
+    last_vehicle_first = 3
+    leader_first_and_reverse = 4
+
+
 vehicle_type_to_str_map = {
     VehicleType.HUMAN_DRIVEN: 'no control',
     VehicleType.ACC: 'ACC',
