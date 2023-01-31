@@ -1,11 +1,11 @@
 import os
-from typing import Dict, List, Union
+from typing import Dict, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import xml.etree.ElementTree as ET
 
-from vehicle import Vehicle, VehicleType
+from vehicle import PlatoonLaneChangeStrategy, Vehicle, VehicleType
 import file_handling
 
 
@@ -56,10 +56,13 @@ class PostProcessedDataWriter(DataWriter):
         DataWriter.__init__(self, data_type_identifier,
                             self._file_extension, scenario_name)
 
-    def save_as_csv(self, data: pd.DataFrame,
-                    vehicle_percentages: Union[Dict[VehicleType, int], None],
-                    vehicles_per_lane: Union[int, None],
-                    accepted_risk: Union[int, None] = None):
+    def save_as_csv(
+            self, data: pd.DataFrame,
+            vehicle_percentages: Union[Dict[VehicleType, int], None],
+            vehicle_input_per_lane: Union[int, None],
+            accepted_risk: Union[int, None] = None,
+            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+            orig_and_dest_lane_speeds: Tuple[int, int] = None):
         """
         Saves the data on the proper results folder based on the simulated
         network, controlled vehicles percentage and vehicle input.
@@ -68,14 +71,19 @@ class PostProcessedDataWriter(DataWriter):
         :param data: data to be saved
         :param vehicle_percentages: Describes the percentages of controlled
          vehicles in the simulations.
-        :param vehicles_per_lane: vehicle input per lane of the simulation
+        :param vehicle_input_per_lane: vehicle input per lane of the simulation
         :param accepted_risk: maximum lane changing risk
+        :param platoon_lane_change_strategy:
+        :param orig_and_dest_lane_speeds:
         :return: Nothing, just saves the data
         """
 
         file_name = self.file_base_name + self.file_extension
-        folder_path = self.file_handler.get_vissim_data_folder_old(
-            vehicle_percentages, vehicles_per_lane, accepted_risk)
+        folder_path = self.file_handler.get_vissim_data_folder(
+            vehicle_percentages, vehicle_input_per_lane,
+            accepted_risk=accepted_risk,
+            platoon_lane_change_strategy=platoon_lane_change_strategy,
+            orig_and_dest_lane_speeds=orig_and_dest_lane_speeds)
         self._save_as_csv(data, folder_path, file_name)
 
 
@@ -137,12 +145,18 @@ class MOVESDataWriter(DataWriter):
                             self._file_extension, scenario_name)
         self.sheet_name = sheet_name
 
-    def save_data(self, data: pd.DataFrame,
-                  vehicle_percentages: Union[Dict[VehicleType, int], None],
-                  vehicles_per_lane: Union[int, None],
-                  accepted_risk: Union[int, None] = None):
+    def save_data(
+            self, data: pd.DataFrame,
+            vehicle_percentages: Union[Dict[VehicleType, int], None],
+            vehicle_input_per_lane: Union[int, None],
+            accepted_risk: Union[int, None] = None,
+            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+            orig_and_dest_lane_speeds: Tuple[int, int] = None
+            ):
         folder_path = self.file_handler.get_moves_data_folder(
-            vehicle_percentages, vehicles_per_lane, accepted_risk
+            vehicle_percentages, vehicle_input_per_lane,
+            accepted_risk, platoon_lane_change_strategy,
+            orig_and_dest_lane_speeds
         )
         file_name = self.file_base_name + self.file_extension
         self._save_as_xls(data, folder_path, file_name, self.sheet_name)

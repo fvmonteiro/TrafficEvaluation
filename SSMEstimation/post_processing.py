@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 import warnings
 # import time
-from typing import Dict, List, Union
+from typing import Dict, List, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -12,7 +12,7 @@ from scipy.stats import truncnorm
 import data_writer
 from file_handling import FileHandler
 import readers
-from vehicle import Vehicle, VehicleType
+from vehicle import PlatoonLaneChangeStrategy, Vehicle, VehicleType
 
 # ============================== Constants =================================== #
 # TODO: determine highway or traffic light from network_info dictionary in
@@ -263,7 +263,7 @@ def create_summary_traffic_light_simulations(
               'percentages {}, and input {}'.format(
             network_name, vehicle_percentages, vi))
         data_generator = vehicle_record_reader.generate_data(
-            vehicle_percentages, [vi], n_rows=n_rows)
+            vehicle_percentages, vi, n_rows=n_rows)
 
         data = defaultdict(list)
         for (vehicle_records, file_number) in data_generator:
@@ -335,7 +335,7 @@ def create_summary_with_risks(scenario_name: str,
                   'percentages {}, input {}, risk {}'.format(
                    scenario_name, vehicle_percentages, vi, ar))
             data_generator = vehicle_record_reader.generate_data(
-                vehicle_percentages, [vi], ar, n_rows=n_rows)
+                vehicle_percentages, vi, accepted_risk=ar, n_rows=n_rows)
 
             data = defaultdict(list)
             for (vehicle_records, file_number) in data_generator:
@@ -359,13 +359,15 @@ def create_summary_with_risks(scenario_name: str,
                     all_simulations_data = pd.concat(data[single_pp.data_name])
                     all_simulations_data['vehicles_per_lane'] = vi
                     single_pp.writer.save_as_csv(all_simulations_data,
-                                                 vehicle_percentages, vi, ar)
+                                                 vehicle_percentages, vi,
+                                                 accepted_risk=ar)
                 if analyze_lane_change:
                     lc_writer = data_writer.LaneChangeWriter(scenario_name)
                     all_simulations_data = pd.concat(data['lane_change'])
                     all_simulations_data['vehicles_per_lane'] = vi
                     lc_writer.save_as_csv(all_simulations_data,
-                                          vehicle_percentages, vi, ar)
+                                          vehicle_percentages, vi,
+                                          accepted_risk=ar)
 
 
 def find_lane_change_issues(network_name: str,
@@ -394,7 +396,7 @@ def find_lane_change_issues(network_name: str,
     for vi in vehicle_inputs:
         for ar in accepted_risks:
             data_generator = vehicle_record_reader.generate_data(
-                vehicle_percentages, [vi], ar)
+                vehicle_percentages, vi, accepted_risk=ar)
             data = defaultdict(list)
             for (vehicle_records, file_number) in data_generator:
                 data[pp.data_name].append(pp.post_process(vehicle_records))
@@ -462,7 +464,7 @@ def check_human_take_over(network_name: str,
             print(' Accepted risk: ', ar)
             n_blocked_vehs = []
             data_generator = vehicle_record_reader.generate_data(
-                vehicle_percentages, [vi], ar
+                vehicle_percentages, vi, accepted_risk=ar
             )
             for (vehicle_records, _) in data_generator:
                 # Since the scenarios have at most one mandatory lane change,
@@ -499,7 +501,7 @@ def find_removed_vehicles(network_name: str,
             print(' Accepted risk: ', ar)
             n_removed_vehicles = []
             data_generator = vehicle_record_reader.generate_data(
-                vehicle_percentages, [vi], ar
+                vehicle_percentages, vi, accepted_risk=ar
             )
             for (vehicle_records, _) in data_generator:
                 max_time = vehicle_records.iloc[-1]['time']
@@ -551,7 +553,7 @@ def create_time_bins_and_labels(period, vehicle_records):
 
 def check_already_processed_vehicle_inputs(
         network_name: str, vehicle_percentages: Dict[VehicleType, int],
-        vehicle_inputs: List[int]):
+        vehicle_input_per_lane: List[int]):
     """
     Checks if the scenario being post processed was processed before.
     Prints a message if yes.
@@ -559,19 +561,19 @@ def check_already_processed_vehicle_inputs(
      i710, us101, traffic_lights
     :param vehicle_percentages: Describes the percentages of controlled
          vehicles in the simulations.
-    :param vehicle_inputs: number of vehicles entering the simulation per
-     hour
+    :param vehicle_input_per_lane: number of vehicles entering the simulation
+      per hour
     :return: nothing. Just prints a message on the console.
     """
     ssm_reader = readers.SSMDataReader(network_name)
     try:
-        ssm_data = ssm_reader.load_data_with_controlled_percentage(
-            [vehicle_percentages], vehicle_inputs)
+        ssm_data = ssm_reader.load_data_in_bulk(
+            [vehicle_percentages], vehicle_input_per_lane)
     except OSError:
         return
     # if not ssm_data.empty:
     processed_vehicle_inputs = ssm_data['vehicles_per_lane'].unique()
-    for v_i in (set(vehicle_inputs) & set(processed_vehicle_inputs)):
+    for v_i in (set(vehicle_input_per_lane) & set(processed_vehicle_inputs)):
         print('FYI: SSM results for network {}, vehicle percentages {}, '
               'and input {} already exist. They are '
               'being recomputed.'.
@@ -699,7 +701,7 @@ def get_individual_vehicle_trajectories_to_moves(
     init_link_number = 0
     vehicle_record_reader = readers.VehicleRecordReader(scenario_name)
     data_generator = vehicle_record_reader.generate_data(
-        vehicle_percentages, [vehicles_per_lane], accepted_risk)
+        vehicle_percentages, vehicles_per_lane, accepted_risk=accepted_risk)
     link_data_list = []
     speed_data_list = []
     for (vehicle_records, _) in data_generator:
@@ -760,6 +762,8 @@ def translate_links_from_vissim_to_moves(
         vehicles_per_lane: int,
         vehicle_percentages: Dict[VehicleType, int],
         accepted_risk: int = None,
+        platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+        orig_and_dest_lane_speeds: Tuple[int, int] = None,
         warmup_minutes: int = 10):
     """
     Reads link evaluation output files from VISSIM and write link,
@@ -769,8 +773,9 @@ def translate_links_from_vissim_to_moves(
     # Load VISSIM data
     link_evaluation_reader = readers.LinkEvaluationReader(scenario_name)
     link_evaluation_data = (
-        link_evaluation_reader.load_data_with_controlled_percentage(
-            [vehicle_percentages], vehicles_per_lane, [accepted_risk])
+        link_evaluation_reader.load_data_in_bulk(
+            [vehicle_percentages], vehicles_per_lane, [accepted_risk],
+            [platoon_lane_change_strategy], [orig_and_dest_lane_speeds])
     )
     remove_early_samples_from_sensors(link_evaluation_data, warmup_minutes)
 
@@ -944,12 +949,12 @@ def find_traffic_light_violations_all(
     violations_list = []
     vehicle_record_reader = readers.VehicleRecordReader(network_name)
     n_rows = 10 ** 6 if debugging else None
-    data_generator = vehicle_record_reader.generate_data(
-        vehicle_percentages, vehicle_inputs,
-        n_rows)
-    for (vehicle_records, file_number) in data_generator:
-        violations_list.append(
-            violation_pp.post_process(vehicle_records))
+    for vi in vehicle_inputs:
+        data_generator = vehicle_record_reader.generate_data(
+            vehicle_percentages, vi, n_rows=n_rows)
+        for (vehicle_records, file_number) in data_generator:
+            violations_list.append(
+                violation_pp.post_process(vehicle_records))
     violations = pd.concat(violations_list)
     violation_pp.writer(network_name)
     violation_pp.writer.save_as_csv(violations, vehicle_percentages, 0)

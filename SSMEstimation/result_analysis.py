@@ -1,6 +1,5 @@
 import os
-from typing import List, Dict
-from typing import Union
+from typing import List, Dict, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,7 +9,8 @@ import seaborn as sns
 import file_handling
 import post_processing
 import readers
-from vehicle import VehicleType, vehicle_type_to_str_map
+from vehicle import PlatoonLaneChangeStrategy, VehicleType, \
+    vehicle_type_to_str_map
 
 
 def list_of_dicts_to_1d_list(dict_list: List[Dict]):
@@ -1050,7 +1050,7 @@ class ResultAnalyzer:
         for vpl in vehicles_per_lane:
             print('Vehicles per lane ', vpl)
             generator = veh_reader.generate_data(vehicle_percentages,
-                                                 [vpl], 0)
+                                                 vpl, accepted_risk=0)
             for (data, i) in generator:
                 data.drop(index=data[~data['link'].isin(links)].index,
                           inplace=True)
@@ -1380,16 +1380,17 @@ class ResultAnalyzer:
                                   veh_inputs, [0], min_risk=1)
 
     # Support methods ======================================================== #
-    def _load_data(self, y: str,
-                   vehicle_percentages: List[Dict[VehicleType, int]],
-                   vehicles_per_lane: List[int],
-                   accepted_risks: List[int] = None):
+    def _load_data(
+            self, y: str, vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicles_per_lane: List[int], accepted_risks: List[int] = None,
+            lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
+            orig_and_dest_lane_speeds: List[Tuple[int, int]] = None
+            ):
         # reader = self._get_data_reader(y)
         reader = self._data_reader_map[y](self.scenario_name)
-        # vehicle_types, percentages = list_of_dicts_to_2d_lists(
-        #     percentages_per_vehicle_types)
-        data = reader.load_data_with_controlled_percentage(
-            vehicle_percentages, vehicles_per_lane, accepted_risks)
+        data = reader.load_data_in_bulk(
+            vehicle_percentages, vehicles_per_lane, accepted_risks,
+            lane_change_strategies, orig_and_dest_lane_speeds)
         data['vehicles per hour'] = (
                 file_handling.get_scenario_number_of_lanes(self.scenario_name)
                 * data['vehicles_per_lane'])
@@ -1708,8 +1709,8 @@ class ResultAnalyzer:
         when doing multiple runs from the COM interface, VISSIM does not
         always indicate that a simulation crashed. """
         reader = readers.DataCollectionReader(self.scenario_name)
-        raw_data = reader.load_data_with_controlled_percentage(
-            vehicle_percentages, vehicle_inputs, [0])
+        raw_data = reader.load_data_in_bulk(
+            vehicle_percentages, vehicle_inputs, accepted_risks=[0])
         data = self._prepare_data_collection_data(raw_data, 'in', 0, 60)
         grouped = data.groupby(
             ['control percentages', 'vehicles_per_lane', 'accepted_risk',

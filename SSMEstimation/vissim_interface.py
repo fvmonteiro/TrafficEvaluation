@@ -550,10 +550,7 @@ class VissimInterface:
                     else:
                         results_folder = (
                             self.file_handler.get_vissim_data_folder(
-                                vehicle_percentages=vp,
-                                vehicle_input_per_lane=ipl,
-                                accepted_risk=ar
-                            ))
+                                vp, ipl, accepted_risk=ar))
                     self.set_results_folder(results_folder)
                     print("Starting series of {} runs with duration {}".format(
                         runs_per_scenario, simulation_period
@@ -648,8 +645,7 @@ class VissimInterface:
                                     platoon_lane_change_strategy=st,
                                     orig_and_dest_lane_speeds=(
                                         platoon_desired_speed,
-                                        speed)
-                                ))
+                                        speed)))
                         self.set_results_folder(results_folder)
                         print("Starting series of {} runs with duration {}".
                               format(runs_per_scenario, simulation_period))

@@ -165,47 +165,27 @@ class FileHandler:
         return os.path.join(self.get_results_base_folder(), 'test')
 
     def get_vissim_data_folder(
-            self,
-            vehicle_percentages: Dict[VehicleType, int],
-            vehicle_input_per_lane: int,
+            self, vehicle_percentages: Dict[VehicleType, int],
+            vehicle_input_per_lane: int, accepted_risk: int = None,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            accepted_risk: int = None,
-            orig_and_dest_lane_speeds: Tuple[int, int] = None
-    ) -> str:
+            orig_and_dest_lane_speeds: Tuple[int, int] = None) -> str:
         """
         Creates a string with the full path of the VISSIM simulation results
         data folder. TODO: If all parameters are None, returns the test data
         folder of the current network
         """
 
-        folder_list = []
-
         if (vehicle_percentages is not None
                 and sum(vehicle_percentages.values()) == 0):
             accepted_risk = None
-            folder_list.append(self.get_network_file_folder())
+            base_folder = self.get_network_file_folder()
         else:
-            folder_list.append(self.get_results_base_folder())
+            base_folder = self.get_results_base_folder()
 
-        if vehicle_percentages is not None:
-            folder_list.append(create_percent_folder_name(vehicle_percentages))
-        if platoon_lane_change_strategy is not None:
-            folder_list.append(create_platoon_lc_strategy_folder_name(
-                platoon_lane_change_strategy))
-        # if vehicle_input_type is not None:
-        #     folder_list.append(create_vehicle_input_type_folder_name(
-        #         vehicle_input_type))
-        if vehicle_input_per_lane is not None:
-            folder_list.append(create_vehs_per_lane_folder_name(
-                vehicle_input_per_lane))
-        if accepted_risk is not None:
-            folder_list.append(create_accepted_risk_folder_name(
-                accepted_risk))
-        if orig_and_dest_lane_speeds is not None:
-            folder_list.append(create_speeds_folder_name(
-                orig_and_dest_lane_speeds))
-
-        return os.path.join(*folder_list)
+        return create_file_path(
+            base_folder, vehicle_percentages, vehicle_input_per_lane,
+            accepted_risk, platoon_lane_change_strategy,
+            orig_and_dest_lane_speeds)
 
     def get_vissim_data_folder_old(self,
                                    vehicle_percentages: Dict[VehicleType, int],
@@ -231,10 +211,11 @@ class FileHandler:
             results_base_folder, vehicle_percentages,
             vehicles_per_lane, accepted_risk)
 
-    def get_moves_data_folder(self,
-                              vehicle_percentages: Dict[VehicleType, int],
-                              vehicles_per_lane: int,
-                              accepted_risk: int) -> str:
+    def get_moves_data_folder(
+            self, vehicle_percentages: Dict[VehicleType, int],
+            vehicles_per_lane: int, accepted_risk: int,
+            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+            orig_and_dest_lane_speeds: Tuple[int, int] = None) -> str:
         """
         Creates a string with the full path of the MOVES data
         folder. If all parameters are None, returns the test data folder
@@ -248,14 +229,18 @@ class FileHandler:
         """
         return create_file_path(
             self.get_moves_default_data_folder(), vehicle_percentages,
-            vehicles_per_lane, accepted_risk)
+            vehicles_per_lane, accepted_risk, platoon_lane_change_strategy,
+            orig_and_dest_lane_speeds)
 
-    def find_min_max_file_number(self,
-                                 data_identifier: str,
-                                 file_format: str,
-                                 vehicle_percentages: Dict[VehicleType, int],
-                                 vehicles_per_lane: int,
-                                 accepted_risk: int = None) -> (int, int):
+    def find_min_max_file_number(
+            self,
+            data_identifier: str,
+            file_format: str,
+            vehicle_percentages: Dict[VehicleType, int],
+            vehicle_input_per_lane: int,
+            accepted_risk: int = None,
+            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+            orig_and_dest_lane_speeds: Tuple[int, int] = None) -> (int, int):
         """"
         Looks for the file with the highest simulation number. This is
         usually the file containing results from all simulations.
@@ -264,15 +249,20 @@ class FileHandler:
         :param file_format: file extension
         :param vehicle_percentages: Describes the percentages of controlled
          vehicles in the simulations.
-        :param vehicles_per_lane: Vehicle input per lane used in simulation
+        :param vehicle_input_per_lane: Vehicle input per lane used in simulation
+        :param platoon_lane_change_strategy: Coordination strategy used in
+         platoon lane changing scenarios.
         :param accepted_risk: accepted lane change risk
+        :param orig_and_dest_lane_speeds: Mean desired speeds in the platoon
+         lane changing scenario
         :return: highest simulation number.
         """
         max_simulation_number = -1
         min_simulation_number = 10000
 
         results_folder = self.get_vissim_data_folder(
-            vehicle_percentages, vehicles_per_lane, accepted_risk)
+            vehicle_percentages, vehicle_input_per_lane, accepted_risk,
+            platoon_lane_change_strategy, orig_and_dest_lane_speeds)
         network_file = self.get_file_name()
         for file in os.listdir(results_folder):
             file_str = os.fsdecode(file)
@@ -299,41 +289,37 @@ class FileHandler:
 
     def copy_results_from_multiple_scenarios(
             self, vehicle_percentages: List[Dict[VehicleType, int]],
-            # percentages_per_vehicle_types: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int],
             accepted_risks: List[int]):
         for vp in vehicle_percentages:
-            # vehicle_types = list(vp.keys())
-            # percentages = list(vp.values())
             for vi in vehicles_per_lane:
                 for ar in accepted_risks:
-                    self.copy_result_files(vp, vi, ar)
+                    self.copy_result_files(vehicle_percentages=vp,
+                                           vehicle_input_per_lane=vi,
+                                           accepted_risk=ar)
 
-    def copy_result_files(self,
-                          vehicle_percentages: Dict[VehicleType, int],
-                          vehicles_per_lane: int,
-                          accepted_risk: int):
-        """Copies data collections, link segments, lane change data, SSMs,
+    def copy_result_files(
+            self,
+            vehicle_percentages: Dict[VehicleType, int] = None,
+            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+            vehicle_input_per_lane: int = None,
+            accepted_risk: int = None,
+            orig_and_dest_lane_speeds: Tuple[int, int] = None):
+        """
+        Copies data collections, link segments, lane change data, SSMs,
         Risky Maneuvers and Violations files to a similar folder structure in
-        Google Drive. """
+        Google Drive.
+        """
 
-        source_dir = self.get_vissim_data_folder(
-            vehicle_percentages, vehicles_per_lane, accepted_risk)
+        source_dir = self.get_vissim_data_folder(vehicle_percentages,
+                                                 vehicle_input_per_lane,
+                                                 accepted_risk,
+                                                 platoon_lane_change_strategy,
+                                                 orig_and_dest_lane_speeds)
         target_dir = os.path.join(
             get_shared_folder(),
             source_dir.split(get_networks_folder() + "\\")[1]
         )
-        # base_target_folder = os.path.join(
-        #     get_shared_folder(),
-        #     self.get_results_relative_address())
-        # percent_folder = create_percent_folder_name(
-        #     controlled_percentages, vehicle_types)
-        # vehicle_input_folder = create_vehs_per_lane_folder_name(
-        #     vehicles_per_lane)
-        # accepted_risk_folder = create_accepted_risk_folder_name(
-        #     accepted_risk)
-        # target_dir = os.path.join(base_target_folder, percent_folder,
-        #                           vehicle_input_folder, accepted_risk_folder)
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
 
@@ -341,8 +327,9 @@ class FileHandler:
         all_csv_files = [file for file in all_file_names if
                          file.endswith('csv')]
         _, max_file_number = self.find_min_max_file_number(
-            '', 'att', vehicle_percentages, vehicles_per_lane,
-            accepted_risk)
+            '', 'att', vehicle_percentages, vehicle_input_per_lane,
+            accepted_risk, platoon_lane_change_strategy,
+            orig_and_dest_lane_speeds)
         max_att_files = [file for file in all_file_names if
                          file.endswith(str(max_file_number) + '.att')]
         files_to_copy = all_csv_files + max_att_files
@@ -426,32 +413,43 @@ def create_speeds_folder_name(orig_and_dest_lane_speeds: Tuple[int, int]
                      'dest_lane', str(orig_and_dest_lane_speeds[1])])
 
 
-def create_file_path(base_folder: str,
-                     vehicle_percentages: Dict[VehicleType, int],
-                     vehicles_per_lane: int,
-                     accepted_risk: Union[int, None]) -> str:
+def create_file_path(
+        base_folder: str, vehicle_percentages: Dict[VehicleType, int],
+        vehicle_input_per_lane: int, accepted_risk: Union[int, None],
+        platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+        orig_and_dest_lane_speeds: Tuple[int, int] = None) -> str:
     """
     Creates a string with the full path of the data
     folder. If all parameters are None, returns the test data folder
 
     :param base_folder: full path of the base folder where the data is
     :param vehicle_percentages: Describes the percentages of controlled
-         vehicles in the simulations.
-    :param vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
+     vehicles in the simulations.
+    :param vehicle_input_per_lane: Vehicle input per lane on VISSIM. Possible
      values depend on the controlled_vehicles_percentage: 500:500:2500
     :param accepted_risk: maximum lane changing risk in m/s
     :return: string with the folder where the data is
     """
     if (vehicle_percentages is None
-            and vehicles_per_lane is None):
+            and vehicle_input_per_lane is None):
         warnings.warn("Using create_file_path to obtain the test folder"
                       " is deprecated. Use get_vissim_test_folder instead.")
         return os.path.join(base_folder, 'test')
 
-    percent_folder = create_percent_folder_name(vehicle_percentages)
-    vehicle_input_folder = create_vehs_per_lane_folder_name(
-        vehicles_per_lane)
-    accepted_risk_folder = create_accepted_risk_folder_name(
-        accepted_risk)
-    return os.path.join(base_folder, percent_folder,
-                        vehicle_input_folder, accepted_risk_folder)
+    folder_list = [base_folder]
+    if vehicle_percentages is not None:
+        folder_list.append(create_percent_folder_name(vehicle_percentages))
+    if platoon_lane_change_strategy is not None:
+        folder_list.append(create_platoon_lc_strategy_folder_name(
+            platoon_lane_change_strategy))
+    if vehicle_input_per_lane is not None:
+        folder_list.append(create_vehs_per_lane_folder_name(
+            vehicle_input_per_lane))
+    if accepted_risk is not None:
+        folder_list.append(create_accepted_risk_folder_name(
+            accepted_risk))
+    if orig_and_dest_lane_speeds is not None:
+        folder_list.append(create_speeds_folder_name(
+            orig_and_dest_lane_speeds))
+
+    return os.path.join(*folder_list)

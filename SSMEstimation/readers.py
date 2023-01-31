@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import os
-from typing import Dict, List, Union
+from typing import Dict, List, Tuple, Union
 import warnings
 
 import mariadb
@@ -9,7 +9,8 @@ import xml.etree.ElementTree as ET
 
 import file_handling
 from file_handling import FileHandler
-from vehicle import VehicleType, vehicle_type_to_str_map
+from vehicle import PlatoonLaneChangeStrategy, VehicleType, \
+    vehicle_type_to_str_map
 
 
 def match_sim_number_to_random_seed(data):
@@ -32,8 +33,6 @@ def match_sim_number_to_random_seed(data):
 
 def _add_vehicle_type_columns(data: pd.DataFrame,
                               vehicle_percentages: Dict[VehicleType, int]):
-                              # vehicle_type: List[VehicleType],
-                              # controlled_vehicles_percentage: List[int]):
     if vehicle_percentages is not None:
         s = ''
         if sum(vehicle_percentages.values()) == 0:
@@ -62,6 +61,19 @@ def _add_risk_column(data: pd.DataFrame,
                      accepted_risk: Union[int, None]):
     if accepted_risk is not None:
         data['accepted_risk'] = int(accepted_risk)
+
+
+def _add_platoon_lane_change_strategy_column(
+        data: pd.DataFrame, strategy: PlatoonLaneChangeStrategy):
+    if strategy is not None:
+        data['lane_change_strategy'] = strategy.value
+
+
+def _add_speeds_column(data: pd.DataFrame,
+                       orig_and_dest_lane_speeds: Tuple[int, int]):
+    if orig_and_dest_lane_speeds is not None:
+        data['orig_lane_speed'] = orig_and_dest_lane_speeds[0]
+        data['dest_lane_speed'] = orig_and_dest_lane_speeds[1]
 
 
 class DataReader(ABC):
@@ -173,41 +185,54 @@ class VissimDataReader(DataReader):
         """
         return self.load_data(1)
 
+    def load_data_in_bulk(
+            self, vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicle_input_per_lane: Union[int, List[int]],
+            accepted_risks: List[int] = None,
+            lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
+            orig_and_dest_lane_speeds: List[Tuple[int, int]] = None
+    ) -> pd.DataFrame:
+        if lane_change_strategies is None or lane_change_strategies[0] is None:
+            return self.load_data_with_controlled_percentage(
+                vehicle_percentages, vehicle_input_per_lane, accepted_risks)
+        else:
+            return self.load_platoon_scenario_data(
+                vehicle_percentages, vehicle_input_per_lane,
+                lane_change_strategies, orig_and_dest_lane_speeds)
+
     def load_data_with_controlled_percentage(
             self,
             vehicle_percentages: List[Dict[VehicleType, int]],
-            vehicle_input: Union[int, List[int]],
-            accepted_risks: List[int] = None
-    ) -> pd.DataFrame:
+            vehicle_input_per_lane: Union[int, List[int]],
+            accepted_risks: List[int] = None) -> pd.DataFrame:
         """
         Loads data from all simulations with the given autonomous
         percentages.
 
         :param vehicle_percentages: Describes the percentages of controlled
          vehicles in the simulation.
-        :param vehicle_input:
+        :param vehicle_input_per_lane:
         :param accepted_risks: accepted lane change risk
         :return: pandas dataframe with the data
         """
-        # percentage_copy = vehicle_percentage[:]
-        if not isinstance(vehicle_input, list):
-            vehicle_input = [vehicle_input]
+        if not isinstance(vehicle_input_per_lane, list):
+            vehicle_input_per_lane = [vehicle_input_per_lane]
         if accepted_risks is None:
             accepted_risks = [None]
 
         data_per_folder = []
         for vp in vehicle_percentages:
-            for veh_input in vehicle_input:
+            for veh_input in vehicle_input_per_lane:
                 for ar in (accepted_risks if sum(vp.values()) > 0
                            else [0]):
                     min_file_number, max_file_number = (
                         self.file_handler.find_min_max_file_number(
                             self.data_identifier, self.file_format, vp,
-                            veh_input, ar))
+                            veh_input, accepted_risk=ar))
                     # Since files contain cumulative data from all runs
                     # in a set, we only need to read the latest file.
                     new_data = self.load_data_from_scenario(
-                        max_file_number, vp, veh_input, ar)
+                        max_file_number, vp, veh_input, accepted_risk=ar)
                     # Files containing outputs from older simulations
                     # (earlier than Sept. 21 2021) might contain data
                     # from more simulations than just those indicated by
@@ -223,13 +248,40 @@ class VissimDataReader(DataReader):
         match_sim_number_to_random_seed(data)
         return data
 
+    def load_platoon_scenario_data(
+            self, vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicle_input_per_lane: List[int],
+            lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
+            orig_and_dest_lane_speeds: List[Tuple[int, int]] = None
+    ) -> pd.DataFrame:
+        data_per_folder = []
+        for st in lane_change_strategies:
+            for vp in vehicle_percentages:
+                for veh_input in vehicle_input_per_lane:
+                    for speed_pair in orig_and_dest_lane_speeds:
+                        min_file_number, max_file_number = (
+                            self.file_handler.find_min_max_file_number(
+                                self.data_identifier, self.file_format, vp,
+                                veh_input, platoon_lane_change_strategy=st,
+                                orig_and_dest_lane_speeds=speed_pair))
+                        # Since files contain cumulative data from all runs
+                        # in a set, we only need to read the latest file.
+                        new_data = self.load_data_from_scenario(
+                            max_file_number, vp, veh_input,
+                            platoon_lane_change_strategy=st,
+                            orig_and_dest_lane_speeds=speed_pair)
+                        data_per_folder.append(new_data)
+        data = pd.concat(data_per_folder, ignore_index=True)
+        match_sim_number_to_random_seed(data)
+        return data
+
     def load_data_from_several_files(
-            self,
-            vehicle_percentages: Dict[VehicleType, int],
+            self, vehicle_percentages: Dict[VehicleType, int],
             vehicles_per_lane: int,
-            first_file_number: int,
-            last_file_number: int,
-            accepted_risk: int = None) -> pd.DataFrame:
+            first_file_number: int, last_file_number: int,
+            accepted_risk: int = None,
+            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+            orig_and_dest_lane_speeds: Tuple[int, int] = None) -> pd.DataFrame:
         """Reads and aggregates data from several simulations with a given
         percentage of controlled vehicles.
 
@@ -247,7 +299,8 @@ class VissimDataReader(DataReader):
             try:
                 new_data = self.load_data_from_scenario(
                     i, vehicle_percentages,
-                    vehicles_per_lane, accepted_risk)
+                    vehicles_per_lane, accepted_risk,
+                    platoon_lane_change_strategy, orig_and_dest_lane_speeds)
                 if 'simulation_number' not in new_data.columns:
                     new_data['simulation_number'] = i
                 sim_output.append(new_data)
@@ -264,6 +317,8 @@ class VissimDataReader(DataReader):
             vehicle_percentages: Dict[VehicleType, int],
             vehicles_per_lane: int = None,
             accepted_risk: int = None,
+            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+            orig_and_dest_lane_speeds: Tuple[int, int] = None,
             n_rows: int = None) -> pd.DataFrame:
         """
         Loads data from one file of a chosen network with given vehicle input
@@ -282,19 +337,25 @@ class VissimDataReader(DataReader):
 
         full_address = self._create_full_file_address(
             file_identifier, vehicle_percentages,
-            vehicles_per_lane, accepted_risk)
+            vehicles_per_lane, accepted_risk, platoon_lane_change_strategy,
+            orig_and_dest_lane_speeds)
         data = self.load_data(full_address, n_rows=n_rows)
         if 'simulation_number' not in data.columns:
             data['simulation_number'] = file_identifier
         _add_vehicle_type_columns(data, vehicle_percentages)
         _add_vehicle_input_column(data, vehicles_per_lane)
         _add_risk_column(data, accepted_risk)
+        _add_platoon_lane_change_strategy_column(data,
+                                                 platoon_lane_change_strategy)
+        _add_speeds_column(data, orig_and_dest_lane_speeds)
         return data
 
-    def _create_full_file_address(self, file_identifier: Union[int, str],
-                                  vehicle_percentages: Dict[VehicleType, int],
-                                  vehicles_per_lane: int,
-                                  accepted_risk: int = None) -> str:
+    def _create_full_file_address(
+            self, file_identifier: Union[int, str],
+            vehicle_percentages: Dict[VehicleType, int],
+            vehicles_per_lane: int, accepted_risk: int = None,
+            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+            orig_and_dest_lane_speeds: Tuple[int, int] = None) -> str:
         """
 
         :param file_identifier: This can be either a integer indicating
@@ -311,7 +372,9 @@ class VissimDataReader(DataReader):
         else:
             file_name = self._create_file_name(file_identifier)
         data_folder = self.file_handler.get_vissim_data_folder(
-            vehicle_percentages, vehicles_per_lane, accepted_risk)
+            vehicle_percentages, vehicles_per_lane,
+            accepted_risk, platoon_lane_change_strategy,
+            orig_and_dest_lane_speeds)
         return os.path.join(data_folder, file_name)
 
     def _create_file_name(self, file_identifier: int = None) -> str:
@@ -374,62 +437,64 @@ class VehicleRecordReader(VissimDataReader):
                                   self._data_identifier,
                                   self._header_identifier, self._header_map)
 
-    def load_data_with_controlled_vehicles_percentage(
-            self,
-            vehicle_percentages: List[Dict[VehicleType, int]],
-            vehicle_input: Union[int, List[int]],
-            accepted_risks: List[int] = None
-    ) -> pd.DataFrame:
-        """
-        :param vehicle_percentages: Describes the percentages of controlled
-         vehicles in the simulations.
-        :param vehicle_input: Vehicles per lane per hour
-        :param accepted_risks: Accepted risks for lane changing
-        :returns: single dataframe with data from all simulations
-        """
+    def load_data_in_bulk(
+            self, vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicle_input_per_lane: Union[int, List[int]],
+            accepted_risks: List[int] = None,
+            lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
+            orig_and_dest_lane_speeds: List[Tuple[int, int]] = None
+    ):
         a = input('Loading several vehicle records simultaneously might '
                   'consume too much memory.\nIt is recommended to use the '
                   'generate_data method instead.\nAre you sure you want to '
                   'continue? [y/n]')
         if a == 'y':
-            return super().load_data_with_controlled_percentage(
-                vehicle_percentages, vehicle_input, accepted_risks)
+            return super().load_data_in_bulk(
+                vehicle_percentages, vehicle_input_per_lane, accepted_risks,
+                lane_change_strategies, orig_and_dest_lane_speeds)
         raise RuntimeError
 
-    def generate_data(self,
-                      vehicle_percentages: Dict[VehicleType, int],
-                      vehicle_inputs: List[int],
-                      accepted_risk: int = None,
-                      n_rows: int = None) -> (pd.DataFrame, int):
+    def generate_data(
+            self, vehicle_percentages: Dict[VehicleType, int],
+            vehicle_input_per_lane: int,
+            accepted_risk: int = None,
+            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+            orig_and_dest_lane_speeds: Tuple[int, int] = None,
+            n_rows: int = None) -> (pd.DataFrame, int):
         """
         Yields all the vehicle record files for the chosen simulation scenario.
 
         :param vehicle_percentages: Describes the percentages of controlled
          vehicles in the simulations.
-        :param vehicle_inputs: Vehicle input per lane used in simulation.
+        :param vehicle_input_per_lane: Vehicle input per lane used in simulation
+        :param accepted_risk: accepted lane change risk
+        :param platoon_lane_change_strategy: Platoon lane changing strategy
+        :param orig_and_dest_lane_speeds: Mean lane speeds in the platoon
+         lane changing scenario
         :param n_rows: Number of rows going to be read from the file.
          Used for debugging purposes.
-        :param accepted_risk: accepted lane change risk
         :return:
         """
-        # if vehicle_inputs is None:
-        #     vehicle_inputs = self.get_all_vehicle_inputs_in_folder(
-        #         vehicle_type, percentage)
+        # if vehicle_input_per_lane is None:
+        #     vehicle_input_per_lane = (
+        #     self.get_all_vehicle_input_per_lane_in_folder(
+        #         vehicle_type, percentage))
 
         # Check all the *_vehs_per_lane folders in the percentage folder
-        for veh_input in vehicle_inputs:
-            min_file_number, max_file_number = (
-                self.file_handler.find_min_max_file_number(
-                    self.data_identifier, self.file_format,
-                    vehicle_percentages, veh_input, accepted_risk))
-            for file_number in range(min_file_number,
-                                     max_file_number + 1):
-                print('Loading file number {} / {}'.format(
-                    file_number - min_file_number + 1,
-                    max_file_number - min_file_number + 1))
-                yield (self.load_data_from_scenario(
-                    file_number, vehicle_percentages, veh_input,
-                    accepted_risk, n_rows), file_number)
+        min_file_number, max_file_number = (
+            self.file_handler.find_min_max_file_number(
+                self.data_identifier, self.file_format,
+                vehicle_percentages, vehicle_input_per_lane, accepted_risk,
+                platoon_lane_change_strategy, orig_and_dest_lane_speeds))
+        for file_number in range(min_file_number,
+                                 max_file_number + 1):
+            print('Loading file number {} / {}'.format(
+                file_number - min_file_number + 1,
+                max_file_number - min_file_number + 1))
+            yield (self.load_data_from_scenario(
+                file_number, vehicle_percentages, vehicle_input_per_lane,
+                accepted_risk, platoon_lane_change_strategy,
+                orig_and_dest_lane_speeds, n_rows), file_number)
 
 
 class DataCollectionReader(VissimDataReader):
@@ -574,39 +639,67 @@ class VissimLaneChangeReader(VissimDataReader):
     def load_data_with_controlled_percentage(
             self,
             vehicle_percentages: List[Dict[VehicleType, int]],
-            vehicle_input: Union[int, List[int]],
+            vehicle_input_per_lane: Union[int, List[int]],
             accepted_risks: List[int] = None) -> pd.DataFrame:
         """
         Returns None if no lane change file is found.
         :param vehicle_percentages: Describes the percentages of controlled
          vehicles in the simulations.
-        :param vehicle_input:
+        :param vehicle_input_per_lane:
         :param accepted_risks: accepted lane change risk
         :return:
         """
-
-        # percentage_copy = vehicle_percentage[:]
-        if not isinstance(vehicle_input, list):
-            vehicle_input = [vehicle_input]
-        # desired_folders = set([str(vi) + '_vehs_per_lane'
-        #                        for vi in vehicle_input])
+        if not isinstance(vehicle_input_per_lane, list):
+            vehicle_input_per_lane = [vehicle_input_per_lane]
         if accepted_risks is None:
             accepted_risks = [None]
 
         data_per_folder = []
         for vp in vehicle_percentages:
-            for veh_input in vehicle_input:
+            for veh_input in vehicle_input_per_lane:
                 for ar in accepted_risks:
                     min_file_number, max_file_number = (
                         self.file_handler.find_min_max_file_number(
                             self.data_identifier, self.file_format, vp,
-                            veh_input, ar))
+                            veh_input, accepted_risk=ar))
                     if min_file_number > max_file_number:  # no file found
                         return pd.DataFrame()
                     new_data = self.load_data_from_several_files(
                         vp, veh_input, min_file_number,
                         max_file_number, ar)
                     data_per_folder.append(new_data)
+        data = pd.concat(data_per_folder, ignore_index=True)
+        match_sim_number_to_random_seed(data)
+        return data
+
+    def load_platoon_scenario_data(
+            self, vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicle_input_per_lane: List[int],
+            lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
+            orig_and_dest_lane_speeds: List[Tuple[int, int]] = None
+    ):
+        """
+        Returns None if no lane change file is found.
+        :param vehicle_percentages:
+
+        """
+        data_per_folder = []
+        for st in lane_change_strategies:
+            for vp in vehicle_percentages:
+                for veh_input in vehicle_input_per_lane:
+                    for speed_pair in orig_and_dest_lane_speeds:
+                        min_file_number, max_file_number = (
+                            self.file_handler.find_min_max_file_number(
+                                self.data_identifier, self.file_format, vp,
+                                veh_input, platoon_lane_change_strategy=st,
+                                orig_and_dest_lane_speeds=speed_pair))
+                        if min_file_number > max_file_number:  # no file found
+                            return pd.DataFrame()
+                        new_data = self.load_data_from_several_files(
+                            vp, veh_input, min_file_number,
+                            max_file_number, platoon_lane_change_strategy=st,
+                            orig_and_dest_lane_speeds=speed_pair)
+                        data_per_folder.append(new_data)
         data = pd.concat(data_per_folder, ignore_index=True)
         match_sim_number_to_random_seed(data)
         return data
@@ -678,11 +771,14 @@ class ReducedSpeedAreaReader(VissimDataReader):
                                   self._data_identifier,
                                   self._header_identifier, self._header_map)
 
-    def load_data_with_controlled_percentage(self, vehicle_type,
-                                             vehicle_percentage,
-                                             vehicle_input=None,
-                                             accepted_risks=None):
-        print('Not yet coded.')
+    def load_data_in_bulk(
+            self, vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicle_input_per_lane: Union[int, List[int]],
+            accepted_risks: List[int] = None,
+            lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
+            orig_and_dest_lane_speeds: List[Tuple[int, int]] = None
+    ):
+        print('Not coded.')
         return
 
 
@@ -736,9 +832,24 @@ class PostProcessedDataReader(DataReader):
     def load_test_data(self):
         return self.load_data(self.file_handler.get_vissim_test_folder())
 
+    def load_data_in_bulk(
+            self, vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicle_input_per_lane: Union[int, List[int]],
+            accepted_risks: List[int] = None,
+            lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
+            orig_and_dest_lane_speeds: List[Tuple[int, int]] = None
+    ) -> pd.DataFrame:
+        if lane_change_strategies is None or lane_change_strategies[0] is None:
+            return self.load_data_with_controlled_percentage(
+                vehicle_percentages, vehicle_input_per_lane, accepted_risks)
+        else:
+            return self.load_platoon_scenario_data(
+                vehicle_percentages, vehicle_input_per_lane,
+                lane_change_strategies, orig_and_dest_lane_speeds)
+
     def load_data_with_controlled_percentage(
             self, vehicle_percentages: List[Dict[VehicleType, int]],
-            vehicle_input: Union[int, List[int]] = None,
+            vehicle_input_per_lane: Union[int, List[int]] = None,
             accepted_risks: List[int] = None
     ) -> pd.DataFrame:
         """
@@ -747,34 +858,71 @@ class PostProcessedDataReader(DataReader):
 
         :param vehicle_percentages: Describes the percentages of controlled
          vehicles in the simulations.
-        :param vehicle_input: Vehicles per hour per lane
+        :param vehicle_input_per_lane: Vehicles per hour per lane
         :param accepted_risks: Lane changing accepted risks
         :return:
         """
         # percentage_copy = vehicle_percentage[:]
-        if not isinstance(vehicle_input, list):
-            vehicle_input = [vehicle_input]
+        if not isinstance(vehicle_input_per_lane, list):
+            vehicle_input_per_lane = [vehicle_input_per_lane]
         if accepted_risks is None:
             accepted_risks = [None]
 
+        network_file = self.file_handler.get_file_name()
+        file_name = (network_file + self.data_identifier
+                     + self.file_format)
         data_per_folder = []
         for vp in vehicle_percentages:
-            # vt = list(vp.keys())
-            # p = list(vp.values())
-            for veh_input in vehicle_input:
+            for veh_input in vehicle_input_per_lane:
                 relevant_risks = accepted_risks if sum(vp.values()) > 0 else [0]
                 for ar in relevant_risks:
                     data_folder = self.file_handler.get_vissim_data_folder(
-                        vp, veh_input, ar)
-                    network_file = self.file_handler.get_file_name()
-                    file_name = (network_file + self.data_identifier
-                                 + self.file_format)
+                        vp, veh_input, accepted_risk=ar)
                     full_address = os.path.join(data_folder, file_name)
                     new_data = self.load_data(full_address)
                     _add_vehicle_type_columns(new_data, vp)
                     _add_vehicle_input_column(new_data, veh_input)
                     _add_risk_column(new_data, ar)
                     data_per_folder.append(new_data)
+        data = pd.concat(data_per_folder, ignore_index=True)
+        match_sim_number_to_random_seed(data)
+        return data
+
+    def load_platoon_scenario_data(
+            self, vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicle_input_per_lane: List[int],
+            lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
+            orig_and_dest_lane_speeds: List[Tuple[int, int]] = None
+    ) -> pd.DataFrame:
+        """
+        Loads data from all simulations with the given autonomous
+        percentages.
+
+        :param vehicle_percentages: Describes the percentages of controlled
+         vehicles in the simulations.
+        :param vehicle_input_per_lane: Vehicles per hour per lane
+        :return:
+        """
+
+        network_file = self.file_handler.get_file_name()
+        file_name = (network_file + self.data_identifier
+                     + self.file_format)
+        data_per_folder = []
+        for st in lane_change_strategies:
+            for vp in vehicle_percentages:
+                for veh_input in vehicle_input_per_lane:
+                    for speed_pair in orig_and_dest_lane_speeds:
+                        data_folder = self.file_handler.get_vissim_data_folder(
+                            vp, veh_input, platoon_lane_change_strategy=st,
+                            orig_and_dest_lane_speeds=speed_pair)
+                        full_address = os.path.join(data_folder, file_name)
+                        new_data = self.load_data(full_address)
+                        _add_vehicle_type_columns(new_data, vp)
+                        _add_vehicle_input_column(new_data, veh_input)
+                        _add_platoon_lane_change_strategy_column(new_data,
+                                                                 st)
+                        _add_speeds_column(new_data, speed_pair)
+                        data_per_folder.append(new_data)
         data = pd.concat(data_per_folder, ignore_index=True)
         match_sim_number_to_random_seed(data)
         return data
@@ -1104,7 +1252,8 @@ class MOVESDatabaseReader:
         VehicleType.HUMAN_DRIVEN: 'hdv',
         VehicleType.ACC: 'acc',
         VehicleType.AUTONOMOUS: 'av',
-        VehicleType.CONNECTED: 'cav'
+        VehicleType.CONNECTED: 'cav',
+        VehicleType.PLATOON: 'platoon'
     }
 
     def __init__(self, scenario_name: str):
@@ -1113,9 +1262,17 @@ class MOVESDatabaseReader:
         self.scenario_name = scenario_name
         self.file_handler = file_handling.FileHandler(scenario_name)
 
-    def load_data(self, vehicle_percentages: Dict[VehicleType, int],
-                  vehicles_per_lane: int,
-                  accepted_risk: int = None) -> pd.DataFrame:
+    def load_data(
+            self, vehicle_percentages: Dict[VehicleType, int],
+            vehicles_per_lane: int,
+            accepted_risk: int = None,
+            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+            orig_and_dest_lane_speeds: Tuple[int, int] = None) -> pd.DataFrame:
+
+        if platoon_lane_change_strategy is not None:
+            raise RuntimeError('[MOVESDatabaseReader] not yet ready for '
+                               + 'platoon scenarios (sorry, buddy)')
+
         temp = []
         for vt in vehicle_percentages:
             p = vehicle_percentages[vt]
@@ -1125,6 +1282,7 @@ class MOVESDatabaseReader:
         if not temp:
             temp.append(self._vehicle_type_str_map[VehicleType.HUMAN_DRIVEN])
         vt_str = '_'.join(sorted(temp))
+
         # Sample name: highway_in_and_out_hdv_6000_out
         output_database = '_'.join([self.file_handler.get_file_name(),
                                     vt_str, str(3 * vehicles_per_lane), 'out'])
@@ -1140,7 +1298,7 @@ class MOVESDatabaseReader:
 
     def load_data_with_controlled_percentage(
             self, vehicle_percentages: List[Dict[VehicleType, int]],
-            vehicle_input: Union[int, List[int]],
+            vehicle_input_per_lane: Union[int, List[int]],
             accepted_risks: List[int] = None
     ) -> pd.DataFrame:
         """
@@ -1149,17 +1307,17 @@ class MOVESDatabaseReader:
 
         :param vehicle_percentages: List of dictionnaries describing the
          types of controlled vehicles in each simulation.
-        :param vehicle_input:
+        :param vehicle_input_per_lane:
         :param accepted_risks: accepted lane change risk
         :return: pandas dataframe with the data
         """
-        if not isinstance(vehicle_input, list):
-            vehicle_input = [vehicle_input]
+        if not isinstance(vehicle_input_per_lane, list):
+            vehicle_input_per_lane = [vehicle_input_per_lane]
         if accepted_risks is None:
             accepted_risks = [None]
 
         data_per_folder = []
-        for i in vehicle_input:
+        for i in vehicle_input_per_lane:
             for vp in vehicle_percentages:
                 for ar in accepted_risks:
                     data_per_folder.append(self.load_data(vp, i, ar))
