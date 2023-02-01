@@ -58,9 +58,9 @@ class PostProcessedDataWriter(DataWriter):
 
     def save_as_csv(
             self, data: pd.DataFrame,
-            vehicle_percentages: Union[Dict[VehicleType, int], None],
-            vehicle_input_per_lane: Union[int, None],
-            accepted_risk: Union[int, None] = None,
+            vehicle_percentages: Dict[VehicleType, int],
+            vehicle_input_per_lane: int,
+            accepted_risk: int = None,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
             orig_and_dest_lane_speeds: Tuple[int, int] = None):
         """
@@ -147,9 +147,9 @@ class MOVESDataWriter(DataWriter):
 
     def save_data(
             self, data: pd.DataFrame,
-            vehicle_percentages: Union[Dict[VehicleType, int], None],
-            vehicle_input_per_lane: Union[int, None],
-            accepted_risk: Union[int, None] = None,
+            vehicle_percentages: Dict[VehicleType, int],
+            vehicle_input_per_lane: int,
+            accepted_risk: int = None,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
             orig_and_dest_lane_speeds: Tuple[int, int] = None
             ):

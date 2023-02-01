@@ -229,7 +229,7 @@ def create_simulation_summary_test(network_name: str):
 
 
 def create_summary_traffic_light_simulations(
-        vehicle_percentages: Dict[VehicleType, int],
+        vehicle_percentages: List[Dict[VehicleType, int]],
         vehicle_inputs: List[int] = None,
         debugging: bool = False):
     """Reads multiple vehicle record data files, postprocesses them,
@@ -247,49 +247,25 @@ def create_summary_traffic_light_simulations(
     :return: Nothing. SSM results are saved to as csv files"""
 
     network_name = 'traffic_lights'
-    check_already_processed_vehicle_inputs(
-        network_name, vehicle_percentages,
-        vehicle_inputs)
 
     pp = [SSMProcessor(network_name),
           RiskyManeuverProcessor(network_name),
           ViolationProcessor(network_name),
           DiscomfortProcessor(network_name)]
 
-    vehicle_record_reader = readers.VehicleRecordReader(network_name)
-    n_rows = 10 ** 5 if debugging else None
-    for vi in vehicle_inputs:
-        print('Start of safety summary creation for network {}, vehicle '
-              'percentages {}, and input {}'.format(
-            network_name, vehicle_percentages, vi))
-        data_generator = vehicle_record_reader.generate_data(
-            vehicle_percentages, vi, n_rows=n_rows)
-
-        data = defaultdict(list)
-        for (vehicle_records, file_number) in data_generator:
-            post_process_data(data_source_VISSIM, vehicle_records)
-            for single_pp in pp:
-                print('Computing', single_pp.data_name)
-                data[single_pp.data_name].append(single_pp.post_process(
-                    vehicle_records))
-            print('-' * 79)
-
-        if not debugging:
-            for single_pp in pp:
-                print('Saving ', single_pp.data_name)
-                all_simulations_data = pd.concat(data[single_pp.data_name])
-                all_simulations_data['vehicles_per_lane'] = vi
-                single_pp.writer.save_as_csv(all_simulations_data,
-                                             vehicle_percentages, vi)
+    for vp in vehicle_percentages:
+        check_already_processed_vehicle_inputs(network_name, vp, vehicle_inputs)
+        for vi in vehicle_inputs:
+            create_summary_for_single_scenario(network_name, vp, vi,
+                                               pp, debugging=debugging)
 
 
 def create_summary_with_risks(scenario_name: str,
-                              vehicle_percentages: Dict[VehicleType, int],
+                              vehicle_percentages: List[Dict[VehicleType, int]],
                               vehicle_inputs: List[int],
                               accepted_risks: List[int] = None,
-                              debugging: bool = False,
-                              post_processors: List[str] = None,
-                              analyze_lane_change: bool = True):
+                              analyze_lane_change: bool = True,
+                              debugging: bool = False):
     """
     Reads multiple vehicle record data files, postprocesses them,
     computes and aggregates SSMs results, extracts risky maneuvers, and
@@ -305,75 +281,38 @@ def create_summary_with_risks(scenario_name: str,
     :param accepted_risks: Accepted lane change risk.
     :param debugging: If true, we load only 10^5 samples from the vehicle
      records and do not save results.
-    :param post_processors: Defines which post processing operations should be
-     done. Used for debugging. Default value of None will perform all
-     available operations. [NOT IMPLEMENTED]
     :param analyze_lane_change: If true, computes risks of every reported
      lane change
     :return: Nothing. Results are saved to as csv files
     """
 
-    if accepted_risks is None:  # simulations without risk as a variable
-        accepted_risks = [None]
-    elif sum(vehicle_percentages.values()) == 0:  # avoid repeating the same
-        # computation for scenarios that vary risk but without AVs
-        accepted_risks = [0]
-
-    pp = [
+    post_processors = [
         SSMProcessor(scenario_name),
-        # RiskyManeuverProcessor(scenario_name),
+        RiskyManeuverProcessor(scenario_name),
         LaneChangeIssuesProcessor(scenario_name),
-        # DiscomfortProcessor(scenario_name)
+        DiscomfortProcessor(scenario_name)
     ]
-
-    lane_change_reader = readers.VissimLaneChangeReader(scenario_name)
-    vehicle_record_reader = readers.VehicleRecordReader(scenario_name)
-    n_rows = 10 ** 5 if debugging else None
-    for vi in vehicle_inputs:
-        for ar in accepted_risks:
-            print('Start of safety summary creation for network {}, vehicle '
-                  'percentages {}, input {}, risk {}'.format(
-                   scenario_name, vehicle_percentages, vi, ar))
-            data_generator = vehicle_record_reader.generate_data(
-                vehicle_percentages, vi, accepted_risk=ar, n_rows=n_rows)
-
-            data = defaultdict(list)
-            for (vehicle_records, file_number) in data_generator:
-                # post_process_data(data_source_VISSIM, vehicle_records)
-                for single_pp in pp:
-                    print('Computing', single_pp.data_name)
-                    data[single_pp.data_name].append(single_pp.post_process(
-                        vehicle_records))
-                if analyze_lane_change:
-                    vissim_lane_change_data = (
-                        lane_change_reader.load_data_from_scenario(
-                            file_number, vehicle_percentages, vi, ar))
-                    lane_change_data = complement_lane_change_data(
-                        scenario_name, vehicle_records, vissim_lane_change_data)
-                    data['lane_change'].append(lane_change_data)
-                print('-' * 79)
-
-            if not debugging:
-                for single_pp in pp:
-                    print('Saving ', single_pp.data_name)
-                    all_simulations_data = pd.concat(data[single_pp.data_name])
-                    all_simulations_data['vehicles_per_lane'] = vi
-                    single_pp.writer.save_as_csv(all_simulations_data,
-                                                 vehicle_percentages, vi,
-                                                 accepted_risk=ar)
-                if analyze_lane_change:
-                    lc_writer = data_writer.LaneChangeWriter(scenario_name)
-                    all_simulations_data = pd.concat(data['lane_change'])
-                    all_simulations_data['vehicles_per_lane'] = vi
-                    lc_writer.save_as_csv(all_simulations_data,
-                                          vehicle_percentages, vi,
-                                          accepted_risk=ar)
+    for vp in vehicle_percentages:
+        for vi in vehicle_inputs:
+            if accepted_risks is None:  # simulations without risk as a variable
+                relevant_risks = [None]
+            elif sum(vp.values()) == 0:  # avoid repeating the same
+                # computation for scenarios that vary risk but without AVs
+                relevant_risks = [0]
+            else:
+                relevant_risks = accepted_risks
+            for ar in relevant_risks:
+                create_summary_for_single_scenario(
+                    scenario_name, vp, vi, post_processors,
+                    accepted_risk=ar, analyze_lane_change=analyze_lane_change,
+                    debugging=debugging)
 
 
-def find_lane_change_issues(network_name: str,
-                            vehicle_percentages: Dict[VehicleType, int],
-                            vehicle_inputs: List[int],
-                            accepted_risks: List[int] = None):
+def find_lane_change_issues(
+        network_name: str, vehicle_percentages: Dict[VehicleType, int],
+        vehicle_input: int, accepted_risk: int = None,
+        platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+        orig_and_dest_lane_speeds: Tuple[int, int] = None):
     """
     Looks for cases of vehicles that were either removed from the simulation
     for waiting too long for a lane change or AVs which gave control to vissim.
@@ -381,29 +320,47 @@ def find_lane_change_issues(network_name: str,
     :param network_name:
     :param vehicle_percentages: Describes the percentages of controlled
          vehicles in the simulations.
-    :param vehicle_inputs:
-    :param accepted_risks:
+    :param vehicle_input:
+    :param accepted_risk:
     :return:
     """
 
-    if accepted_risks is None:  # simulations without risk as a variable
-        accepted_risks = [None]
-    elif sum(vehicle_percentages.values()) == 0:  # avoid repeating the same
-        # computation for scenarios that vary risk but without AVs
-        accepted_risks = [0]
+    # if accepted_risks is None:  # simulations without risk as a variable
+    #     accepted_risks = [None]
+    # elif sum(vehicle_percentages.values()) == 0:  # avoid repeating the same
+    #     # computation for scenarios that vary risk but without AVs
+    #     accepted_risks = [0]
+
     pp = LaneChangeIssuesProcessor(network_name)
     vehicle_record_reader = readers.VehicleRecordReader(network_name)
-    for vi in vehicle_inputs:
-        for ar in accepted_risks:
-            data_generator = vehicle_record_reader.generate_data(
-                vehicle_percentages, vi, accepted_risk=ar)
-            data = defaultdict(list)
-            for (vehicle_records, file_number) in data_generator:
-                data[pp.data_name].append(pp.post_process(vehicle_records))
-            all_simulations_data = pd.concat(data[pp.data_name])
-            all_simulations_data['vehicles_per_lane'] = vi
-            pp.writer.save_as_csv(all_simulations_data, vehicle_percentages,
-                                  vi, ar)
+    data_generator = vehicle_record_reader.generate_all_data_from_scenario(
+            vehicle_percentages, vehicle_input,
+            accepted_risk=accepted_risk,
+            platoon_lane_change_strategy=platoon_lane_change_strategy,
+            orig_and_dest_lane_speeds=orig_and_dest_lane_speeds)
+    data = []
+    for (vehicle_records, _) in data_generator:
+        new_data = pp.post_process(vehicle_records)
+        data.append(new_data)
+    all_scenario_data = pd.concat(data)
+
+    pp.writer.save_as_csv(
+        all_scenario_data, vehicle_percentages, vehicle_input,
+        accepted_risk=accepted_risk,
+        platoon_lane_change_strategy=platoon_lane_change_strategy,
+        orig_and_dest_lane_speeds=orig_and_dest_lane_speeds)
+    # for vi in vehicle_inputs:
+    #     for ar in accepted_risks:
+    #         data_generator = (
+    #             vehicle_record_reader.generate_all_data_from_scenario(
+    #             vehicle_percentages, vi, accepted_risk=ar))
+    #         data = defaultdict(list)
+    #         for (vehicle_records, _) in data_generator:
+    #             data[pp.data_name].append(pp.post_process(vehicle_records))
+    #         all_simulations_data = pd.concat(data[pp.data_name])
+    #         all_simulations_data['vehicles_per_lane'] = vi
+    #         pp.writer.save_as_csv(all_simulations_data, vehicle_percentages,
+    #                               vi, ar)
 
 
 def create_time_in_minutes_from_intervals(data: pd.DataFrame):
@@ -437,10 +394,13 @@ def save_safety_files(vehicle_input: int,
     print('Successfully saved.')
 
 
-def check_human_take_over(network_name: str,
-                          vehicle_percentages: Dict[VehicleType, int],
-                          vehicle_inputs: List[int],
-                          accepted_risk: List[int] = None):
+def check_human_take_over(
+        network_name: str,
+        vehicle_percentages: Dict[VehicleType, int],
+        vehicle_inputs: int,
+        accepted_risk: int = None,
+        platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+        orig_and_dest_lane_speeds: Tuple[int, int] = None):
     """Reads multiple vehicle record data files to check how often the
     autonomous vehicles gave control back to VISSIM
 
@@ -454,65 +414,102 @@ def check_human_take_over(network_name: str,
     :return: Nothing.
     """
 
-    if accepted_risk is None:
-        accepted_risk = [None]
-
     vehicle_record_reader = readers.VehicleRecordReader(network_name)
-    for vi in vehicle_inputs:
-        print('Input:', vi)
-        for ar in accepted_risk:
-            print(' Accepted risk: ', ar)
-            n_blocked_vehs = []
-            data_generator = vehicle_record_reader.generate_data(
-                vehicle_percentages, vi, accepted_risk=ar
-            )
-            for (vehicle_records, _) in data_generator:
-                # Since the scenarios have at most one mandatory lane change,
-                # we assume each vehicle only gives control to VISSIM at
-                # most once
-                blocked_vehs = vehicle_records.loc[
-                    (vehicle_records['vissim_control'] == 1)
-                    & (vehicle_records['veh_type'] != Vehicle.VISSIM_CAR_ID),
-                    'veh_id'].unique()
-                n_blocked_vehs.append(blocked_vehs.shape[0])
-                # print('Total blocked vehicles: ', blocked_vehs.shape[0])
-            print('  Mean # of blocked vehicles: {}'.format(np.mean(
-                n_blocked_vehs)))
+    data_generator = vehicle_record_reader.generate_all_data_from_scenario(
+        vehicle_percentages, vehicle_inputs, accepted_risk=accepted_risk,
+        platoon_lane_change_strategy=platoon_lane_change_strategy,
+        orig_and_dest_lane_speeds=orig_and_dest_lane_speeds
+    )
+    n_blocked_vehs = []
+    for (vehicle_records, simulation_info) in data_generator:
+        # Since the scenarios have at most one mandatory lane change,
+        # we assume each vehicle only gives control to VISSIM at
+        # most once
+        blocked_vehs = vehicle_records.loc[
+            (vehicle_records['vissim_control'] == 1)
+            & (vehicle_records['veh_type'] != Vehicle.VISSIM_CAR_ID),
+            'veh_id'].unique()
+        n_blocked_vehs.append(blocked_vehs.shape[0])
+    print('  Mean # of blocked vehicles: {}'.format(np.mean(
+        n_blocked_vehs)))
+
+    # for vi in vehicle_inputs:
+    #     print('Input:', vi)
+    #     for ar in accepted_risk:
+    #         print(' Accepted risk: ', ar)
+    #         n_blocked_vehs = []
+    #         data_generator = (
+    #             vehicle_record_reader.generate_all_data_from_scenario(
+    #                 vehicle_percentages, vi, accepted_risk=ar)
+    #         )
+    #         for (vehicle_records, _) in data_generator:
+    #             # Since the scenarios have at most one mandatory lane change,
+    #             # we assume each vehicle only gives control to VISSIM at
+    #             # most once
+    #             blocked_vehs = vehicle_records.loc[
+    #                 (vehicle_records['vissim_control'] == 1)
+    #                 & (vehicle_records['veh_type'] != Vehicle.VISSIM_CAR_ID),
+    #                 'veh_id'].unique()
+    #             n_blocked_vehs.append(blocked_vehs.shape[0])
+    #             # print('Total blocked vehicles: ', blocked_vehs.shape[0])
+    #         print('  Mean # of blocked vehicles: {}'.format(np.mean(
+    #             n_blocked_vehs)))
 
 
-def find_removed_vehicles(network_name: str,
-                          vehicle_percentages: Dict[VehicleType, int],
-                          vehicles_per_lane: List[int],
-                          accepted_risk: List[int] = None):
+def find_removed_vehicles(
+        network_name: str,
+        vehicle_percentages: Dict[VehicleType, int],
+        vehicles_per_lane: int,
+        accepted_risk: int = None,
+        platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+        orig_and_dest_lane_speeds: Tuple[int, int] = None):
     """Checks whether VISSIM removed any vehicles for standing still too
     long.
-    Results obtained so far:
-    - in_and_out with no controlled vehicles and highest inputs (2000 and
-    2500) had no vehicles removed. """
+    """
+    # Results obtained so far:
+    # - in_and_out with no controlled vehicles and highest inputs (2000 and
+    # 2500) had no vehicles removed.
 
     if accepted_risk is None:
         accepted_risk = [None]
     exit_links = [5, 6]
 
     vehicle_record_reader = readers.VehicleRecordReader(network_name)
-    for vi in vehicles_per_lane:
-        print('Input:', vi)
-        for ar in accepted_risk:
-            print(' Accepted risk: ', ar)
-            n_removed_vehicles = []
-            data_generator = vehicle_record_reader.generate_data(
-                vehicle_percentages, vi, accepted_risk=ar
-            )
-            for (vehicle_records, _) in data_generator:
-                max_time = vehicle_records.iloc[-1]['time']
-                last_entry_per_veh = vehicle_records.groupby('veh_id').last()
-                removed_vehs = last_entry_per_veh.loc[
-                    ~(last_entry_per_veh['link'].isin(exit_links))
-                    & (last_entry_per_veh['time'] < max_time)].index
-                n_removed_vehicles.append(len(removed_vehs))
-                print('  {} removed vehs'.format(n_removed_vehicles[-1]))
-            print(' Mean # of removed vehicles: {}'.format(np.mean(
-                n_removed_vehicles)))
+    data_generator = vehicle_record_reader.generate_all_data_from_scenario(
+        vehicle_percentages, vehicles_per_lane, accepted_risk=accepted_risk,
+        platoon_lane_change_strategy=platoon_lane_change_strategy,
+        orig_and_dest_lane_speeds=orig_and_dest_lane_speeds
+    )
+    n_removed_vehicles = []
+    for (vehicle_records, simulation_info) in data_generator:
+        max_time = vehicle_records.iloc[-1]['time']
+        last_entry_per_veh = vehicle_records.groupby('veh_id').last()
+        removed_vehs = last_entry_per_veh.loc[
+            ~(last_entry_per_veh['link'].isin(exit_links))
+            & (last_entry_per_veh['time'] < max_time)].index
+        n_removed_vehicles[-1].append(len(removed_vehs))
+        print('  {} removed vehs'.format(n_removed_vehicles[-1]))
+    print('Mean # of removed vehicles: {}'.format(np.mean(n_removed_vehicles)))
+
+    # for vi in vehicles_per_lane:
+    #     print('Input:', vi)
+    #     for ar in accepted_risk:
+    #         print(' Accepted risk: ', ar)
+    #         n_removed_vehicles = []
+    #         data_generator = (
+    #             vehicle_record_reader.generate_all_data_from_scenario(
+    #                 vehicle_percentages, vi, accepted_risk=ar
+    #         ))
+    #         for (vehicle_records, _) in data_generator:
+    #             max_time = vehicle_records.iloc[-1]['time']
+    #             last_entry_per_veh = vehicle_records.groupby('veh_id').last()
+    #             removed_vehs = last_entry_per_veh.loc[
+    #                 ~(last_entry_per_veh['link'].isin(exit_links))
+    #                 & (last_entry_per_veh['time'] < max_time)].index
+    #             n_removed_vehicles.append(len(removed_vehs))
+    #             print('  {} removed vehs'.format(n_removed_vehicles[-1]))
+    #         print(' Mean # of removed vehicles: {}'.format(np.mean(
+    #             n_removed_vehicles)))
 
 
 def add_main_ssms(vehicle_records: pd.DataFrame, ssm_names: List[str]):
@@ -700,7 +697,7 @@ def get_individual_vehicle_trajectories_to_moves(
 
     init_link_number = 0
     vehicle_record_reader = readers.VehicleRecordReader(scenario_name)
-    data_generator = vehicle_record_reader.generate_data(
+    data_generator = vehicle_record_reader.generate_all_data_from_scenario(
         vehicle_percentages, vehicles_per_lane, accepted_risk=accepted_risk)
     link_data_list = []
     speed_data_list = []
@@ -773,10 +770,15 @@ def translate_links_from_vissim_to_moves(
     # Load VISSIM data
     link_evaluation_reader = readers.LinkEvaluationReader(scenario_name)
     link_evaluation_data = (
-        link_evaluation_reader.load_data_in_bulk(
-            [vehicle_percentages], vehicles_per_lane, [accepted_risk],
-            [platoon_lane_change_strategy], [orig_and_dest_lane_speeds])
+        link_evaluation_reader.load_all_data_from_scenario(
+            vehicle_percentages, vehicles_per_lane, accepted_risk,
+            platoon_lane_change_strategy, orig_and_dest_lane_speeds)
     )
+    # link_evaluation_data = (
+    #     link_evaluation_reader.load_data_from_several_scenarios(
+    #         [vehicle_percentages], vehicles_per_lane, [accepted_risk],
+    #         [platoon_lane_change_strategy], [orig_and_dest_lane_speeds])
+    # )
     remove_early_samples_from_sensors(link_evaluation_data, warmup_minutes)
 
     # We will pretend each simulation is a new set of links to avoid having to
@@ -925,39 +927,47 @@ def _create_moves_speeds_from_vehicle_record(
 
 # ============================= Traffic Lights =============================== #
 
-def find_traffic_light_violations_all(
-        network_name: str,
-        vehicle_percentages: Dict[VehicleType, int],
-        vehicle_inputs: List[int] = None,
-        debugging: bool = False):
-    """
-    Reads multiple vehicle record data files, looks for cases of
-    traffic light violation, and records them in a new csv file
-
-    :param network_name: only network with traffic lights is traffic_lights
-    :param vehicle_percentages: Describes the percentages of controlled
-         vehicles in the simulations.
-    :param vehicle_inputs: Vehicle inputs for which we want SSMs
-     computed. If None (default), computes SSMs for all simulated vehicle
-     inputs.
-    :param debugging: If true, we load only 10^5 samples from the vehicle
-     records and do not save results.
-    :return: Nothing. Violation results are saved to as csv files"""
-
-    violation_pp = ViolationProcessor(network_name)
-
-    violations_list = []
-    vehicle_record_reader = readers.VehicleRecordReader(network_name)
-    n_rows = 10 ** 6 if debugging else None
-    for vi in vehicle_inputs:
-        data_generator = vehicle_record_reader.generate_data(
-            vehicle_percentages, vi, n_rows=n_rows)
-        for (vehicle_records, file_number) in data_generator:
-            violations_list.append(
-                violation_pp.post_process(vehicle_records))
-    violations = pd.concat(violations_list)
-    violation_pp.writer(network_name)
-    violation_pp.writer.save_as_csv(violations, vehicle_percentages, 0)
+# def find_traffic_light_violations_all(
+#         network_name: str,
+#         vehicle_percentages: Dict[VehicleType, int],
+#         vehicle_inputs: List[int] = None,
+#         debugging: bool = False):
+#     """
+#     Reads multiple vehicle record data files, looks for cases of
+#     traffic light violation, and records them in a new csv file
+#
+#     :param network_name: only network with traffic lights is traffic_lights
+#     :param vehicle_percentages: Describes the percentages of controlled
+#          vehicles in the simulations.
+#     :param vehicle_inputs: Vehicle inputs for which we want SSMs
+#      computed. If None (default), computes SSMs for all simulated vehicle
+#      inputs.
+#     :param debugging: If true, we load only 10^5 samples from the vehicle
+#      records and do not save results.
+#     :return: Nothing. Violation results are saved to as csv files"""
+#
+#     violation_pp = ViolationProcessor(network_name)
+#
+#     violations_list = []
+#     vehicle_record_reader = readers.VehicleRecordReader(network_name)
+#     n_rows = 10 ** 6 if debugging else None
+#     # for vi in vehicle_inputs:
+#     #     data_generator = (
+#     #       vehicle_record_reader.generate_all_data_from_scenario(
+#     #         vehicle_percentages, vi, n_rows=n_rows))
+#     #     for (vehicle_records, _) in data_generator:
+#     #         violations_list.append(
+#     #             violation_pp.post_process(vehicle_records))
+#     data_generator = (
+#         vehicle_record_reader.generate_data_from_several_scenarios(
+#             [vehicle_percentages], vehicle_inputs, n_rows=n_rows
+#     ))
+#     for (vehicle_records, _) in data_generator:
+#         violations_list.append(
+#             violation_pp.post_process(vehicle_records))
+#     violations = pd.concat(violations_list)
+#     violation_pp.writer(network_name)
+#     violation_pp.writer.save_as_csv(violations, vehicle_percentages, vi)
 
 
 # ========================= Lane change methods ============================== #
@@ -2794,8 +2804,7 @@ class ViolationProcessor(VISSIMDataPostProcessor):
                                           tf['red duration']].index
             violations_per_tf = vehicle_record.loc[
                 violation_idx, ['simulation_number', 'veh_id', 'veh_type',
-                                'time',
-                                'vehicles_per_lane']]
+                                'time', 'vehicles_per_lane']]
             violations_per_tf['traffic_light'] = tf['id']
             violations_list.append(violations_per_tf)
         return pd.concat(violations_list)
@@ -2887,3 +2896,93 @@ class LaneChangeIssuesProcessor(VISSIMDataPostProcessor):
         issues_df = pd.concat([removed_vehicles, blocked_vehicles])
         issues_df['simulation_number'] = data['simulation_number'].iloc[0]
         return issues_df
+
+
+def create_summary_for_single_scenario(
+        scenario_name: str, vehicle_percentages: Dict[VehicleType, int],
+        vehicle_input: int, post_processors: List[VISSIMDataPostProcessor],
+        accepted_risk: int = None,
+        platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+        orig_and_dest_lane_speeds: Tuple[int, int] = None,
+        analyze_lane_change: bool = True,
+        debugging: bool = False):
+    """
+    Reads all vehicle record data files from the given scenario, postprocesses
+    them,computes and aggregates SSMs results, extracts risky maneuvers, and
+    find traffic light violations. SSMs, risky maneuvers and
+    violations are saved as csv files per vehicle input.
+
+    :param scenario_name: Currently available: in_and_out, in_and_merge,
+     i710, us101, traffic_lights
+    :param vehicle_percentages: Describes the percentages of controlled
+         vehicles in the simulations.
+    :param vehicle_input: Vehicle inputs for which we want SSMs
+     computed.
+    :param accepted_risk: Accepted lane change risk.
+    :param debugging: If true, we load only 10^5 samples from the vehicle
+     records and do not save results.
+    :param post_processors: Defines which post processing operations should be
+     done. Used for debugging. Default value of None will perform all
+     available operations. [NOT IMPLEMENTED]
+    :param analyze_lane_change: If true, computes risks of every reported
+     lane change
+    :return: Nothing. Results are saved to as csv files
+    """
+    if sum(vehicle_percentages.values()) == 0:  # avoid repeating the same
+        # computation for scenarios that vary risk but without AVs
+        accepted_risk = [0]
+
+    lane_change_reader = readers.VissimLaneChangeReader(scenario_name)
+    vehicle_record_reader = readers.VehicleRecordReader(scenario_name)
+    n_rows = 10 ** 5 if debugging else None
+    data_generator = vehicle_record_reader.generate_all_data_from_scenario(
+        vehicle_percentages, vehicle_input, accepted_risk=accepted_risk,
+        platoon_lane_change_strategy=platoon_lane_change_strategy,
+        orig_and_dest_lane_speeds=orig_and_dest_lane_speeds,
+        n_rows=n_rows)
+    data = defaultdict(list)
+    print('Start of safety summary creation for network {}, vehicle '
+          'percentages {}, input {}, risk {}, lc strategy {}, '
+          'speed pair {}'.format(
+            scenario_name, vehicle_percentages, vehicle_input,
+            accepted_risk, platoon_lane_change_strategy.name,
+            orig_and_dest_lane_speeds))
+    for (vehicle_records, simulation_info) in data_generator:
+        file_number = simulation_info['file_number']
+        post_process_data(data_source_VISSIM, vehicle_records)
+        for single_pp in post_processors:
+            print('Computing', single_pp.data_name)
+            data[single_pp.data_name].append(single_pp.post_process(
+                vehicle_records))
+        if analyze_lane_change:
+            vissim_lane_change_data = (
+                lane_change_reader.load_single_file_from_scenario(
+                    file_number, vehicle_percentages, vehicle_input,
+                    accepted_risk=accepted_risk,
+                    platoon_lane_change_strategy=platoon_lane_change_strategy,
+                    orig_and_dest_lane_speeds=orig_and_dest_lane_speeds))
+            lane_change_data = complement_lane_change_data(
+                scenario_name, vehicle_records,
+                vissim_lane_change_data)
+            data['lane_change'].append(lane_change_data)
+        print('-' * 79)
+
+    if not debugging:
+        for single_pp in post_processors:
+            print('Saving ', single_pp.data_name)
+            all_simulations_data = pd.concat(data[single_pp.data_name])
+            all_simulations_data['vehicles_per_lane'] = vehicle_input
+            single_pp.writer.save_as_csv(
+                all_simulations_data, vehicle_percentages, vehicle_input,
+                accepted_risk=accepted_risk,
+                platoon_lane_change_strategy=platoon_lane_change_strategy,
+                orig_and_dest_lane_speeds=orig_and_dest_lane_speeds)
+        if analyze_lane_change:
+            lc_writer = data_writer.LaneChangeWriter(scenario_name)
+            all_simulations_data = pd.concat(data['lane_change'])
+            all_simulations_data['vehicles_per_lane'] = vehicle_input
+            lc_writer.save_as_csv(
+                all_simulations_data, vehicle_percentages, vehicle_input,
+                accepted_risk=accepted_risk,
+                platoon_lane_change_strategy=platoon_lane_change_strategy,
+                orig_and_dest_lane_speeds=orig_and_dest_lane_speeds)

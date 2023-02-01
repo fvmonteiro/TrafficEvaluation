@@ -9,51 +9,46 @@ import readers
 from vehicle import VehicleType
 from vissim_interface import VissimInterface
 
+
 def generate_us_101_reduced_speed_table(first_file_number=2):
     """Get the link mean speeds for simulations with different speed limits
     and organize them in a nice looking dataframe"""
-    reader = readers.ReducedSpeedAreaReader('US_101')
-    all_rsa = reader.read_all_reduced_speed_area_files(
-        first_file_number=first_file_number)
-    last_sim_number = len(all_rsa) + first_file_number - 1
-    # lsr = reader.read_link_segment_results(last_sim_number)
-
-    sim_number = []
-    speed_limits = []
-    mean_speeds = []
-    seen_speed_limit_combination = set()
-    for i in range(first_file_number, last_sim_number + 1):
-        speed_limit_combination = tuple(all_rsa[i - first_file_number][
-                                            'speed(10)'])
-        lsr = reader.read_link_segment_results(i)
-        if (speed_limit_combination not in seen_speed_limit_combination
-                and not lsr.empty):
-            seen_speed_limit_combination.add(speed_limit_combination)
-            sim_number.append(i)
-            speed_limits.append(list(speed_limit_combination))
-            # all_rsa[i - first_file_number]['speed(10)'].to_numpy())
-            mean_speeds.append(lsr.loc[lsr['sim_number'].astype(str) == str(i),
-                                       'speed'][:5].values)
-        # if len(mean_speeds[-1]) == 0:
-        #     print(i)
-
-    col_names = []
-    [col_names.append('speed lim lane ' + str(i)) for i in range(1, 6)]
-    [col_names.append('mean speed seg. ' + str(i)) for i in range(1, 4)]
-    col_names.append('mean speed in ramp')
-    col_names.append('mean speed out ramp')
-    df = pd.DataFrame(index=sim_number,
-                      data=np.hstack((speed_limits,
-                                      mean_speeds)),
-                      columns=col_names)
-    df['mean speed lim'] = df.iloc[:, 0:5].mean(axis=1)
-
-    fig, ax = plt.subplots()
-    ax.plot(df['mean speed lim'], df['mean speed seg. 1'], 'rx')
-    ax.plot(df['mean speed lim'], df['mean speed seg. 2'], 'bo')
-    ax.plot(df['mean speed lim'], df['mean speed seg. 3'], 'k*')
-    ax.legend(['1', '2', '3'])
-    return df
+    pass
+    # reader = readers.ReducedSpeedAreaReader('US_101')
+    # all_rsa = reader.read_all_reduced_speed_area_files(
+    #     first_file_number=first_file_number)
+    # last_sim_number = len(all_rsa) + first_file_number - 1
+    # # lsr = reader.read_link_segment_results(last_sim_number)
+    #
+    # sim_number = [] speed_limits = [] mean_speeds = []
+    # seen_speed_limit_combination = set() for i in range(first_file_number,
+    # last_sim_number + 1): speed_limit_combination = tuple(all_rsa[i -
+    # first_file_number][ 'speed(10)']) lsr =
+    # reader.read_link_segment_results(i) if (speed_limit_combination not in
+    # seen_speed_limit_combination and not lsr.empty):
+    # seen_speed_limit_combination.add(speed_limit_combination)
+    # sim_number.append(i) speed_limits.append(list(speed_limit_combination))
+    # all_rsa[i - first_file_number]['speed(10)'].to_numpy())
+    # mean_speeds.append(lsr.loc[lsr['sim_number'].astype(str) == str(i),
+    # 'speed'][:5].values) # if len(mean_speeds[-1]) == 0: #     print(i)
+    #
+    # col_names = []
+    # [col_names.append('speed lim lane ' + str(i)) for i in range(1, 6)]
+    # [col_names.append('mean speed seg. ' + str(i)) for i in range(1, 4)]
+    # col_names.append('mean speed in ramp')
+    # col_names.append('mean speed out ramp')
+    # df = pd.DataFrame(index=sim_number,
+    #                   data=np.hstack((speed_limits,
+    #                                   mean_speeds)),
+    #                   columns=col_names)
+    # df['mean speed lim'] = df.iloc[:, 0:5].mean(axis=1)
+    #
+    # fig, ax = plt.subplots()
+    # ax.plot(df['mean speed lim'], df['mean speed seg. 1'], 'rx')
+    # ax.plot(df['mean speed lim'], df['mean speed seg. 2'], 'bo')
+    # ax.plot(df['mean speed lim'], df['mean speed seg. 3'], 'k*')
+    # ax.legend(['1', '2', '3'])
+    # return df
 
 
 def save_post_processed_data(data, data_source, simulation_name):

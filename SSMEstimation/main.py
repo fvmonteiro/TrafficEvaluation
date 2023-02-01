@@ -266,12 +266,11 @@ def create_vehicle_percentages_dictionary(
         vehicle_types: List[VehicleType], percentages: List[int],
         n_vehicle_types: int) -> List[Dict[VehicleType, int]]:
     """
-
     :param vehicle_types:
     :param percentages:
-    :param n_vehicle_types:
-    :return: Dictionary with tuple of VehicleType as key and list of
-     percentages as value
+    :param n_vehicle_types: Must be equal to 1 or 2
+    :return: List of dictionaries describing the percentage of each vehicle
+     type in the simulation
     """
     percentages_list = []
     if n_vehicle_types == 1:
@@ -295,35 +294,40 @@ def main():
     # =============== Scenario Definition =============== #
     scenario_name = 'platoon_lane_change'
     strategies = [
+        PlatoonLaneChangeStrategy.human_driven
         # PlatoonLaneChangeStrategy.no_strategy,
-        PlatoonLaneChangeStrategy.single_body_platoon,
+        # PlatoonLaneChangeStrategy.single_body_platoon,
         # PlatoonLaneChangeStrategy.leader_first,
         # PlatoonLaneChangeStrategy.last_vehicle_first,
-        PlatoonLaneChangeStrategy.leader_first_and_reverse
+        # PlatoonLaneChangeStrategy.leader_first_and_reverse
     ]
-    vehicle_type = [
+    vehicle_types = [
         VehicleType.HUMAN_DRIVEN,
-        VehicleType.CONNECTED
+        # VehicleType.CONNECTED
     ]
+    percentages = [100]
+    vehicle_percentages = create_vehicle_percentages_dictionary(
+        vehicle_types, percentages, 1)
     main_road_speeds = ['slow', 'fast']
-    vehicle_inputs = [500, 1000]
+    vehicle_inputs = [1000, 2000]
 
     # =============== Running =============== #
-    vi = VissimInterface()
-    vi.load_simulation(scenario_name)
-    vi.run_multiple_platoon_lane_change_scenarios(
-        strategies, vehicle_type, main_road_speeds, vehicle_inputs,
-        is_debugging=True)
-    vi.close_vissim()
+    # vi = VissimInterface()
+    # vi.load_simulation(scenario_name)
+    # vi.run_multiple_platoon_lane_change_scenarios(
+    #     strategies, vehicle_type, main_road_speeds, vehicle_inputs,
+    #     is_debugging=True)
+    # vi.close_vissim()
 
     # =============== Post processing =============== #
     # for sp in full_penetration:
     #     print(sp)
     #     post_processing.create_summary_with_risks(
-    #         scenario_name, sp, inputs_per_lane, accepted_risks, debugging=False)
-        # for ipl in inputs_per_lane:
-        #     post_processing.get_individual_vehicle_trajectories_to_moves(
-        #         scenario_name, ipl, sp, 0)
+    #         scenario_name, sp, inputs_per_lane, accepted_risks,
+    #         debugging=False)
+    #     # for ipl in inputs_per_lane:
+    #     #     post_processing.get_individual_vehicle_trajectories_to_moves(
+    #     #         scenario_name, ipl, sp, 0)
     # post_processing.create_summary_with_risks(
     #     scenario_name, {VehicleType.ACC: 0}, [1000],
     #     accepted_risks=[0], analyze_lane_change=True, debugging=True)
@@ -337,13 +341,19 @@ def main():
     #     # continue
 
     # =============== Check results graphically =============== #
+    ra = result_analysis.ResultAnalyzer(scenario_name, False)
+    vehicle_inputs = [i for i in range(500, 2501, 500)]
+    for speed in main_road_speeds:
+        ra.plot_fundamental_diagram(vehicle_percentages[0], vehicle_inputs,
+                                    platoon_lane_change_strategy=strategies[0],
+                                    orig_and_dest_lane_speeds=(80, speed)
+                                    )
+
     # all_plots_for_scenarios_with_risk(scenario_name, simulation_percentages,
     #                                   inputs_per_lane, accepted_risks,
     #                                   save_fig=False)
 
     # simulation_percentages = varied_cav_penetration
-    #
-    # ra = result_analysis.ResultAnalyzer(scenario_name, False)
     #
     # ra.plot_risk_histograms('total_risk', simulation_percentages,
     #                         inputs_per_lane, [0], min_risk=1)

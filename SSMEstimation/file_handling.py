@@ -255,7 +255,7 @@ class FileHandler:
         :param accepted_risk: accepted lane change risk
         :param orig_and_dest_lane_speeds: Mean desired speeds in the platoon
          lane changing scenario
-        :return: highest simulation number.
+        :return: (min, max) simulation number.
         """
         max_simulation_number = -1
         min_simulation_number = 10000
@@ -437,11 +437,11 @@ def create_file_path(
         return os.path.join(base_folder, 'test')
 
     folder_list = [base_folder]
-    if vehicle_percentages is not None:
-        folder_list.append(create_percent_folder_name(vehicle_percentages))
     if platoon_lane_change_strategy is not None:
         folder_list.append(create_platoon_lc_strategy_folder_name(
             platoon_lane_change_strategy))
+    if vehicle_percentages is not None:
+        folder_list.append(create_percent_folder_name(vehicle_percentages))
     if vehicle_input_per_lane is not None:
         folder_list.append(create_vehs_per_lane_folder_name(
             vehicle_input_per_lane))
