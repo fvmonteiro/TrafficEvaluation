@@ -626,10 +626,14 @@ class VissimInterface:
             is_platoon_autonomous = st != PlatoonLaneChangeStrategy.human_driven
             for vt in main_road_vehicle_types:
                 veh_percent = {vt: 100}
+                veh_composition_number = (
+                    self.set_controlled_vehicles_percentage(veh_percent))
                 for speed in main_road_speeds:
-                    composition_name = '_'.join([speed, vt.name.lower()])
-                    self.set_vehicle_inputs_composition_by_name(
-                        composition_name)
+                    self.set_vehicle_composition_desired_speed(
+                        veh_composition_number, speed)
+                    # composition_name = '_'.join([speed, vt.name.lower()])
+                    # self.set_vehicle_inputs_composition_by_name(
+                    #     composition_name)
                     for veh_input in main_road_vehicle_inputs:
                         self.reset_saved_simulations(warning_active=False)
                         veh_volumes = {'main_flow': veh_input, 'in_ramp': 0}
@@ -886,10 +890,9 @@ class VissimInterface:
                   format(veh_input.AttValue('Name'),
                          veh_compositions_container.ItemByKey(
                              composition_number).AttValue('Name')))
-        # return composition_number
 
     def set_controlled_vehicles_percentage(
-            self, vehicle_percentages: Dict[VehicleType, int]):
+            self, vehicle_percentages: Dict[VehicleType, int]) -> int:
         """
         Looks for the specified vehicle composition and sets the
         percentage of autonomous vehicles in it. The rest of the composition
@@ -900,9 +903,14 @@ class VissimInterface:
 
         :param vehicle_percentages: Describes the percentages of controlled
          vehicles in the simulation.
+        :returns: The composition number in case more operations need to be done
         """
         # The percentage of non-controlled vehicles must be human
-        total_controlled_percentage = sum(vehicle_percentages.values())
+        total_controlled_percentage = 0
+        for vt, p in vehicle_percentages.items():
+            if vt != VehicleType.HUMAN_DRIVEN:
+                total_controlled_percentage += p
+        # sum(vehicle_percentages.values())
         percentages_with_humans = {VehicleType.HUMAN_DRIVEN:
                                    100 - total_controlled_percentage}
         percentages_with_humans.update(vehicle_percentages)
@@ -924,6 +932,7 @@ class VissimInterface:
                 print('[Client] veh type {} at {}%.'.
                       format(flow_vehicle_type,
                              relative_flow.AttValue('RelFlow')))
+        return composition_number
 
     def set_vehicle_inputs_composition_by_name(self, composition_name: str):
         """
@@ -1197,6 +1206,30 @@ class VissimInterface:
         raise ValueError('[Client] Composition name not found in {} '
                          'network.'.format(
                           self.file_handler.get_network_name()))
+
+    def set_vehicle_composition_desired_speed(self, composition_number: int,
+                                              speed_distribution_name: str):
+        veh_composition = self.vissim.Net.VehicleCompositions.ItemByKey(
+            composition_number)
+        speed_distribution = self.get_speed_distribution_by_name(
+            speed_distribution_name)
+        for relative_flow in veh_composition.VehCompRelFlows:
+            relative_flow.SetAttValue('DesSpeedDistr', speed_distribution)
+        print('[Client] Desired speed distribution of all flows in composition '
+              '{} set to {}'.format(
+                veh_composition.AttValue('Name'),
+                speed_distribution.AttValue('Name')))
+
+    def get_speed_distribution_by_name(self, speed_distribution_name: str):
+        speed_distribution_container = self.vissim.Net.DesSpeedDistributions
+        for speed_distribution in speed_distribution_container:
+            if (speed_distribution.AttValue('Name').lower()
+                    == speed_distribution_name.lower()):
+                return speed_distribution
+        raise ValueError('[Client] DesSpeedDistribution {} not found in {} '
+                         'network.'.format(
+                            speed_distribution_name,
+                            self.file_handler.get_network_name()))
 
     def is_some_network_loaded(self):
         return self.vissim.AttValue('InputFile') != ''
