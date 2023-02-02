@@ -477,7 +477,8 @@ class VehicleRecordReader(VissimDataReader):
         'COORDREARX': 'rear_x', 'COORDREARY': 'rear_y',
         'SPEEDDIFF': 'vissim_delta_v', 'LENGTH': 'length',
         'LNCHG': 'lane_change', 'GIVECONTROLTOVISSIM': 'vissim_control',
-        'LEADTARGTYPE': 'target_type'
+        'LEADTARGTYPE': 'target_type', 'CURRENTSTATE': 'state',
+        'PLATOONID': 'platoon_id', 'PLATOONLCSTRATEGY': 'lc_strategy'
     }
 
     # Note: we don't necessarily want all the variables listed in each of the
@@ -697,6 +698,7 @@ class LinkEvaluationReader(AggregatedDataReader):
         data['link_number'] = link_information.iloc[:, 0]
         data['link_length'] = (link_information.iloc[:, -1]
                                - link_information.iloc[:, -2])
+        # data['link_segment'] = 0
         # If data was not exported per lane, we set all lanes to zero
         data['lane'] = (0 if link_information.shape[1] == 3 else
                         link_information.iloc[:, 1])
@@ -895,7 +897,7 @@ class PostProcessedDataReader(DataReader):
     def load_test_data(self):
         return self.load_data(self.file_handler.get_vissim_test_folder())
 
-    def load_data_in_bulk(
+    def load_from_several_scenarios(
             self, vehicle_percentages: List[Dict[VehicleType, int]],
             vehicle_input_per_lane: Union[int, List[int]],
             accepted_risks: List[int] = None,
@@ -954,8 +956,8 @@ class PostProcessedDataReader(DataReader):
     def load_platoon_scenario_data(
             self, vehicle_percentages: List[Dict[VehicleType, int]],
             vehicle_input_per_lane: List[int],
-            lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
-            orig_and_dest_lane_speeds: List[Tuple[int, int]] = None
+            lane_change_strategies: List[PlatoonLaneChangeStrategy],
+            orig_and_dest_lane_speeds: List[Tuple[int, int]]
     ) -> pd.DataFrame:
         """
         Loads data from all simulations with the given autonomous
@@ -1082,6 +1084,14 @@ class ViolationsReader(PostProcessedDataReader):
 
 class DiscomfortReader(PostProcessedDataReader):
     _data_identifier = '_Discomfort'
+
+    def __init__(self, scenario_name):
+        PostProcessedDataReader.__init__(self, scenario_name,
+                                         self._data_identifier)
+
+
+class PlatoonLaneChangeEfficiencyReader(PostProcessedDataReader):
+    _data_identifier = '_Platoon Lane Change Efficiency'
 
     def __init__(self, scenario_name):
         PostProcessedDataReader.__init__(self, scenario_name,

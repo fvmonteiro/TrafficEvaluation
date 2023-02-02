@@ -374,6 +374,9 @@ def get_scenario_number_of_lanes(scenario_name: str) -> int:
     return _scenario_info[scenario_name].network_info.total_lanes
 
 
+def get_merging_links(scneario_name: str) -> List[int]:
+    return _scenario_info[scneario_name].network_info.merging_link
+
 def create_vehs_per_lane_folder_name(vehicles_per_lane: Union[int, str]) -> str:
     """Creates the name of the folder which contains results for the
     given vehicle per lane input (not the full path)"""
@@ -401,10 +404,6 @@ def create_accepted_risk_folder_name(accepted_risk: Union[int, None]) -> str:
 def create_platoon_lc_strategy_folder_name(
         platoon_lc_strategy: PlatoonLaneChangeStrategy) -> str:
     return platoon_lc_strategy.name
-
-
-# def create_vehicle_input_type_folder_name(vehicle_input_type: VehicleType) -> str:
-#     return 'all_' + vehicle_input_type.name.lower()
 
 
 def create_speeds_folder_name(orig_and_dest_lane_speeds: Tuple[int, int]

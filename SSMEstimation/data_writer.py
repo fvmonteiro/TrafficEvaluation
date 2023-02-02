@@ -136,6 +136,14 @@ class LaneChangeIssuesWriter(PostProcessedDataWriter):
                                          self._data_type_identifier)
 
 
+class PlatoonLaneChangeEfficiencyWriter(PostProcessedDataWriter):
+    _data_type_identifier = 'Platoon Lane Change Efficiency'
+
+    def __init__(self, scenario_name: str):
+        PostProcessedDataWriter.__init__(self, scenario_name,
+                                         self._data_type_identifier)
+
+
 class MOVESDataWriter(DataWriter):
     _file_extension = '.xlsx'
 

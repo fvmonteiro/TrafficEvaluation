@@ -652,6 +652,7 @@ class VissimInterface:
                         start_time = time.perf_counter()
                         self.run_platoon_scenario(
                             platoon_size, platoon_desired_speed,
+                            first_platoon_time=60,
                             is_platoon_autonomous=is_platoon_autonomous)
                         end_time = time.perf_counter()
                         run_time, unit = _compute_run_time_with_unit(

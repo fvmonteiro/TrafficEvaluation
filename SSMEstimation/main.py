@@ -294,12 +294,12 @@ def main():
     # =============== Scenario Definition =============== #
     scenario_name = 'platoon_lane_change'
     strategies = [
-        PlatoonLaneChangeStrategy.human_driven
-        # PlatoonLaneChangeStrategy.no_strategy,
-        # PlatoonLaneChangeStrategy.single_body_platoon,
-        # PlatoonLaneChangeStrategy.leader_first,
-        # PlatoonLaneChangeStrategy.last_vehicle_first,
-        # PlatoonLaneChangeStrategy.leader_first_and_reverse
+        PlatoonLaneChangeStrategy.human_driven,
+        PlatoonLaneChangeStrategy.no_strategy,
+        PlatoonLaneChangeStrategy.single_body_platoon,
+        PlatoonLaneChangeStrategy.leader_first,
+        PlatoonLaneChangeStrategy.last_vehicle_first,
+        PlatoonLaneChangeStrategy.leader_first_and_reverse
     ]
     vehicle_types = [
         VehicleType.HUMAN_DRIVEN,
@@ -308,18 +308,22 @@ def main():
     percentages = [100]
     vehicle_percentages = create_vehicle_percentages_dictionary(
         vehicle_types, percentages, 1)
-    main_road_speeds = ['slow', 'fast']
-    vehicle_inputs = [1000, 2000]
+    main_road_speeds = ['fast']
+    vehicle_inputs = [1000]
 
     # =============== Running =============== #
     # vi = VissimInterface()
     # vi.load_simulation(scenario_name)
     # vi.run_multiple_platoon_lane_change_scenarios(
-    #     strategies, vehicle_type, main_road_speeds, vehicle_inputs,
-    #     is_debugging=True)
+    #     strategies, vehicle_types, main_road_speeds, vehicle_inputs,
+    #     runs_per_scenario=1)
     # vi.close_vissim()
 
     # =============== Post processing =============== #
+    orig_and_dest_lane_speeds = [(80, s) for s in main_road_speeds]
+    post_processing.create_platoon_lane_change_summary(
+        scenario_name, vehicle_percentages, vehicle_inputs, strategies,
+        orig_and_dest_lane_speeds)
     # for sp in full_penetration:
     #     print(sp)
     #     post_processing.create_summary_with_risks(
@@ -342,12 +346,17 @@ def main():
 
     # =============== Check results graphically =============== #
     ra = result_analysis.ResultAnalyzer(scenario_name, False)
-    vehicle_inputs = [i for i in range(500, 2501, 500)]
-    for speed in main_road_speeds:
-        ra.plot_fundamental_diagram(vehicle_percentages[0], vehicle_inputs,
-                                    platoon_lane_change_strategy=strategies[0],
-                                    orig_and_dest_lane_speeds=(80, speed)
-                                    )
+    ra.plot_y_vs_platoon_lc_strategy('stayed_in_platoon',
+                                     vehicle_percentages[0],
+                                     vehicle_inputs[0],
+                                     strategies, (80, main_road_speeds[0]))
+    # vehicle_inputs = [i for i in range(1500, 2501, 500)]
+    # for speed in main_road_speeds:
+    #     ra.plot_fundamental_diagram(vehicle_percentages[0], vehicle_inputs,
+    #                                 warmup_time=5,
+    #                                 platoon_lane_change_strategy=strategies[0],
+    #                                 orig_and_dest_lane_speeds=(80, speed)
+    #                                 )
 
     # all_plots_for_scenarios_with_risk(scenario_name, simulation_percentages,
     #                                   inputs_per_lane, accepted_risks,

@@ -260,12 +260,11 @@ def create_summary_traffic_light_simulations(
                                                pp, debugging=debugging)
 
 
-def create_summary_with_risks(scenario_name: str,
-                              vehicle_percentages: List[Dict[VehicleType, int]],
-                              vehicle_inputs: List[int],
-                              accepted_risks: List[int] = None,
-                              analyze_lane_change: bool = True,
-                              debugging: bool = False):
+def create_summary_with_risks(
+        scenario_name: str, vehicle_percentages: List[Dict[VehicleType, int]],
+        vehicle_inputs: List[int],
+        accepted_risks: List[int] = None, analyze_lane_change: bool = True,
+        debugging: bool = False):
     """
     Reads multiple vehicle record data files, postprocesses them,
     computes and aggregates SSMs results, extracts risky maneuvers, and
@@ -308,6 +307,26 @@ def create_summary_with_risks(scenario_name: str,
                     debugging=debugging)
 
 
+def create_platoon_lane_change_summary(
+        scenario_name: str, vehicle_percentages: List[Dict[VehicleType, int]],
+        vehicle_inputs: List[int],
+        lane_change_strategies: List[PlatoonLaneChangeStrategy],
+        orig_and_dest_lane_speeds: List[Tuple[int, int]],
+        debugging: bool = False):
+
+    post_processors = [PlatoonEfficiencyProcessor(scenario_name)]
+    for st in lane_change_strategies:
+        for vp in vehicle_percentages:
+            for vi in vehicle_inputs:
+                for speed_pair in orig_and_dest_lane_speeds:
+                    create_summary_for_single_scenario(
+                        scenario_name, vp, vi, post_processors,
+                        platoon_lane_change_strategy=st,
+                        orig_and_dest_lane_speeds=speed_pair,
+                        analyze_lane_change=False,
+                        debugging=debugging)
+
+
 def find_lane_change_issues(
         network_name: str, vehicle_percentages: Dict[VehicleType, int],
         vehicle_input: int, accepted_risk: int = None,
@@ -334,10 +353,10 @@ def find_lane_change_issues(
     pp = LaneChangeIssuesProcessor(network_name)
     vehicle_record_reader = readers.VehicleRecordReader(network_name)
     data_generator = vehicle_record_reader.generate_all_data_from_scenario(
-            vehicle_percentages, vehicle_input,
-            accepted_risk=accepted_risk,
-            platoon_lane_change_strategy=platoon_lane_change_strategy,
-            orig_and_dest_lane_speeds=orig_and_dest_lane_speeds)
+        vehicle_percentages, vehicle_input,
+        accepted_risk=accepted_risk,
+        platoon_lane_change_strategy=platoon_lane_change_strategy,
+        orig_and_dest_lane_speeds=orig_and_dest_lane_speeds)
     data = []
     for (vehicle_records, _) in data_generator:
         new_data = pp.post_process(vehicle_records)
@@ -564,7 +583,7 @@ def check_already_processed_vehicle_inputs(
     """
     ssm_reader = readers.SSMDataReader(network_name)
     try:
-        ssm_data = ssm_reader.load_data_in_bulk(
+        ssm_data = ssm_reader.load_from_several_scenarios(
             [vehicle_percentages], vehicle_input_per_lane)
     except OSError:
         return
@@ -995,7 +1014,7 @@ def complement_lane_change_data(network_name: str,
     remove_false_lane_change_starts(vehicle_record, vissim_lc_data)
     lc_data = add_overlooked_lane_changes(vehicle_record, vissim_lc_data)
     print('Getting lane change attributes. {} from LC file, {} total'.format(
-          vissim_lc_data.shape[0], lc_data.shape[0]))
+        vissim_lc_data.shape[0], lc_data.shape[0]))
     lc_data['lc_direction'] = lc_data['dest_lane'] - lc_data['origin_lane']
     if np.any(lc_data['lc_direction'].abs() > 1):
         warnings.warn('Vehicle changing two lanes at a time?',
@@ -2629,7 +2648,7 @@ class VISSIMDataPostProcessor(ABC):
         # self.secondary_parameter = secondary_parameter
 
     @abstractmethod
-    def post_process(self, data):
+    def post_process(self, data) -> pd.DataFrame:
         pass
 
 
@@ -2648,7 +2667,7 @@ class SSMProcessor(VISSIMDataPostProcessor):
         else:
             raise ValueError('Unknown network name.')
 
-    def post_process(self, data):
+    def post_process(self, data) -> pd.DataFrame:
         vehicle_record = data
         if 'leader_type' not in vehicle_record.columns:
             post_process_data(data_source_VISSIM, vehicle_record)
@@ -2691,7 +2710,7 @@ class RiskyManeuverProcessor(VISSIMDataPostProcessor):
         else:
             raise ValueError('Unknown network name.')
 
-    def post_process(self, data: pd.DataFrame):
+    def post_process(self, data: pd.DataFrame) -> pd.DataFrame:
         """
         Find risky maneuvers and write their information on a dataframe
         A risky maneuver is defined as a time interval during which risk is
@@ -2700,7 +2719,7 @@ class RiskyManeuverProcessor(VISSIMDataPostProcessor):
         risky maneuver.
 
         :param data: dataframe with step by step vehicle data
-         including some risk measurement
+         including some previously computed risk measurement
         :return: dataframe where each row represents one risky maneuver
         """
         vehicle_record = data
@@ -2782,7 +2801,7 @@ class ViolationProcessor(VISSIMDataPostProcessor):
         self.traffic_light_data = traffic_light_reader.load_data()
         self._compute_cycle_times()
 
-    def post_process(self, data):
+    def post_process(self, data) -> pd.DataFrame:
         """
         Finds red light running violations in a single simulation.
 
@@ -2826,7 +2845,7 @@ class DiscomfortProcessor(VISSIMDataPostProcessor):
                                          'discomfort', self._writer)
         self.comfortable_brake = [-i for i in range(3, 10)]
 
-    def post_process(self, data):
+    def post_process(self, data) -> pd.DataFrame:
         """
         Computes discomfort as the integral of
         |a(t) - a_comf| if |a(t)| > a_comf.
@@ -2836,6 +2855,7 @@ class DiscomfortProcessor(VISSIMDataPostProcessor):
         'aggregation period' seconds
         """
         vehicle_records = data
+        print('[WARNING] are you sure the sampling interval is correct?')
         sampling_interval = (vehicle_records['time'].iloc[1]
                              - vehicle_records['time'].iloc[0])
         discomfort_columns = []
@@ -2872,7 +2892,7 @@ class LaneChangeIssuesProcessor(VISSIMDataPostProcessor):
                                          'lane_change_issues', self._writer)
         self.exit_links = [5, 6]  # exit links for the in_and_out scenario
 
-    def post_process(self, data):
+    def post_process(self, data) -> pd.DataFrame:
         """
         :param data: Vehicle record of a VISSIM simulation
         """
@@ -2896,6 +2916,83 @@ class LaneChangeIssuesProcessor(VISSIMDataPostProcessor):
         issues_df = pd.concat([removed_vehicles, blocked_vehicles])
         issues_df['simulation_number'] = data['simulation_number'].iloc[0]
         return issues_df
+
+
+class PlatoonEfficiencyProcessor(VISSIMDataPostProcessor):
+    _writer = data_writer.PlatoonLaneChangeEfficiencyWriter
+
+    def __init__(self, scenario_name):
+        VISSIMDataPostProcessor.__init__(self, scenario_name,
+                                         'platoon_lane_change_efficiency',
+                                         self._writer)
+
+    def post_process(self, data) -> pd.DataFrame:
+        """
+
+        """
+        # TODO Accel costs of cooperating vehicles, travel time of other
+        #  vehicles
+
+        # Scenario constants
+        in_ramp_connector = 10001
+        main_road_to_end_connector = 10002
+        in_ramp_link = 2
+        main_road_link = 3
+        exit_link = 6
+
+        sim_time = data.iloc[-1]['time']
+        sampling_time = 0.1  # TODO: read from data
+        first_link = data.groupby('veh_id')['link'].first()
+        # Platoon vehicles start at the in ramp
+        platoon_veh_ids = first_link[((first_link == in_ramp_connector)
+                                     | (first_link == in_ramp_link)
+                                      )].index.to_numpy()
+        result_df = pd.DataFrame(index=platoon_veh_ids)
+        result_df['simulation_number'] = data.iloc[0]['simulation_number']
+
+        platoon_vehicles = data[data['veh_id'].isin(
+            platoon_veh_ids)]
+        are_platoons_autonomous = platoon_vehicles.iloc[0]['platoon_id'] > 0
+
+        grouped_by_id = platoon_vehicles.groupby('veh_id')
+        result_df['traversed_network'] = (grouped_by_id['time'].last()
+                                          != sim_time)
+
+        final_link_lane = grouped_by_id[['link', 'lane']].last()
+        was_lane_change_completed = (
+                (final_link_lane['link'] == main_road_to_end_connector)
+                | (final_link_lane['link'] == exit_link)
+                | ((final_link_lane['link'] == main_road_link)
+                    & (final_link_lane['lane'] > 1)))
+        result_df['was_lane_change_completed'] = was_lane_change_completed
+        # Maneuver time
+        result_df['maneuver_time'] = 0
+        if are_platoons_autonomous:
+            result_df['maneuver_time'] = compute_time_interval_per_vehicle(
+                platoon_vehicles[platoon_vehicles['state'] != 'lane_keeping'])
+        # Travel time: platoon and all others
+        result_df['travel_time'] = compute_time_interval_per_vehicle(
+            platoon_vehicles)
+        # Platoon accel costs
+        result_df['accel_costs'] = grouped_by_id['ax'].agg(
+            lambda x: np.sum(np.power(x, 2)) * sampling_time
+        )
+        # Count of platoon splits
+        platoon_ids = grouped_by_id.agg({'platoon_id': ['first', 'last']})
+        result_df['stayed_in_platoon'] = (platoon_ids['platoon_id']['first']
+                                          == platoon_ids['platoon_id']['last'])
+        result_df.reset_index(inplace=True, names='veh_id')
+        return result_df
+
+
+def compute_time_interval_per_vehicle(vehicle_records: pd.DataFrame):
+    times = vehicle_records.groupby('veh_id').agg(
+        {'time': ['first', 'last']})
+    times['travel_time'] = (times['time']['last'] - times['time']['first'])
+    # Excludes vehicles which didn't exit the network
+    # mean_travel_time = times.loc[times['time']['last'] < simulation_time,
+    #                              'travel_time'].mean()
+    return times['travel_time']
 
 
 def create_summary_for_single_scenario(
@@ -2941,7 +3038,7 @@ def create_summary_for_single_scenario(
         orig_and_dest_lane_speeds=orig_and_dest_lane_speeds,
         n_rows=n_rows)
     data = defaultdict(list)
-    print('Start of safety summary creation for network {}, vehicle '
+    print('Start of safety summary creation for network {}\nvehicle '
           'percentages {}, input {}, risk {}, lc strategy {}, '
           'speed pair {}'.format(
             scenario_name, vehicle_percentages, vehicle_input,
@@ -2949,7 +3046,7 @@ def create_summary_for_single_scenario(
             orig_and_dest_lane_speeds))
     for (vehicle_records, simulation_info) in data_generator:
         file_number = simulation_info['file_number']
-        post_process_data(data_source_VISSIM, vehicle_records)
+        # post_process_data(data_source_VISSIM, vehicle_records)
         for single_pp in post_processors:
             print('Computing', single_pp.data_name)
             data[single_pp.data_name].append(single_pp.post_process(
