@@ -298,24 +298,41 @@ class FileHandler:
                                            vehicle_input_per_lane=vi,
                                            accepted_risk=ar)
 
+    def copy_results_from_multiple_platoon_scenarios(
+            self, vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicles_per_lane: List[int],
+            lane_change_strategies: List[PlatoonLaneChangeStrategy],
+            origin_and_dest_lane_speeds: List[Tuple[int, int]]):
+        for st in lane_change_strategies:
+            for vp in vehicle_percentages:
+                for vi in vehicles_per_lane:
+                    for speed_pair in origin_and_dest_lane_speeds:
+                        try:
+                            self.copy_result_files(
+                                vp, vi, platoon_lane_change_strategy=st,
+                                origin_and_dest_lane_speeds=speed_pair)
+                        except FileNotFoundError:
+                            print("Couldn't copy {}, {}, {}, {} to shared "
+                                  "folder.".format(st.name, vp, vi, speed_pair))
+                            continue
+
     def copy_result_files(
             self,
-            vehicle_percentages: Dict[VehicleType, int] = None,
+            vehicle_percentages: Dict[VehicleType, int],
+            vehicle_input_per_lane: int,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            vehicle_input_per_lane: int = None,
             accepted_risk: int = None,
-            orig_and_dest_lane_speeds: Tuple[int, int] = None):
+            origin_and_dest_lane_speeds: Tuple[int, int] = None):
         """
         Copies data collections, link segments, lane change data, SSMs,
         Risky Maneuvers and Violations files to a similar folder structure in
         Google Drive.
         """
 
-        source_dir = self.get_vissim_data_folder(vehicle_percentages,
-                                                 vehicle_input_per_lane,
-                                                 accepted_risk,
-                                                 platoon_lane_change_strategy,
-                                                 orig_and_dest_lane_speeds)
+        source_dir = self.get_vissim_data_folder(
+            vehicle_percentages, vehicle_input_per_lane,
+            accepted_risk, platoon_lane_change_strategy,
+            origin_and_dest_lane_speeds)
         target_dir = os.path.join(
             get_shared_folder(),
             source_dir.split(get_networks_folder() + "\\")[1]
@@ -329,7 +346,7 @@ class FileHandler:
         _, max_file_number = self.find_min_max_file_number(
             '', 'att', vehicle_percentages, vehicle_input_per_lane,
             accepted_risk, platoon_lane_change_strategy,
-            orig_and_dest_lane_speeds)
+            origin_and_dest_lane_speeds)
         max_att_files = [file for file in all_file_names if
                          file.endswith(str(max_file_number) + '.att')]
         files_to_copy = all_csv_files + max_att_files
@@ -381,7 +398,7 @@ def create_vehs_per_lane_folder_name(vehicles_per_lane: Union[int, str]) -> str:
     """Creates the name of the folder which contains results for the
     given vehicle per lane input (not the full path)"""
 
-    if not vehicles_per_lane:
+    if vehicles_per_lane is None:
         return ''
     if isinstance(vehicles_per_lane, str):
         vehs_per_lane_folder = vehicles_per_lane

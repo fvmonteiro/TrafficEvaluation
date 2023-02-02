@@ -162,6 +162,7 @@ class VissimDataReader(DataReader):
                     except KeyError:
                         column_names.append(variable_name.lower() + extra_info)
                 data = pd.read_csv(file, sep=self.separator,
+                                   dtype={'state': str},
                                    names=column_names, index_col=False,
                                    nrows=n_rows)
         except OSError:
