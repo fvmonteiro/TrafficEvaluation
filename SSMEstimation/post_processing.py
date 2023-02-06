@@ -2933,6 +2933,47 @@ class PlatoonEfficiencyProcessor(VISSIMDataPostProcessor):
         # TODO Accel costs of cooperating vehicles, travel time of other
         #  vehicles
 
+        sim_time = data.iloc[-1]['time']
+        sampling_time = 0.1  # TODO: read from data
+
+        platoon_vehicles = data[data['veh_type']
+                                == Vehicle.VISSIM_PLATOON_CAR_ID]
+        grouped_by_id = platoon_vehicles.groupby('veh_id')
+        platoon_veh_ids = grouped_by_id.groups.keys()
+        result_df = pd.DataFrame(index=platoon_veh_ids)
+        result_df['simulation_number'] = data.iloc[0]['simulation_number']
+        result_df['traversed_network'] = (grouped_by_id['time'].last()
+                                          != sim_time)
+        result_df['was_lane_change_completed'] = grouped_by_id['state'].agg(
+            lambda x: np.any(x == 'lane changing')
+        )
+        platoon_ids = grouped_by_id.agg({'platoon_id': ['first', 'last']})
+        result_df['initial_platoon_id'] = platoon_ids['platoon_id']['first']
+        result_df['stayed_in_platoon'] = (platoon_ids['platoon_id']['first']
+                                          == platoon_ids['platoon_id']['last'])
+        result_df['travel_time'] = compute_time_interval_per_vehicle(
+            platoon_vehicles)
+        maneuvering_idx = platoon_vehicles['state'] != 'lane keeping'
+        result_df['vehicle_maneuver_time'] = compute_time_interval_per_vehicle(
+            platoon_vehicles[maneuvering_idx]
+        )
+        platoon_maneuver_time = compute_time_interval_per_platoon(
+            platoon_vehicles[maneuvering_idx]
+        )
+        result_df = pd.merge(left=result_df, right=platoon_maneuver_time,
+                             left_on='initial_platoon_id', right_index=True,
+                             how='inner')
+        result_df.rename({'duration': 'platoon_maneuver_time'}, axis=1,
+                         inplace=True)
+
+        # result_df['platoon_maneuver_time']
+        result_df['accel_costs'] = grouped_by_id['ax'].agg(
+            lambda x: np.sum(np.power(x, 2)) * sampling_time
+        )
+        result_df.reset_index(inplace=True, names='veh_id')
+        return result_df
+
+    def post_process_baseline_scenario(self, data):
         # Scenario constants
         in_ramp_connector = 10001
         main_road_to_end_connector = 10002
@@ -2940,59 +2981,42 @@ class PlatoonEfficiencyProcessor(VISSIMDataPostProcessor):
         main_road_link = 3
         exit_link = 6
 
-        sim_time = data.iloc[-1]['time']
-        sampling_time = 0.1  # TODO: read from data
+        # TODO: incomplete
+
+        sim_time = 0.1  # TODO compute from data
+        # Vehicles that must perform lane change
         first_link = data.groupby('veh_id')['link'].first()
-        # Platoon vehicles start at the in ramp
-        platoon_veh_ids = first_link[((first_link == in_ramp_connector)
-                                     | (first_link == in_ramp_link)
-                                      )].index.to_numpy()
-        result_df = pd.DataFrame(index=platoon_veh_ids)
-        result_df['simulation_number'] = data.iloc[0]['simulation_number']
-
-        platoon_vehicles = data[data['veh_id'].isin(
-            platoon_veh_ids)]
-        are_platoons_autonomous = platoon_vehicles.iloc[0]['platoon_id'] > 0
-
+        lane_changing_veh_ids = first_link[((first_link == in_ramp_connector)
+                                            | (first_link == in_ramp_link)
+                                            )].index.to_numpy()
+        platoon_vehicles = data[data['veh_id'].isin(lane_changing_veh_ids)]
         grouped_by_id = platoon_vehicles.groupby('veh_id')
-        result_df['traversed_network'] = (grouped_by_id['time'].last()
-                                          != sim_time)
-
         final_link_lane = grouped_by_id[['link', 'lane']].last()
         was_lane_change_completed = (
                 (final_link_lane['link'] == main_road_to_end_connector)
                 | (final_link_lane['link'] == exit_link)
                 | ((final_link_lane['link'] == main_road_link)
-                    & (final_link_lane['lane'] > 1)))
-        result_df['was_lane_change_completed'] = was_lane_change_completed
-        # Maneuver time
-        result_df['maneuver_time'] = 0
-        if are_platoons_autonomous:
-            result_df['maneuver_time'] = compute_time_interval_per_vehicle(
-                platoon_vehicles[platoon_vehicles['state'] != 'lane_keeping'])
-        # Travel time: platoon and all others
+                   & (final_link_lane['lane'] > 1)))
+        result_df = pd.DataFrame(index=lane_changing_veh_ids)
+        result_df['simulation_number'] = data.iloc[0]['simulation_number']
+        result_df['traversed_network'] = (grouped_by_id['time'].last()
+                                          != sim_time)
         result_df['travel_time'] = compute_time_interval_per_vehicle(
             platoon_vehicles)
-        # Platoon accel costs
-        result_df['accel_costs'] = grouped_by_id['ax'].agg(
-            lambda x: np.sum(np.power(x, 2)) * sampling_time
-        )
-        # Count of platoon splits
-        platoon_ids = grouped_by_id.agg({'platoon_id': ['first', 'last']})
-        result_df['stayed_in_platoon'] = (platoon_ids['platoon_id']['first']
-                                          == platoon_ids['platoon_id']['last'])
-        result_df.reset_index(inplace=True, names='veh_id')
-        return result_df
 
 
 def compute_time_interval_per_vehicle(vehicle_records: pd.DataFrame):
     times = vehicle_records.groupby('veh_id').agg(
         {'time': ['first', 'last']})
-    times['travel_time'] = (times['time']['last'] - times['time']['first'])
-    # Excludes vehicles which didn't exit the network
-    # mean_travel_time = times.loc[times['time']['last'] < simulation_time,
-    #                              'travel_time'].mean()
-    return times['travel_time']
+    times['duration'] = (times['time']['last'] - times['time']['first'])
+    return times['duration']
+
+
+def compute_time_interval_per_platoon(vehicle_records: pd.DataFrame):
+    times = vehicle_records.groupby('platoon_id').agg(
+        {'time': ['first', 'last']})
+    times['duration'] = (times['time']['last'] - times['time']['first'])
+    return times['duration']
 
 
 def create_summary_for_single_scenario(
