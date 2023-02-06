@@ -456,16 +456,18 @@ def create_file_path(
     if platoon_lane_change_strategy is not None:
         folder_list.append(create_platoon_lc_strategy_folder_name(
             platoon_lane_change_strategy))
-    if vehicle_percentages is not None:
+    if vehicle_input_per_lane > 0:
         folder_list.append(create_percent_folder_name(vehicle_percentages))
-    if vehicle_input_per_lane is not None:
         folder_list.append(create_vehs_per_lane_folder_name(
-            vehicle_input_per_lane))
+                vehicle_input_per_lane))
+        if orig_and_dest_lane_speeds is not None:
+            folder_list.append(create_speeds_folder_name(
+                orig_and_dest_lane_speeds))
+    else:
+        folder_list.append(create_vehs_per_lane_folder_name(
+                vehicle_input_per_lane))
     if accepted_risk is not None:
         folder_list.append(create_accepted_risk_folder_name(
             accepted_risk))
-    if orig_and_dest_lane_speeds is not None:
-        folder_list.append(create_speeds_folder_name(
-            orig_and_dest_lane_speeds))
 
     return os.path.join(*folder_list)
