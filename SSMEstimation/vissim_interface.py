@@ -1,8 +1,8 @@
 from dataclasses import dataclass
+from enum import Enum
 import os
 import time
-# from typing import Union
-from typing import List, Dict, Callable
+from typing import List, Dict, Callable, Union
 import warnings
 
 import pandas as pd
@@ -23,14 +23,24 @@ class _ScenarioInfo:
     run_function: Callable
 
 
+class _UDA_number(Enum):
+    risk_to_leaders = 9
+    risk_to_follower = 10
+    use_linear_lane_change_gap = 11
+    platoon_lane_change_strategy = 13
+    verbose_simulation = 98
+    logged_vehicle = 99
+
 class VissimInterface:
     vissim_net_ext = '.inpx'
     vissim_layout_ext = '.layx'
 
-    risk_to_leaders_uda_number = 9
-    risk_to_follower_uda_number = 10
-    use_linear_lane_change_gap_uda_number = 11
-    platoon_lane_change_strategy_uda_number = 13
+    # risk_to_leaders_uda_number = 9
+    # risk_to_follower_uda_number = 10
+    # use_linear_lane_change_gap_uda_number = 11
+    # platoon_lane_change_strategy_uda_number = 13
+    # verbose_simulation_uda_number = 98
+    # logged_vehicle_uda_number = 99
 
     _initial_random_seed = 7
 
@@ -393,7 +403,7 @@ class VissimInterface:
                 platoon_creation_time += platoon_creation_period
                 continue_loop_condition = (platoon_creation_time < sim_time
                                            and platoon_counter < n_platoons)
-                print('[Client] Creating platoon ', platoon_counter,
+                print('[Client] Creating platoon', platoon_counter,
                       'at time', simulation.SimulationSecond)
                 self.create_platoon(platoon_size, platoon_speed,
                                     is_platoon_autonomous)
@@ -409,12 +419,12 @@ class VissimInterface:
                 simulation.RunContinuous()
             # print('runs finished:', run_counter)
 
-    def run_platoon_scenario_sample(self, vehicle_input=None,
-                                    simulation_period=60,
-                                    number_of_runs=2,
-                                    first_platoon_time=10,
-                                    platoon_creation_period=30,
-                                    lane_change_strategy=0):
+    def run_platoon_scenario_sample(
+            self, vehicle_input, lane_change_strategy,
+            simulation_period=60, number_of_runs=2,
+            first_platoon_time=10, platoon_creation_period=30,
+            random_seed=None, is_fast_mode=False,
+            is_simulation_verbose=False, logged_veh_id=0):
         """
         For initial test. Allows us to perform single runs of the platoon
         scenario with given parameters.
@@ -425,43 +435,33 @@ class VissimInterface:
         """
         if not self.is_correct_network_loaded():
             return
+        if random_seed is None:
+            random_seed = self._initial_random_seed
+        self.set_random_seed(random_seed)
 
-        simulation = self.vissim.Simulation
         self.set_simulation_period(simulation_period)
         self.set_number_of_runs(number_of_runs)
-        self.set_uda_default_value(
-            VissimInterface.platoon_lane_change_strategy_uda_number,
-            lane_change_strategy)
+        self.set_platoon_lane_change_strategy(lane_change_strategy)
         if vehicle_input is not None:
             veh_volumes = {'main_flow': vehicle_input}
             self.set_vehicle_inputs(veh_volumes)
-
-        sim_time = simulation.AttValue('SimPeriod')
-        n_runs = simulation.AttValue('NumRuns')
+        self.set_verbose_simulation(is_simulation_verbose)
+        self.set_logged_vehicle_id(logged_veh_id)
+        if is_fast_mode:
+            self.vissim.Graphics.CurrentNetworkWindow.SetAttValue(
+                "QuickMode", 1)
 
         platoon_size = 4  # number of vehicles
         platoon_speed = 80
 
-        run_counter = 0
-        simulation.SetAttValue("SimBreakAt", first_platoon_time)
-        simulation.RunContinuous()
-        while run_counter < n_runs:
-            platoon_counter = 0
-            platoon_creation_time = first_platoon_time
-            print('[Client] simulation', run_counter + 1, 'started')
-            while platoon_creation_time < sim_time:
-                platoon_counter += 1
-                platoon_creation_time += platoon_creation_period
-                print('[Client] Creating platoon ', platoon_counter)
-                self.create_platoon(platoon_size, platoon_speed)
-                if sim_time > platoon_creation_time:
-                    simulation.SetAttValue("SimBreakAt", platoon_creation_time)
-                else:
-                    simulation.SetAttValue("SimBreakAt", first_platoon_time)
-                print('[Client] Running again')
-                simulation.RunContinuous()
-            run_counter += 1
-            print('runs finished:', run_counter)
+        self.run_platoon_scenario(
+            platoon_size, platoon_speed,
+            first_platoon_time=first_platoon_time,
+            platoon_creation_period=platoon_creation_period,
+            is_platoon_autonomous=True)
+        self.vissim.Graphics.CurrentNetworkWindow.SetAttValue(
+            "QuickMode", 0)
+
         print('Simulation done')
 
     def test_lane_access(self):
@@ -657,6 +657,7 @@ class VissimInterface:
                         self.run_platoon_scenario(
                             platoon_size, platoon_desired_speed,
                             first_platoon_time=180,
+                            platoon_creation_period=60,
                             is_platoon_autonomous=is_platoon_autonomous)
                         end_time = time.perf_counter()
                         run_time, unit = _compute_run_time_with_unit(
@@ -945,16 +946,13 @@ class VissimInterface:
     def set_accepted_lane_change_risk_to_leaders(self, accepted_risk: float):
         if accepted_risk is None:
             accepted_risk = 0
-        print("[Client] Setting accepted lc risk to leaders to ", accepted_risk)
-        self.set_uda_default_value(self.risk_to_leaders_uda_number,
+        self.set_uda_default_value(_UDA_number.risk_to_leaders,
                                    accepted_risk)
 
     def set_accepted_lane_change_risk_to_follower(self, accepted_risk: float):
         if accepted_risk is None:
             accepted_risk = 0
-        print("[Client] Setting accepted lc risk to follower to ",
-              accepted_risk)
-        self.set_uda_default_value(self.risk_to_follower_uda_number,
+        self.set_uda_default_value(_UDA_number.risk_to_follower,
                                    accepted_risk)
 
     def set_use_linear_lane_change_gap(self, use_linear_lane_change_gap: bool):
@@ -964,9 +962,7 @@ class VissimInterface:
         :param use_linear_lane_change_gap:
         :return:
         """
-        print("[Client] Setting use linear lane change gap",
-              use_linear_lane_change_gap)
-        self.set_uda_default_value(self.use_linear_lane_change_gap_uda_number,
+        self.set_uda_default_value(_UDA_number.use_linear_lane_change_gap,
                                    use_linear_lane_change_gap)
 
     def set_platoon_lane_change_strategy(
@@ -974,18 +970,28 @@ class VissimInterface:
         print("[Client] Setting platoon lane change strategy to ",
               platoon_lc_strategy.value, "(" + platoon_lc_strategy.name + ")")
         self.set_uda_default_value(
-            self.platoon_lane_change_strategy_uda_number,
+            _UDA_number.platoon_lane_change_strategy,
             platoon_lc_strategy.value)
 
-    def set_uda_default_value(self, uda_number: int, uda_value: float):
+    def set_verbose_simulation(self, is_simulation_verbose: bool):
+        self.set_uda_default_value(_UDA_number.verbose_simulation,
+                                   is_simulation_verbose)
+
+    def set_logged_vehicle_id(self, veh_id: int):
+        self.set_uda_default_value(_UDA_number.logged_vehicle,
+                                   veh_id)
+
+    def set_uda_default_value(self, uda_number: _UDA_number,
+                              uda_value: Union[bool, int, float]):
         """
         Sets the default value of a user defined attribute
         :param uda_number: number identifying the uda
         :param uda_value: default value for all vehicles in the simulation
         :return: None
         """
+        print("[Client] Setting {} to {}".format(uda_number.name, uda_value))
         uda = self.vissim.Net.UserDefinedAttributes.ItemByKey(
-            uda_number)
+            uda_number.value)
         uda.SetAttValue('DefValue', uda_value)
 
     def set_traffic_lights(self):
