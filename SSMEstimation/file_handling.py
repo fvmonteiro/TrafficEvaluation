@@ -21,9 +21,9 @@ class _NetworkInfo:
     """Contains information about different VISSIM network"""
     file_name: str
     total_lanes: int
-    on_ramp_link: List[int]
-    off_ramp_link: List[int]
-    merging_link: List[int]
+    # on_ramp_link: List[int]
+    # off_ramp_link: List[int]
+    # merging_link: List[int]
 
 
 @dataclass
@@ -68,18 +68,19 @@ _folders_map = {
 
 _network_info = {
     'in_and_out':
-        _NetworkInfo('highway_in_and_out_lanes', 3, [2, 10001], [10003, 5],
-                     [3]),
+        _NetworkInfo('highway_in_and_out_lanes', 3),
     'in_and_merge':
-        _NetworkInfo('highway_in_and_merge', 3, [2, 10001], [], [3]),
+        _NetworkInfo('highway_in_and_merge', 3),
     'i710':
-        _NetworkInfo('I710-MultiSec-3mi', 3, [], [], []),
+        _NetworkInfo('I710-MultiSec-3mi', 3),
     'us101':
-        _NetworkInfo('US_101', 6, [4], [5], []),
+        _NetworkInfo('US_101', 6),
     'traffic_lights':
-        _NetworkInfo('traffic_lights_study', 2, [], [], []),
-    'platoon_lane_change':
-        _NetworkInfo('platoon_lane_change', 2, [2, 10001], [1003, 5], [3])
+        _NetworkInfo('traffic_lights_study', 2),
+    'platoon_mandatory_lane_change':
+        _NetworkInfo('platoon_mandatory_lane_change', 2),
+    'platoon_discretionary_lane_change':
+        _NetworkInfo('platoon_discretionary_lane_change', 2)
 }
 
 _scenario_info = {
@@ -99,8 +100,10 @@ _scenario_info = {
         _ScenarioInfo('us101', 'results'),
     'traffic_lights':
         _ScenarioInfo('traffic_lights', 'traffic_lights_study'),
-    'platoon_lane_change':
-        _ScenarioInfo('platoon_lane_change', 'results')
+    'platoon_mandatory_lane_change':
+        _ScenarioInfo('platoon_mandatory_lane_change', 'results'),
+    'platoon_discretionary_lane_change':
+        _ScenarioInfo('platoon_discretionary_lane_change', 'results')
 }
 
 
@@ -162,14 +165,14 @@ class FileHandler:
         return os.path.join(get_moves_folder(),
                             self.get_network_file_relative_address())
 
-    def get_on_ramp_links(self):
-        return self._scenario_info.network_info.on_ramp_link
-
-    def get_off_ramp_links(self):
-        return self._scenario_info.network_info.off_ramp_link
-
-    def get_merging_links(self):
-        return self._scenario_info.network_info.merging_link
+    # def get_on_ramp_links(self):
+    #     return self._scenario_info.network_info.on_ramp_link
+    #
+    # def get_off_ramp_links(self):
+    #     return self._scenario_info.network_info.off_ramp_link
+    #
+    # def get_merging_links(self):
+    #     return self._scenario_info.network_info.merging_link
 
     def get_vissim_test_folder(self):
         return os.path.join(self.get_results_base_folder(), 'test')

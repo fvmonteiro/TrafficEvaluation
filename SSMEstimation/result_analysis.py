@@ -1016,7 +1016,7 @@ class ResultAnalyzer:
         """
 
         """
-        if self.scenario_name != 'platoon_lane_change':
+        if 'platoon' not in self.scenario_name:
             raise ValueError('Must be scenario with platoon lane changes')
 
         reader = readers.PlatoonLaneChangeEfficiencyReader(self.scenario_name)
@@ -1070,7 +1070,7 @@ class ResultAnalyzer:
         """
 
         """
-        if self.scenario_name != 'platoon_lane_change':
+        if 'platoon' not in self.scenario_name:
             raise ValueError('Must be scenario with platoon lane changes')
 
         orig_and_dest_lane_speeds = [(80, s) for s in dest_lane_speeds]

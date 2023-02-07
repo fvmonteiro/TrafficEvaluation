@@ -52,8 +52,10 @@ class VissimInterface:
             'in_and_out': _ScenarioInfo(1800, 1, self.run_in_and_out_scenario),
             'in_and_merge': _ScenarioInfo(1800, 1,
                                           self.run_in_and_merge_scenario),
-            'platoon_lane_change': _ScenarioInfo(1200, 1,
+            'platoon_mandatory_lane_change': _ScenarioInfo(1200, 1,
                                                  self.run_platoon_scenario),
+            'platoon_discretionary_lane_change': _ScenarioInfo(
+                1200, 1, self.run_platoon_scenario),
             'i710': _ScenarioInfo(3600, 10, self.run_i710_simulation),
             'us101': _ScenarioInfo(1800, 1, self.run_us_101_simulation),
             'traffic_lights': _ScenarioInfo(1800, 10,
@@ -87,7 +89,8 @@ class VissimInterface:
         records and ssam files.
 
         :param scenario_name: Currently available: in_and_out_*,
-         in_and_merge, i710, us101, traffic_lights, platoon_lane_change
+         in_and_merge, i710, us101, traffic_lights,
+         platoon_mandatory_lane_change, platoon_discretionary_lane_change
         :param layout_file: Optionally defines the layout file for the network
         :return: boolean indicating if simulation was properly loaded
         """
@@ -405,8 +408,7 @@ class VissimInterface:
                                            and platoon_counter < n_platoons)
                 print('[Client] Creating platoon', platoon_counter,
                       'at time', simulation.SimulationSecond)
-                self.create_platoon(platoon_size, platoon_speed,
-                                    is_platoon_autonomous)
+                self.create_platoon(platoon_size, platoon_speed)
                 if continue_loop_condition:
                     # print('[Client] Setting break point at ',
                     #       platoon_creation_time)
@@ -572,7 +574,7 @@ class VissimInterface:
         """
         strategy = PlatoonLaneChangeStrategy.human_driven
         vehicle_type = VehicleType.HUMAN_DRIVEN
-        main_road_speeds = ['slow', 'fast']
+        main_road_speeds = ['slower', 'faster']
         vehicle_inputs = [i for i in range(500, 2501, 500)]
         self.run_multiple_platoon_lane_change_scenarios(
             [strategy], [vehicle_type], main_road_speeds, vehicle_inputs)
@@ -611,7 +613,7 @@ class VissimInterface:
             self.vissim.SuspendUpdateGUI()
 
         platoon_size = 4
-        platoon_desired_speed = 80
+        platoon_desired_speed = 90
         self.set_evaluation_options(True, True, True, True, True,
                                     warm_up_minutes * 60,
                                     data_frequency=5)
@@ -619,6 +621,7 @@ class VissimInterface:
         self.set_random_seed_increment(1)
         self.set_simulation_period(simulation_period)
         self.set_number_of_runs(runs_per_scenario)
+        self.set_verbose_simulation(False)
 
         print("Starting multiple-scenario run.")
         for st in strategies:
@@ -626,21 +629,22 @@ class VissimInterface:
             is_platoon_autonomous = st != PlatoonLaneChangeStrategy.human_driven
             for vt in main_road_vehicle_types:
                 veh_percent = {vt: 100}
-                veh_composition_number = (
-                    self.set_controlled_vehicles_percentage(veh_percent))
                 for speed in main_road_speeds:
-                    self.set_vehicle_composition_desired_speed(
-                        veh_composition_number, speed)
+                    comp_number = (
+                        self.find_composition_matching_speed_distributions(
+                            {vt: speed}))
+                    self.set_vehicle_inputs_composition(comp_number)
                     # composition_name = '_'.join([speed, vt.name.lower()])
                     # self.set_vehicle_inputs_composition_by_name(
                     #     composition_name)
                     for veh_input in main_road_vehicle_inputs:
                         self.reset_saved_simulations(warning_active=False)
-                        veh_volumes = {'main_flow': veh_input, 'in_ramp': 0}
+                        veh_volumes = {'left_lane': veh_input, 'right_lane': 0}
                         self.set_vehicle_inputs(veh_volumes)
                         if is_debugging:
                             results_folder = (
                                 self.file_handler.get_vissim_test_folder())
+                            first_platoon_time = 10
                         else:
                             results_folder = (
                                 self.file_handler.get_vissim_data_folder(
@@ -648,23 +652,23 @@ class VissimInterface:
                                     vehicle_input_per_lane=veh_input,
                                     platoon_lane_change_strategy=st,
                                     orig_and_dest_lane_speeds=(
-                                        platoon_desired_speed,
-                                        speed)))
+                                        platoon_desired_speed, speed))
+                            )
+                            first_platoon_time = 180
                         self.set_results_folder(results_folder)
                         print("Starting series of {} runs with duration {}".
                               format(runs_per_scenario, simulation_period))
                         start_time = time.perf_counter()
                         self.run_platoon_scenario(
                             platoon_size, platoon_desired_speed,
-                            first_platoon_time=180,
+                            first_platoon_time=first_platoon_time,
                             platoon_creation_period=60,
                             is_platoon_autonomous=is_platoon_autonomous)
                         end_time = time.perf_counter()
                         run_time, unit = _compute_run_time_with_unit(
                             start_time, end_time)
-                        print(
-                            'Total time: {:.1f}{} to run {} simulations.'.format(
-                                run_time, unit, runs_per_scenario))
+                        print('Total time: {:.1f}{} to run {} simulations.'.
+                              format(run_time, unit, runs_per_scenario))
         self.vissim.ResumeUpdateGUI()
         self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode", 0)
 
@@ -915,7 +919,7 @@ class VissimInterface:
         percentages_with_humans = {VehicleType.HUMAN_DRIVEN:
                                    100 - total_controlled_percentage}
         percentages_with_humans.update(vehicle_percentages)
-        composition_number = self.find_matching_vehicle_composition(
+        composition_number = self.find_composition_matching_percentages(
             percentages_with_humans)
         self.set_vehicle_inputs_composition(composition_number)
 
@@ -967,7 +971,7 @@ class VissimInterface:
 
     def set_platoon_lane_change_strategy(
             self, platoon_lc_strategy: PlatoonLaneChangeStrategy):
-        print("[Client] Setting platoon lane change strategy to ",
+        print("[Client] Setting platoon lane change strategy to",
               platoon_lc_strategy.value, "(" + platoon_lc_strategy.name + ")")
         self.set_uda_default_value(
             _UDA_number.platoon_lane_change_strategy,
@@ -1134,8 +1138,7 @@ class VissimInterface:
                 signal_head.SetAttValue('Pos', position)
             signal_head.SetAttValue('SG', str(sc_id) + '-1')
 
-    def create_platoon(self, platoon_size, desired_speed,
-                       is_platoon_autonomous: bool = True):
+    def create_platoon(self, platoon_size, desired_speed):
         """
 
         :param platoon_size: Number of vehicles in the platoon
@@ -1145,36 +1148,49 @@ class VissimInterface:
         vehicles
         """
 
-        vehicle_type = (vehicle.VehicleType.PLATOON if is_platoon_autonomous
-                        else vehicle.VehicleType.HUMAN_DRIVEN)
-        platoon_vehicle = vehicle.Vehicle(vehicle_type)
+        cav_type = vehicle.VehicleType.CONNECTED_NO_LANE_CHANGE
+        cav = vehicle.Vehicle(cav_type)
+        cav.free_flow_velocity = desired_speed / 3.6
+        h, d = cav.compute_vehicle_following_parameters(
+            leader_max_brake=cav.max_brake, rho=0.2)
+        cav_safe_gap = h * desired_speed / 3.6 + d
+
+        platoon_type = vehicle.VehicleType.PLATOON
+        platoon_vehicle = vehicle.Vehicle(platoon_type)
         platoon_vehicle.free_flow_velocity = desired_speed / 3.6
         h, d = platoon_vehicle.compute_vehicle_following_parameters(
             leader_max_brake=platoon_vehicle.max_brake, rho=0.05)
-        safe_gap = h * desired_speed / 3.6 + d
+        platoon_safe_gap = h * desired_speed / 3.6 + d
 
         vehicles = self.vissim.Net.Vehicles
-        vissim_vehicle_type = vehicle.Vehicle.ENUM_TO_VISSIM_ID[vehicle_type]
-        in_ramp_link = 2
+        right_lane_link = 2
         lane = 1
         position = 10
         interaction = True  # optional
-        # print(h, d, safe_gap)
+
+        # Create a vehicle behind the platoon in the origin lane
+        vissim_vehicle_type = vehicle.Vehicle.ENUM_TO_VISSIM_ID[cav_type]
+        added_vehicle = vehicles.AddVehicleAtLinkPosition(
+            vissim_vehicle_type, right_lane_link, lane, position,
+            desired_speed, interaction)
+        position += added_vehicle.AttValue('Length') + cav_safe_gap
+        # Create the platoon
+        vissim_vehicle_type = vehicle.Vehicle.ENUM_TO_VISSIM_ID[platoon_type]
         for i in range(platoon_size):
             added_vehicle = vehicles.AddVehicleAtLinkPosition(
-                vissim_vehicle_type, in_ramp_link, lane, position,
+                vissim_vehicle_type, right_lane_link, lane, position,
                 desired_speed, interaction)
-            position += added_vehicle.AttValue('Length') + safe_gap
+            position += added_vehicle.AttValue('Length') + platoon_safe_gap
 
     # HELPER FUNCTIONS --------------------------------------------------------#
 
-    def find_matching_vehicle_composition(
+    def find_composition_matching_percentages(
             self, vehicle_percentages: Dict[VehicleType, int]) -> int:
         """
         Finds the vehicle composition that has exactly the same vehicle types
         listed in the parameter
 
-        :param vehicle_percentages: List of VehicleType enums
+        :param vehicle_percentages: Percent of each vehicle type as a dictionary
         :return: The vehicle composition number
         """
         vehicle_type_ids = set([Vehicle.ENUM_TO_VISSIM_ID[vt] for vt in
@@ -1197,6 +1213,40 @@ class VissimInterface:
         raise ValueError('[Client] Composition with {} not found in {} '
                          'network.'.format(
                             vehicle_percentages,
+                            self.file_handler.get_network_name()))
+
+    def find_composition_matching_speed_distributions(
+            self, desired_speed_distribution: Dict[VehicleType, str]) -> int:
+        """
+        Finds the vehicle composition that has exactly the same vehicle types
+        listed in the parameter
+
+        :param desired_speed_distribution: Speed distribution per vehicle type
+        :return: The vehicle composition number
+        """
+        # vehicle_type_ids = set([Vehicle.ENUM_TO_VISSIM_ID[vt] for vt in
+        #                         vehicle_percentages
+        #                         if vehicle_percentages[vt] > 0])
+        speed_dist = {Vehicle.ENUM_TO_VISSIM_ID[key]: value
+                      for key, value in desired_speed_distribution.items()}
+        veh_compositions_container = self.vissim.Net.VehicleCompositions
+        for veh_composition in veh_compositions_container:
+            relative_flows_container = veh_composition.VehCompRelFlows
+            # We can skip compositions with different number of relative flows
+            if len(relative_flows_container) != len(desired_speed_distribution):
+                continue
+            current_comp = dict()
+            for relative_flow in relative_flows_container:
+                flow_vehicle_type = int(relative_flow.AttValue('VehType'))
+                flow_speed_distribution = relative_flow.DesSpeedDistr.AttValue(
+                    'Name')
+                current_comp[flow_vehicle_type] = flow_speed_distribution
+            if current_comp == speed_dist:
+                return veh_composition.AttValue('No')
+
+        raise ValueError('[Client] Composition with {} not found in {} '
+                         'network.'.format(
+                            desired_speed_distribution,
                             self.file_handler.get_network_name()))
 
     def find_vehicle_composition_by_name(self, name: str) -> int:

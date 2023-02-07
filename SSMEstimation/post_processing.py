@@ -1476,11 +1476,19 @@ def label_lane_changes(scenario_name: str, veh_data: pd.DataFrame,
     """
     Labels lane changes as mandatory or discretionary
 
-    :param scenario_name:
+    :param scenario_name: Only valid for in_and_out scenario
     :param veh_data: vehicle records of a single simulation
     :param lc_data: lane change data for the entire simulation
     :return:
     """
+    if scenario_name == 'in_and_out':
+        off_ramp_links = [10003, 5],
+        merging_links = [3]
+    else:
+        print('[Warning] Cannot label lane changes as mandatory or '
+              'discretionary for scenario', scenario_name)
+        return
+
     lc_direction = lc_data['dest_lane'] - lc_data['origin_lane']
     if np.any(np.abs(lc_direction) > 1):
         warnings.warn('Vehicle changing two lanes at a time?',
@@ -1488,15 +1496,12 @@ def label_lane_changes(scenario_name: str, veh_data: pd.DataFrame,
     data_by_veh = veh_data.groupby('veh_id')
     exit_link = data_by_veh['link'].last()
 
-    file_handler = FileHandler(scenario_name)
-    merging_link = file_handler.get_merging_links()
-    off_ramp_link = file_handler.get_off_ramp_links()
     exit_per_lc = exit_link.loc[lc_data['veh_id'].to_numpy()]
-    took_off_ramp_mask = exit_per_lc.isin(off_ramp_link).to_numpy()
+    took_off_ramp_mask = exit_per_lc.isin(off_ramp_links).to_numpy()
     lc_data['mandatory'] = False
 
     left_mandatory_mask = ((lc_data['origin_lane'] == 1)
-                           & lc_data['link'].isin(merging_link)
+                           & lc_data['link'].isin(merging_links)
                            & ~took_off_ramp_mask)
     right_mandatory_mask = ((lc_direction < 0)
                             & took_off_ramp_mask)

@@ -64,12 +64,13 @@ class VehicleType(Enum):
     ACC = 1
     AUTONOMOUS = 2
     CONNECTED = 3
-    PLATOON = 4
-    TRAFFIC_LIGHT_ACC = 5
-    TRAFFIC_LIGHT_CACC = 6
-    TRUCK = 7
-    BUS = 8
-    MOTORCYCLE = 9
+    CONNECTED_NO_LANE_CHANGE = 4
+    PLATOON = 5
+    TRAFFIC_LIGHT_ACC = 6
+    TRAFFIC_LIGHT_CACC = 7
+    TRUCK = 100
+    BUS = 200
+    MOTORCYCLE = 300
 
 
 class PlatoonLaneChangeStrategy(Enum):
@@ -86,6 +87,7 @@ vehicle_type_to_str_map = {
     VehicleType.ACC: 'ACC',
     VehicleType.AUTONOMOUS: 'AV',
     VehicleType.CONNECTED: 'CAV',
+    VehicleType.CONNECTED_NO_LANE_CHANGE: 'CAV',
     VehicleType.PLATOON: 'Platoon',
     VehicleType.TRAFFIC_LIGHT_ACC: 'TL-ACC',
     VehicleType.TRAFFIC_LIGHT_CACC: 'TL-CACC',
@@ -105,6 +107,7 @@ class Vehicle:
     VISSIM_ACC_CAR_ID = 105
     VISSIM_AUTONOMOUS_CAR_ID = 110
     VISSIM_CONNECTED_CAR_ID = 120
+    VISSIM_CONNECTED_CAR_NO_LANE_CHANGE_ID = 121
     VISSIM_TRAFFIC_LIGHT_ACC_ID = 130
     VISSIM_TRAFFIC_LIGHT_CACC_ID = 135
     VISSIM_PLATOON_CAR_ID = 140
@@ -120,6 +123,7 @@ class Vehicle:
     RELEVANT_TYPES = {VehicleType.HUMAN_DRIVEN, VehicleType.TRUCK,
                       VehicleType.ACC, VehicleType.PLATOON,
                       VehicleType.AUTONOMOUS, VehicleType.CONNECTED,
+                      VehicleType.CONNECTED_NO_LANE_CHANGE,
                       VehicleType.TRAFFIC_LIGHT_ACC,
                       VehicleType.TRAFFIC_LIGHT_CACC}
 
@@ -132,12 +136,14 @@ class Vehicle:
                     VISSIM_ACC_CAR_ID: VehicleType.ACC,
                     VISSIM_AUTONOMOUS_CAR_ID: VehicleType.AUTONOMOUS,
                     VISSIM_CONNECTED_CAR_ID: VehicleType.CONNECTED,
+                    VISSIM_CONNECTED_CAR_NO_LANE_CHANGE_ID:
+                        VehicleType.CONNECTED_NO_LANE_CHANGE,
                     VISSIM_TRAFFIC_LIGHT_ACC_ID: VehicleType.TRAFFIC_LIGHT_ACC,
                     VISSIM_TRAFFIC_LIGHT_CACC_ID:
                         VehicleType.TRAFFIC_LIGHT_CACC,
                     VISSIM_PLATOON_CAR_ID: VehicleType.PLATOON,
                     VISSIM_TRUCK_ID: VehicleType.TRUCK,
-                    VISSIM_BUS_ID: VehicleType.CONNECTED}
+                    VISSIM_BUS_ID: VehicleType.BUS}
 
     # Useful when editing vissim simulation parameters
     ENUM_TO_VISSIM_ID = {
@@ -145,6 +151,8 @@ class Vehicle:
         VehicleType.ACC: VISSIM_ACC_CAR_ID,
         VehicleType.AUTONOMOUS: VISSIM_AUTONOMOUS_CAR_ID,
         VehicleType.CONNECTED: VISSIM_CONNECTED_CAR_ID,
+        VehicleType.CONNECTED_NO_LANE_CHANGE:
+            VISSIM_CONNECTED_CAR_NO_LANE_CHANGE_ID,
         VehicleType.TRAFFIC_LIGHT_ACC: VISSIM_TRAFFIC_LIGHT_ACC_ID,
         VehicleType.TRAFFIC_LIGHT_CACC: VISSIM_TRAFFIC_LIGHT_CACC_ID,
         VehicleType.PLATOON: VISSIM_PLATOON_CAR_ID
@@ -160,6 +168,7 @@ class Vehicle:
                            VehicleType.ACC: _CAR_MAX_BRAKE,
                            VehicleType.AUTONOMOUS: _CAR_MAX_BRAKE,
                            VehicleType.CONNECTED: _CAR_MAX_BRAKE,
+                           VehicleType.CONNECTED_NO_LANE_CHANGE: _CAR_MAX_BRAKE,
                            VehicleType.TRAFFIC_LIGHT_ACC: _CAR_MAX_BRAKE,
                            VehicleType.TRAFFIC_LIGHT_CACC: _CAR_MAX_BRAKE,
                            VehicleType.PLATOON: _CAR_MAX_BRAKE,
@@ -168,6 +177,7 @@ class Vehicle:
                           VehicleType.ACC: _CAR_MAX_JERK,
                           VehicleType.AUTONOMOUS: _CAR_MAX_JERK,
                           VehicleType.CONNECTED: _CAR_MAX_JERK,
+                          VehicleType.CONNECTED_NO_LANE_CHANGE: _CAR_MAX_JERK,
                           VehicleType.TRAFFIC_LIGHT_ACC: _CAR_MAX_JERK,
                           VehicleType.TRAFFIC_LIGHT_CACC: _CAR_MAX_JERK,
                           VehicleType.PLATOON: _CAR_MAX_JERK,
@@ -176,6 +186,7 @@ class Vehicle:
                              VehicleType.ACC: 0.2,
                              VehicleType.AUTONOMOUS: 0.2,
                              VehicleType.CONNECTED: 0.1,
+                             VehicleType.CONNECTED_NO_LANE_CHANGE: 0.1,
                              VehicleType.TRAFFIC_LIGHT_ACC: 0.2,
                              VehicleType.TRAFFIC_LIGHT_CACC: 0.1,
                              VehicleType.PLATOON: 0.1,
@@ -185,6 +196,7 @@ class Vehicle:
         VehicleType.ACC: _CAR_FREE_FLOW_VELOCITY,
         VehicleType.AUTONOMOUS: _CAR_FREE_FLOW_VELOCITY,
         VehicleType.CONNECTED: _CAR_FREE_FLOW_VELOCITY,
+        VehicleType.CONNECTED_NO_LANE_CHANGE: _CAR_FREE_FLOW_VELOCITY,
         VehicleType.TRAFFIC_LIGHT_ACC: _CAR_FREE_FLOW_VELOCITY,
         VehicleType.TRAFFIC_LIGHT_CACC: _CAR_FREE_FLOW_VELOCITY,
         VehicleType.PLATOON: _CAR_FREE_FLOW_VELOCITY,
