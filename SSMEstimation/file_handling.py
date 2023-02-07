@@ -121,45 +121,55 @@ def temp_name_editing():
 class FileHandler:
     """Class is the interface between scenario names and all their properties"""
 
-    def __init__(self, scenario_name: str):
+    def __init__(self, scenario_name: str, is_data_in_cloud: bool = False):
         self.scenario_name = scenario_name
-        self.scenario_info = _scenario_info[scenario_name]
+        self._scenario_info = _scenario_info[scenario_name]
+        self._is_data_in_cloud = is_data_in_cloud
         # self.network_name = _scenario_info[scenario_name].network
 
+    def set_is_data_in_cloud(self, use_cloud_directory: bool = False):
+        self._is_data_in_cloud = use_cloud_directory
+
     def get_network_name(self):
-        return self.scenario_info.network_name
+        return self._scenario_info.network_name
 
     def get_file_name(self):
-        return self.scenario_info.network_info.file_name
+        return self._scenario_info.network_info.file_name
 
     def get_network_file_relative_address(self):
         # The network files are in folder with the same name as the file
-        return self.scenario_info.network_info.file_name
+        return self._scenario_info.network_info.file_name
+
+    def get_networks_folder(self):
+        if self._is_data_in_cloud:
+            return get_cloud_networks_folder()
+        else:
+            return get_local_networks_folder()
 
     def get_network_file_folder(self):
-        return os.path.join(get_networks_folder(),
+        return os.path.join(self.get_networks_folder(),
                             self.get_network_file_relative_address())
+
+    def get_results_base_folder(self):
+        return os.path.join(self.get_networks_folder(),
+                            self.get_results_relative_address())
 
     def get_results_relative_address(self):
         return os.path.join(self.get_network_file_relative_address(),
-                            self.scenario_info.results_folder)
-
-    def get_results_base_folder(self):
-        return os.path.join(get_networks_folder(),
-                            self.get_results_relative_address())
+                            self._scenario_info.results_folder)
 
     def get_moves_default_data_folder(self):
         return os.path.join(get_moves_folder(),
                             self.get_network_file_relative_address())
 
     def get_on_ramp_links(self):
-        return self.scenario_info.network_info.on_ramp_link
+        return self._scenario_info.network_info.on_ramp_link
 
     def get_off_ramp_links(self):
-        return self.scenario_info.network_info.off_ramp_link
+        return self._scenario_info.network_info.off_ramp_link
 
     def get_merging_links(self):
-        return self.scenario_info.network_info.merging_link
+        return self._scenario_info.network_info.merging_link
 
     def get_vissim_test_folder(self):
         return os.path.join(self.get_results_base_folder(), 'test')
@@ -171,8 +181,7 @@ class FileHandler:
             orig_and_dest_lane_speeds: Tuple[int, int] = None) -> str:
         """
         Creates a string with the full path of the VISSIM simulation results
-        data folder. TODO: If all parameters are None, returns the test data
-        folder of the current network
+        data folder.
         """
 
         if (vehicle_percentages is not None
@@ -186,30 +195,6 @@ class FileHandler:
             base_folder, vehicle_percentages, vehicle_input_per_lane,
             accepted_risk, platoon_lane_change_strategy,
             orig_and_dest_lane_speeds)
-
-    def get_vissim_data_folder_old(self,
-                                   vehicle_percentages: Dict[VehicleType, int],
-                                   vehicles_per_lane: int,
-                                   accepted_risk: Union[int, None]) -> str:
-        """
-        Creates a string with the full path of the VISSIM simulation results
-        data folder. If all parameters are None, returns the test data folder
-
-        :param vehicle_percentages: Describes the percentages of controlled
-         vehicles in the simulations.
-        :param vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
-         values depend on the controlled_vehicles_percentage: 500:500:2500
-        :param accepted_risk: maximum lane changing risk in m/s
-        :return: string with the folder where the data is
-        """
-        if sum(vehicle_percentages.values()) == 0:
-            accepted_risk = None
-            results_base_folder = self.get_network_file_folder()
-        else:
-            results_base_folder = self.get_results_base_folder()
-        return create_file_path(
-            results_base_folder, vehicle_percentages,
-            vehicles_per_lane, accepted_risk)
 
     def get_moves_data_folder(
             self, vehicle_percentages: Dict[VehicleType, int],
@@ -233,9 +218,7 @@ class FileHandler:
             orig_and_dest_lane_speeds)
 
     def find_min_max_file_number(
-            self,
-            data_identifier: str,
-            file_format: str,
+            self, data_identifier: str, file_format: str,
             vehicle_percentages: Dict[VehicleType, int],
             vehicle_input_per_lane: int,
             accepted_risk: int = None,
@@ -287,19 +270,41 @@ class FileHandler:
 
         return min_simulation_number, max_simulation_number
 
-    def copy_results_from_multiple_scenarios(
+    def export_multiple_results_to_cloud(
             self, vehicle_percentages: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int],
             accepted_risks: List[int]):
         for vp in vehicle_percentages:
             for vi in vehicles_per_lane:
                 for ar in accepted_risks:
-                    self.copy_result_files(vehicle_percentages=vp,
-                                           vehicle_input_per_lane=vi,
-                                           accepted_risk=ar)
+                    try:
+                        self.move_result_files(True, vp, vi, accepted_risk=ar)
+                    except FileNotFoundError:
+                        print("Couldn't export {}, {}, {} to shared "
+                              "folder.".format(vp, vi, ar))
+                        continue
 
-    def copy_results_from_multiple_platoon_scenarios(
+    def export_multiple_platoon_results_to_cloud(
             self, vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicles_per_lane: List[int],
+            lane_change_strategies: List[PlatoonLaneChangeStrategy],
+            origin_and_dest_lane_speeds: List[Tuple[int, int]]):
+        self._move_multiple_platoon_results(
+            True, vehicle_percentages, vehicles_per_lane,
+            lane_change_strategies, origin_and_dest_lane_speeds)
+
+    def import_multiple_platoon_results_from_cloud(
+            self, vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicles_per_lane: List[int],
+            lane_change_strategies: List[PlatoonLaneChangeStrategy],
+            origin_and_dest_lane_speeds: List[Tuple[int, int]]):
+        self._move_multiple_platoon_results(
+            False, vehicle_percentages, vehicles_per_lane,
+            lane_change_strategies, origin_and_dest_lane_speeds)
+
+    def _move_multiple_platoon_results(
+            self, is_exporting: bool,
+            vehicle_percentages: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int],
             lane_change_strategies: List[PlatoonLaneChangeStrategy],
             origin_and_dest_lane_speeds: List[Tuple[int, int]]):
@@ -308,35 +313,46 @@ class FileHandler:
                 for vi in vehicles_per_lane:
                     for speed_pair in origin_and_dest_lane_speeds:
                         try:
-                            self.copy_result_files(
-                                vp, vi, platoon_lane_change_strategy=st,
+                            self.move_result_files(
+                                is_exporting, vp, vi,
+                                platoon_lane_change_strategy=st,
                                 origin_and_dest_lane_speeds=speed_pair)
                         except FileNotFoundError:
-                            print("Couldn't copy {}, {}, {}, {} to shared "
-                                  "folder.".format(st.name, vp, vi, speed_pair))
+                            destination = 'cloud' if is_exporting else 'local'
+                            print("Couldn't move {}, {}, {}, {} to {} "
+                                  "folder.".format(st.name, vp, vi,
+                                                   speed_pair, destination))
                             continue
 
-    def copy_result_files(
-            self,
+    def move_result_files(
+            self, is_exporting: bool,
             vehicle_percentages: Dict[VehicleType, int],
             vehicle_input_per_lane: int,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
             accepted_risk: int = None,
             origin_and_dest_lane_speeds: Tuple[int, int] = None):
         """
-        Copies data collections, link segments, lane change data, SSMs,
-        Risky Maneuvers and Violations files to a similar folder structure in
-        Google Drive.
+        Moves data collections, link segments, and all post-processed data
+        from the local to cloud folder is is_exporting is true, or from cloud
+        to local is is_exporting is false.
         """
+
+        temp = self._is_data_in_cloud
+        if is_exporting:
+            self.set_is_data_in_cloud(False)
+            target_base = get_cloud_networks_folder()
+            source_base = get_local_networks_folder()
+        else:
+            self.set_is_data_in_cloud(True)
+            target_base = get_local_networks_folder()
+            source_base = get_cloud_networks_folder()
 
         source_dir = self.get_vissim_data_folder(
             vehicle_percentages, vehicle_input_per_lane,
             accepted_risk, platoon_lane_change_strategy,
             origin_and_dest_lane_speeds)
-        target_dir = os.path.join(
-            get_shared_folder(),
-            source_dir.split(get_networks_folder() + "\\")[1]
-        )
+        target_dir = os.path.join(target_base,
+                                  source_dir.split(source_base + "\\")[1])
         if not os.path.exists(target_dir):
             os.makedirs(target_dir)
 
@@ -352,6 +368,8 @@ class FileHandler:
         files_to_copy = all_csv_files + max_att_files
         for file_name in files_to_copy:
             shutil.copy(os.path.join(source_dir, file_name), target_dir)
+
+        self.set_is_data_in_cloud(temp)
 
 
 def create_percent_folder_name(
@@ -375,11 +393,11 @@ def create_percent_folder_name(
     # return percentage_folder[:-1]  # remove last '_'
 
 
-def get_networks_folder() -> str:
+def get_local_networks_folder() -> str:
     return _folders_map[os.environ['COMPUTERNAME']].networks_folder
 
 
-def get_shared_folder() -> str:
+def get_cloud_networks_folder() -> str:
     return _folders_map[os.environ['COMPUTERNAME']].shared_folder
 
 
@@ -393,6 +411,7 @@ def get_scenario_number_of_lanes(scenario_name: str) -> int:
 
 def get_merging_links(scneario_name: str) -> List[int]:
     return _scenario_info[scneario_name].network_info.merging_link
+
 
 def create_vehs_per_lane_folder_name(vehicles_per_lane: Union[int, str]) -> str:
     """Creates the name of the folder which contains results for the

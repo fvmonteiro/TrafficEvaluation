@@ -20,20 +20,21 @@ class DataWriter:
         # self.vehicle_type = vehicle_type
         #  [vt.name.lower() for vt in vehicle_type]
 
-    @staticmethod
-    def _save_as_csv(data: pd.DataFrame, folder_path: str,
+    def _save_as_csv(self, data: pd.DataFrame, folder_path: str,
                      file_name: str):
         full_address = os.path.join(folder_path, file_name)
         try:
             data.to_csv(full_address, index=False)
         except OSError:
+            self.file_handler.set_is_data_in_cloud(False)
+            result_folder = self.file_handler.get_networks_folder()
             print('Could not save at', full_address, '. Saving at: ',
-                  file_handling.get_networks_folder(), 'instead.')
-            data.to_csv(os.path.join(file_handling.get_networks_folder(),
+                  result_folder, 'instead.')
+            data.to_csv(os.path.join(result_folder,
                                      file_name), index=False)
 
     @staticmethod
-    def _save_as_xls(data: pd.DataFrame, folder_path: str,
+    def _save_as_xls(self, data: pd.DataFrame, folder_path: str,
                      file_name: str, sheet_name: str):
         if not os.path.isdir(folder_path):
             os.makedirs(folder_path)
@@ -43,7 +44,7 @@ class DataWriter:
         except OSError:
             print('Could not save at', full_address, '. Saving at: ',
                   file_handling.get_moves_folder(), 'instead.')
-            data.to_csv(os.path.join(file_handling.get_networks_folder(),
+            data.to_csv(os.path.join(file_handling.get_moves_folder(),
                                      file_name), index=False)
 
 
