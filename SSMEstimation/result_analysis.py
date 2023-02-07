@@ -974,25 +974,138 @@ class ResultAnalyzer:
 
     # Platoon LC plots ======================================================= #
 
-    def plot_y_vs_platoon_lc_strategy(
+    def plot_y_vs_vehicle_input(
             self, y: str, vehicle_percentages: Dict[VehicleType, int],
-            vehicles_per_lane: int,
+            vehicles_per_lane: List[int],
             lane_change_strategies: List[PlatoonLaneChangeStrategy],
             orig_and_dest_lane_speeds: Tuple[int, int]):
         """
+        Line plot with vehicle input on the x axis and LC strategies as hue
+
         :param y: Options: was_lane_change_completed, maneuver_time,
         travel_time, accel_cost, stayed_in_platoon
         """
+        self.plot_results_for_platoon_scenario(
+            y, 'Main Road Input (vehs/h)', 'Strategy', vehicle_percentages,
+            vehicles_per_lane, lane_change_strategies,
+            orig_and_dest_lane_speeds, is_bar_plot=True
+        )
+
+    def plot_y_vs_platoon_lc_strategy(
+            self, y: str, vehicle_percentages: Dict[VehicleType, int],
+            vehicles_per_lane: List[int],
+            lane_change_strategies: List[PlatoonLaneChangeStrategy],
+            orig_and_dest_lane_speeds: Tuple[int, int]):
+        """
+        Line plot with strategies on the x axis and vehicle input as hue
+        :param y: Options: was_lane_change_completed, maneuver_time,
+        travel_time, accel_cost, stayed_in_platoon
+        """
+        self.plot_results_for_platoon_scenario(
+            y, 'Strategy', 'Main Road Input (vehs/h)', vehicle_percentages,
+            vehicles_per_lane, lane_change_strategies, orig_and_dest_lane_speeds
+        )
+
+    def plot_results_for_platoon_scenario(
+            self, y: str, x: str, hue: str,
+            vehicle_percentages: Dict[VehicleType, int],
+            vehicles_per_lane: List[int],
+            lane_change_strategies: List[PlatoonLaneChangeStrategy],
+            orig_and_dest_lane_speeds: Tuple[int, int],
+            is_bar_plot: bool = False):
+        """
+
+        """
         if self.scenario_name != 'platoon_lane_change':
             raise ValueError('Must be scenario with platoon lane changes')
+
+        reader = readers.PlatoonLaneChangeEfficiencyReader(self.scenario_name)
+        data = reader.load_platoon_scenario_data(
+            [vehicle_percentages], vehicles_per_lane,
+            lane_change_strategies, [orig_and_dest_lane_speeds])
+
+        # TODO: Drop samples that didn't finish simulation
+        # data.drop(index=data.loc[~data['traversed_network']].index,
+        #           inplace=True)
+        # TODO: if plotting was_lc_completed, don't remove
+        # TODO: if plotting platoon_maneuver_time, must remove cases where
+        #  platoons split
+
+        # Presentation naming
+        y_name_map = {
+            'was_lane_change_completed': '% Successful Lane Changes',
+            'vehicle_maneuver_time': 'Maneuver Time per Vehicle (s)',
+            'platoon_maneuver_time': 'Platoon Maneuver Time (s)',
+            'travel_time': 'Travel Time (s)',
+            'accel_costs': 'Accel Cost (m2/s3)',
+            'stayed_in_platoon': '% Stayed in Platoon'
+        }
+        st_name_map = {-1: 'humans', 0: 'CAVs', 1: 'SBP', 2: 'Ld First',
+                       3: 'LV First', 4: 'Ld First Rev.'}
+        data['Strategy'] = data['lane_change_strategy'].apply(
+            lambda q: st_name_map[q])
+        # y = y.replace('_', ' ').title()
+        # col_names_map = {name: name.replace('_', ' ').title() for name in
+        #                  data.columns}
+        # data.rename(col_names_map, axis=1, inplace=True)
+        data['Main Road Input (vehs/h)'] = data['vehicles_per_lane']
+
+        sns.set_style('whitegrid')
+        sns.set(font_scale=1)
+        plot_function = sns.barplot if is_bar_plot else sns.pointplot
+        plot_function(data, x=x, y=y,
+                      hue=hue, errorbar=('se', 2),
+                      palette='tab10'
+                      )
+        plt.ylabel(y_name_map[y])
+        plt.tight_layout()
+        plt.show()
+
+    def plot_results_for_platoon_scenario_comparing_speeds(
+            self, y: str,
+            vehicle_percentages: Dict[VehicleType, int],
+            vehicles_per_lane: int,
+            lane_change_strategies: List[PlatoonLaneChangeStrategy],
+            dest_lane_speeds: List[str]):
+        """
+
+        """
+        if self.scenario_name != 'platoon_lane_change':
+            raise ValueError('Must be scenario with platoon lane changes')
+
+        orig_and_dest_lane_speeds = [(80, s) for s in dest_lane_speeds]
         reader = readers.PlatoonLaneChangeEfficiencyReader(self.scenario_name)
         data = reader.load_platoon_scenario_data(
             [vehicle_percentages], [vehicles_per_lane],
-            lane_change_strategies, [orig_and_dest_lane_speeds])
+            lane_change_strategies, orig_and_dest_lane_speeds)
+
+        # Presentation naming
+        y_name_map = {
+            'was_lane_change_completed': '% Successful Lane Changes',
+            'vehicle_maneuver_time': 'Maneuver Time per Vehicle (s)',
+            'platoon_maneuver_time': 'Platoon Maneuver Time (s)',
+            'travel_time': 'Travel Time (s)',
+            'accel_costs': 'Accel Cost (m2/s3)',
+            'stayed_in_platoon': '% Stayed in Platoon'
+        }
+        st_name_map = {-1: 'humans', 0: 'CAVs', 1: 'SBP', 2: 'Ld First',
+                       3: 'LV First', 4: 'Ld First Rev.'}
+        data['Strategy'] = data['lane_change_strategy'].apply(
+            lambda q: st_name_map[q])
+        # y = y.replace('_', ' ').title()
+        # col_names_map = {name: name.replace('_', ' ').title() for name in
+        #                  data.columns}
+        # data.rename(col_names_map, axis=1, inplace=True)
+        data['Main Road Input (vehs/h)'] = data['vehicles_per_lane']
 
         sns.set_style('whitegrid')
-        sns.lineplot(data, x='lane_change_strategy', y=y, err_style="bars",
-                     errorbar=("se", 2))
+        sns.set(font_scale=1)
+        sns.pointplot(data, x='Strategy', y=y,
+                      hue='dest_lane_speed', errorbar=('se', 2),
+                      palette='tab10'
+                      )
+        plt.ylabel(y_name_map[y])
+        plt.tight_layout()
         plt.show()
 
     # Traffic Light Scenario Plots =========================================== #
