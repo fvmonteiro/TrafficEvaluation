@@ -311,7 +311,7 @@ def create_platoon_lane_change_summary(
         scenario_name: str, vehicle_percentages: List[Dict[VehicleType, int]],
         vehicle_inputs: List[int],
         lane_change_strategies: List[PlatoonLaneChangeStrategy],
-        orig_and_dest_lane_speeds: List[Tuple[int, int]],
+        orig_and_dest_lane_speeds: List[Tuple[int, str]],
         debugging: bool = False):
 
     post_processors = [PlatoonEfficiencyProcessor(scenario_name)]
@@ -331,7 +331,7 @@ def find_lane_change_issues(
         network_name: str, vehicle_percentages: Dict[VehicleType, int],
         vehicle_input: int, accepted_risk: int = None,
         platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-        orig_and_dest_lane_speeds: Tuple[int, int] = None):
+        orig_and_dest_lane_speeds: Tuple[int, str] = None):
     """
     Looks for cases of vehicles that were either removed from the simulation
     for waiting too long for a lane change or AVs which gave control to vissim.
@@ -419,7 +419,7 @@ def check_human_take_over(
         vehicle_inputs: int,
         accepted_risk: int = None,
         platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-        orig_and_dest_lane_speeds: Tuple[int, int] = None):
+        orig_and_dest_lane_speeds: Tuple[int, str] = None):
     """Reads multiple vehicle record data files to check how often the
     autonomous vehicles gave control back to VISSIM
 
@@ -481,7 +481,7 @@ def find_removed_vehicles(
         vehicles_per_lane: int,
         accepted_risk: int = None,
         platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-        orig_and_dest_lane_speeds: Tuple[int, int] = None):
+        orig_and_dest_lane_speeds: Tuple[int, str] = None):
     """Checks whether VISSIM removed any vehicles for standing still too
     long.
     """
@@ -779,7 +779,7 @@ def translate_links_from_vissim_to_moves(
         vehicle_percentages: Dict[VehicleType, int],
         accepted_risk: int = None,
         platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-        orig_and_dest_lane_speeds: Tuple[int, int] = None,
+        orig_and_dest_lane_speeds: Tuple[int, str] = None,
         warmup_minutes: int = 10):
     """
     Reads link evaluation output files from VISSIM and write link,
@@ -3029,7 +3029,7 @@ def create_summary_for_single_scenario(
         vehicle_input: int, post_processors: List[VISSIMDataPostProcessor],
         accepted_risk: int = None,
         platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-        orig_and_dest_lane_speeds: Tuple[int, int] = None,
+        orig_and_dest_lane_speeds: Tuple[int, str] = None,
         analyze_lane_change: bool = True,
         debugging: bool = False):
     """

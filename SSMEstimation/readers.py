@@ -70,7 +70,7 @@ def _add_platoon_lane_change_strategy_column(
 
 
 def _add_speeds_column(data: pd.DataFrame,
-                       orig_and_dest_lane_speeds: Tuple[int, int]):
+                       orig_and_dest_lane_speeds: Tuple[int, str]):
     if orig_and_dest_lane_speeds is not None:
         data['orig_lane_speed'] = orig_and_dest_lane_speeds[0]
         data['dest_lane_speed'] = orig_and_dest_lane_speeds[1]
@@ -176,7 +176,7 @@ class VissimDataReader(DataReader):
             vehicle_percentages: Dict[VehicleType, int], vehicles_per_lane: int,
             accepted_risk: int = None,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, int] = None,
+            orig_and_dest_lane_speeds: Tuple[int, str] = None,
             n_rows: int = None) -> pd.DataFrame:
         """
         Loads all the simulation data from the scenario described by the
@@ -204,7 +204,7 @@ class VissimDataReader(DataReader):
             vehicle_input_per_lane: List[int],
             accepted_risks: List[int] = None,
             lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
-            orig_and_dest_lane_speeds: List[Tuple[int, int]] = None
+            orig_and_dest_lane_speeds: List[Tuple[int, str]] = None
     ) -> pd.DataFrame:
         if lane_change_strategies is None or lane_change_strategies[0] is None:
             return self.load_data_with_controlled_percentage(
@@ -270,7 +270,7 @@ class VissimDataReader(DataReader):
             self, vehicle_percentages: List[Dict[VehicleType, int]],
             vehicle_input_per_lane: List[int],
             lane_change_strategies: List[PlatoonLaneChangeStrategy],
-            orig_and_dest_lane_speeds: List[Tuple[int, int]]
+            orig_and_dest_lane_speeds: List[Tuple[int, str]]
     ) -> pd.DataFrame:
         """
 
@@ -295,7 +295,7 @@ class VissimDataReader(DataReader):
     #         first_file_number: int, last_file_number: int,
     #         accepted_risk: int = None,
     #         platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-    #         orig_and_dest_lane_speeds: Tuple[int, int] = None
+    #         orig_and_dest_lane_speeds: Tuple[int, str] = None
     #         ) -> pd.DataFrame:
     #     """Reads and aggregates data from several simulations with a given
     #     percentage of controlled vehicles.
@@ -333,7 +333,7 @@ class VissimDataReader(DataReader):
             vehicles_per_lane: int = None,
             accepted_risk: int = None,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, int] = None,
+            orig_and_dest_lane_speeds: Tuple[int, str] = None,
             n_rows: int = None) -> pd.DataFrame:
         """
         Creates the file address based on the scenario parameters and loads
@@ -370,7 +370,7 @@ class VissimDataReader(DataReader):
             vehicle_percentages: Dict[VehicleType, int],
             vehicles_per_lane: int, accepted_risk: int = None,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, int] = None) -> str:
+            orig_and_dest_lane_speeds: Tuple[int, str] = None) -> str:
         """
 
         :param file_identifier: This can be either a integer indicating
@@ -432,7 +432,7 @@ class AggregatedDataReader(VissimDataReader):
             vehicle_percentages: Dict[VehicleType, int], vehicles_per_lane: int,
             accepted_risk: int = None,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, int] = None,
+            orig_and_dest_lane_speeds: Tuple[int, str] = None,
             n_rows: int = None) -> pd.DataFrame:
         """
         Loads all the simulation data from the scenario described by the
@@ -496,7 +496,7 @@ class VehicleRecordReader(VissimDataReader):
             vehicle_input_per_lane: int,
             accepted_risk: int = None,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, int] = None,
+            orig_and_dest_lane_speeds: Tuple[int, str] = None,
             n_rows: int = None):
         """
         Yields all the vehicle record files for the chosen simulation scenario.
@@ -542,7 +542,7 @@ class VehicleRecordReader(VissimDataReader):
             vehicle_inputs_per_lane: List[int],
             accepted_risks: List[int] = None,
             lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
-            orig_and_dest_lane_speeds: List[Tuple[int, int]] = None,
+            orig_and_dest_lane_speeds: List[Tuple[int, str]] = None,
             n_rows: int = None) -> pd.DataFrame:
         """
 
@@ -581,7 +581,7 @@ class VehicleRecordReader(VissimDataReader):
             self, vehicle_percentages: List[Dict[VehicleType, int]],
             vehicle_input_per_lane: List[int],
             lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
-            orig_and_dest_lane_speeds: List[Tuple[int, int]] = None,
+            orig_and_dest_lane_speeds: List[Tuple[int, str]] = None,
             n_rows: int = None) -> pd.DataFrame:
         """
 
@@ -745,7 +745,7 @@ class VissimLaneChangeReader(VissimDataReader):
             vehicle_percentages: Dict[VehicleType, int], vehicles_per_lane: int,
             accepted_risk: int = None,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, int] = None,
+            orig_and_dest_lane_speeds: Tuple[int, str] = None,
             n_rows: int = None) -> pd.DataFrame:
         """
         Loads all the simulation data from the scenario described by the
@@ -903,7 +903,7 @@ class PostProcessedDataReader(DataReader):
             vehicle_input_per_lane: Union[int, List[int]],
             accepted_risks: List[int] = None,
             lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
-            orig_and_dest_lane_speeds: List[Tuple[int, int]] = None
+            orig_and_dest_lane_speeds: List[Tuple[int, str]] = None
     ) -> pd.DataFrame:
         if lane_change_strategies is None or lane_change_strategies[0] is None:
             return self.load_data_with_controlled_percentage(
@@ -958,7 +958,7 @@ class PostProcessedDataReader(DataReader):
             self, vehicle_percentages: List[Dict[VehicleType, int]],
             vehicle_input_per_lane: List[int],
             lane_change_strategies: List[PlatoonLaneChangeStrategy],
-            orig_and_dest_lane_speeds: List[Tuple[int, int]]
+            orig_and_dest_lane_speeds: List[Tuple[int, str]]
     ) -> pd.DataFrame:
         """
         Loads data from all simulations with the given autonomous
@@ -1341,7 +1341,7 @@ class MOVESDatabaseReader:
             vehicles_per_lane: int,
             accepted_risk: int = None,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, int] = None) -> pd.DataFrame:
+            orig_and_dest_lane_speeds: Tuple[int, str] = None) -> pd.DataFrame:
 
         if platoon_lane_change_strategy is not None:
             raise RuntimeError('[MOVESDatabaseReader] not yet ready for '

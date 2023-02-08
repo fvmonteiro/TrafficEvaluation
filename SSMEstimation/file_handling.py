@@ -181,7 +181,7 @@ class FileHandler:
             self, vehicle_percentages: Dict[VehicleType, int],
             vehicle_input_per_lane: int, accepted_risk: int = None,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, int] = None) -> str:
+            orig_and_dest_lane_speeds: Tuple[int, str] = None) -> str:
         """
         Creates a string with the full path of the VISSIM simulation results
         data folder.
@@ -203,7 +203,7 @@ class FileHandler:
             self, vehicle_percentages: Dict[VehicleType, int],
             vehicles_per_lane: int, accepted_risk: int,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, int] = None) -> str:
+            orig_and_dest_lane_speeds: Tuple[int, str] = None) -> str:
         """
         Creates a string with the full path of the MOVES data
         folder. If all parameters are None, returns the test data folder
@@ -226,7 +226,7 @@ class FileHandler:
             vehicle_input_per_lane: int,
             accepted_risk: int = None,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, int] = None) -> (int, int):
+            orig_and_dest_lane_speeds: Tuple[int, str] = None) -> (int, int):
         """"
         Looks for the file with the highest simulation number. This is
         usually the file containing results from all simulations.
@@ -291,7 +291,7 @@ class FileHandler:
             self, vehicle_percentages: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int],
             lane_change_strategies: List[PlatoonLaneChangeStrategy],
-            origin_and_dest_lane_speeds: List[Tuple[int, int]]):
+            origin_and_dest_lane_speeds: List[Tuple[int, str]]):
         self._move_multiple_platoon_results(
             True, vehicle_percentages, vehicles_per_lane,
             lane_change_strategies, origin_and_dest_lane_speeds)
@@ -300,7 +300,7 @@ class FileHandler:
             self, vehicle_percentages: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int],
             lane_change_strategies: List[PlatoonLaneChangeStrategy],
-            origin_and_dest_lane_speeds: List[Tuple[int, int]]):
+            origin_and_dest_lane_speeds: List[Tuple[int, str]]):
         self._move_multiple_platoon_results(
             False, vehicle_percentages, vehicles_per_lane,
             lane_change_strategies, origin_and_dest_lane_speeds)
@@ -310,7 +310,7 @@ class FileHandler:
             vehicle_percentages: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int],
             lane_change_strategies: List[PlatoonLaneChangeStrategy],
-            origin_and_dest_lane_speeds: List[Tuple[int, int]]):
+            origin_and_dest_lane_speeds: List[Tuple[int, str]]):
         for st in lane_change_strategies:
             for vp in vehicle_percentages:
                 for vi in vehicles_per_lane:
@@ -333,7 +333,7 @@ class FileHandler:
             vehicle_input_per_lane: int,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
             accepted_risk: int = None,
-            origin_and_dest_lane_speeds: Tuple[int, int] = None):
+            origin_and_dest_lane_speeds: Tuple[int, str] = None):
         """
         Moves data collections, link segments, and all post-processed data
         from the local to cloud folder is is_exporting is true, or from cloud
@@ -362,10 +362,15 @@ class FileHandler:
         all_file_names = os.listdir(source_dir)
         all_csv_files = [file for file in all_file_names if
                          file.endswith('csv')]
-        _, max_file_number = self.find_min_max_file_number(
-            '', 'att', vehicle_percentages, vehicle_input_per_lane,
-            accepted_risk, platoon_lane_change_strategy,
-            origin_and_dest_lane_speeds)
+        try:
+            _, max_file_number = self.find_min_max_file_number(
+                '', 'att', vehicle_percentages, vehicle_input_per_lane,
+                accepted_risk, platoon_lane_change_strategy,
+                origin_and_dest_lane_speeds)
+        except FileNotFoundError:
+            print("No data collection measurements or link evaluation results"
+                  " files found.")
+            max_file_number = 0
         max_att_files = [file for file in all_file_names if
                          file.endswith(str(max_file_number) + '.att')]
         files_to_copy = all_csv_files + max_att_files
@@ -373,6 +378,15 @@ class FileHandler:
             shutil.copy(os.path.join(source_dir, file_name), target_dir)
 
         self.set_is_data_in_cloud(temp)
+
+    def get_temp_results_folder(self):
+        return os.path.join(self.get_networks_folder(), "temp_results")
+
+    def copy_all_files_from_temp_folder(self, target_dir):
+        source_dir = self.get_temp_results_folder()
+        all_files = os.listdir(source_dir)
+        for file_name in all_files:
+            shutil.copy(os.path.join(source_dir, file_name), target_dir)
 
 
 def create_percent_folder_name(
@@ -445,7 +459,7 @@ def create_platoon_lc_strategy_folder_name(
     return platoon_lc_strategy.name
 
 
-def create_speeds_folder_name(orig_and_dest_lane_speeds: Tuple[int, int]
+def create_speeds_folder_name(orig_and_dest_lane_speeds: Tuple[int, str]
                               ) -> str:
     return '_'.join(['origin_lane', str(orig_and_dest_lane_speeds[0]),
                      'dest_lane', str(orig_and_dest_lane_speeds[1])])
@@ -455,7 +469,7 @@ def create_file_path(
         base_folder: str, vehicle_percentages: Dict[VehicleType, int],
         vehicle_input_per_lane: int, accepted_risk: Union[int, None],
         platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-        orig_and_dest_lane_speeds: Tuple[int, int] = None) -> str:
+        orig_and_dest_lane_speeds: Tuple[int, str] = None) -> str:
     """
     Creates a string with the full path of the data
     folder. If all parameters are None, returns the test data folder

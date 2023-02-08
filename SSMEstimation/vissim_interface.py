@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from enum import Enum
 import os
 import time
-from typing import List, Dict, Callable, Union
+from typing import List, Dict, Callable, Tuple, Union
 import warnings
 
 import pandas as pd
@@ -359,8 +359,8 @@ class VissimInterface:
         print('[Client] Simulation done.')
 
     def run_platoon_scenario(self,
-                             platoon_size: int = 4,
-                             platoon_speed: int = 80,
+                             platoon_size: int,
+                             platoon_speed: int,
                              first_platoon_time: int = 10,
                              platoon_creation_period: int = 60,
                              n_platoons: int = None,
@@ -422,7 +422,9 @@ class VissimInterface:
             # print('runs finished:', run_counter)
 
     def run_platoon_scenario_sample(
-            self, vehicle_input, lane_change_strategy,
+            self,  platoon_size: int,
+            lane_change_strategy: PlatoonLaneChangeStrategy,
+            vehicle_input: int, orig_and_dest_lane_speeds: Tuple[int, str],
             simulation_period=60, number_of_runs=2,
             first_platoon_time=10, platoon_creation_period=30,
             random_seed=None, is_fast_mode=False,
@@ -453,8 +455,7 @@ class VissimInterface:
             self.vissim.Graphics.CurrentNetworkWindow.SetAttValue(
                 "QuickMode", 1)
 
-        platoon_size = 4  # number of vehicles
-        platoon_speed = 80
+        platoon_speed = orig_and_dest_lane_speeds[0]
 
         self.run_platoon_scenario(
             platoon_size, platoon_speed,
@@ -553,17 +554,18 @@ class VissimInterface:
                         results_folder = (
                             self.file_handler.get_vissim_data_folder(
                                 vp, ipl, accepted_risk=ar))
-                    self.set_results_folder(results_folder)
+                    is_folder_set = self.set_results_folder(results_folder)
                     print("Starting series of {} runs with duration {}".format(
                         runs_per_scenario, simulation_period
                     ))
                     start_time = time.perf_counter()
                     self.network_info.run_function()
                     end_time = time.perf_counter()
-                    run_time, unit = _compute_run_time_with_unit(
-                        start_time, end_time)
-                    print('Total time: {:.1f}{} to run {} simulations.'.format(
-                        run_time, unit, runs_per_scenario))
+                    _print_run_time_with_unit(
+                        start_time, end_time, runs_per_scenario)
+                    if not is_folder_set:
+                        self.file_handler.copy_all_files_from_temp_folder(
+                            results_folder)
         self.vissim.ResumeUpdateGUI()
         self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode", 0)
 
@@ -583,7 +585,7 @@ class VissimInterface:
             self,
             strategies: List[PlatoonLaneChangeStrategy],
             main_road_vehicle_types: List[VehicleType],
-            main_road_speeds: List[str],
+            orig_and_dest_lane_speeds: List[Tuple[int, str]],
             main_road_vehicle_inputs: List[int],
             runs_per_scenario: int = 5,
             is_debugging: bool = False
@@ -594,7 +596,9 @@ class VissimInterface:
          body platoon; 2: leader first; 3: last vehicle first; 4: leader first
          and revert order
         :param main_road_vehicle_types: Human driven or connected
-        :param main_road_speeds: slow or fast
+        :param orig_and_dest_lane_speeds: Tuple where the first element is the
+         platoon desired speed and the second is a string indicating "slower",
+         "same" or "faster" than the platoon
         :param main_road_vehicle_inputs: TBD
         :param runs_per_scenario:
         :param is_debugging: If true, runs the scenario only once for a
@@ -603,7 +607,7 @@ class VissimInterface:
         # Set-up simulation parameters
         if is_debugging:
             warm_up_minutes = 0
-            runs_per_scenario = 2
+            runs_per_scenario = 1
             simulation_period = 360
         else:
             warm_up_minutes = self.network_info.warm_up_minutes
@@ -613,7 +617,6 @@ class VissimInterface:
             self.vissim.SuspendUpdateGUI()
 
         platoon_size = 4
-        platoon_desired_speed = 90
         self.set_evaluation_options(True, True, True, True, True,
                                     warm_up_minutes * 60,
                                     data_frequency=5)
@@ -624,19 +627,18 @@ class VissimInterface:
         self.set_verbose_simulation(False)
 
         print("Starting multiple-scenario run.")
+        multiple_sim_start_time = time.perf_counter()
         for st in strategies:
             self.set_platoon_lane_change_strategy(st)
             is_platoon_autonomous = st != PlatoonLaneChangeStrategy.human_driven
             for vt in main_road_vehicle_types:
                 veh_percent = {vt: 100}
-                for speed in main_road_speeds:
+                for speed_pair in orig_and_dest_lane_speeds:
+                    platoon_desired_speed = speed_pair[0]
                     comp_number = (
                         self.find_composition_matching_speed_distributions(
-                            {vt: speed}))
+                            {vt: speed_pair[1]}))
                     self.set_vehicle_inputs_composition(comp_number)
-                    # composition_name = '_'.join([speed, vt.name.lower()])
-                    # self.set_vehicle_inputs_composition_by_name(
-                    #     composition_name)
                     for veh_input in main_road_vehicle_inputs:
                         self.reset_saved_simulations(warning_active=False)
                         veh_volumes = {'left_lane': veh_input, 'right_lane': 0}
@@ -651,11 +653,10 @@ class VissimInterface:
                                     vehicle_percentages=veh_percent,
                                     vehicle_input_per_lane=veh_input,
                                     platoon_lane_change_strategy=st,
-                                    orig_and_dest_lane_speeds=(
-                                        platoon_desired_speed, speed))
+                                    orig_and_dest_lane_speeds=speed_pair)
                             )
                             first_platoon_time = 180
-                        self.set_results_folder(results_folder)
+                        is_folder_set = self.set_results_folder(results_folder)
                         print("Starting series of {} runs with duration {}".
                               format(runs_per_scenario, simulation_period))
                         start_time = time.perf_counter()
@@ -665,12 +666,26 @@ class VissimInterface:
                             platoon_creation_period=60,
                             is_platoon_autonomous=is_platoon_autonomous)
                         end_time = time.perf_counter()
-                        run_time, unit = _compute_run_time_with_unit(
-                            start_time, end_time)
-                        print('Total time: {:.1f}{} to run {} simulations.'.
-                              format(run_time, unit, runs_per_scenario))
+                        _print_run_time_with_unit(
+                            start_time, end_time, runs_per_scenario)
+                        if not is_folder_set:
+                            print("Copying result files to their proper "
+                                  "location")
+                            self.file_handler.copy_all_files_from_temp_folder(
+                                results_folder)
         self.vissim.ResumeUpdateGUI()
         self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode", 0)
+
+        multiple_sim_end_time = time.perf_counter()
+        total_runs = (len(strategies) * len(main_road_vehicle_types)
+                      * len(orig_and_dest_lane_speeds)
+                      * len(main_road_vehicle_inputs) * runs_per_scenario)
+        _print_run_time_with_unit(multiple_sim_start_time,
+                                  multiple_sim_end_time, total_runs)
+
+
+    def _check_result_folder_length(self, results_folder):
+        return len(results_folder + self.file_handler.scenario_name) > 230
 
     def run_us_101_with_different_speed_limits(self, possible_speeds=None):
         if not self.is_correct_network_loaded():
@@ -788,10 +803,23 @@ class VissimInterface:
         sim_params = {'NumRuns': number_of_runs}
         self.set_simulation_parameters(sim_params)
 
-    def set_results_folder(self, results_folder):
+    def set_results_folder(self, results_folder: str) -> bool:
+        """
+        Creates the result folder if it does not exist. If the path is too long
+        (which may cause problem when saving files), uses a temporary folder for
+        results
+        :returns: A boolean indicating if the original results_folder is used.
+        """
+        success = True
         if not os.path.exists(results_folder):
             os.makedirs(results_folder)
+        if self._check_result_folder_length(results_folder):
+            print("Result path it too long. Saving at a temporary location.")
+            # results_folder = '\\\\?\\' + results_folder
+            success = False
+            results_folder = self.file_handler.get_temp_results_folder()
         self.vissim.Evaluation.SetAttValue('EvalOutDir', results_folder)
+        return success
 
     # def create_time_intervals(self, period):
     #     """Programmatically creates time intervals in VISSIM so that
@@ -1465,7 +1493,7 @@ class VissimInterface:
         self.vissim = None
 
 
-def _compute_run_time_with_unit(start_time, end_time):
+def _print_run_time_with_unit(start_time, end_time, total_runs):
     """
     Computes the run time and returns it with the appropriate unit. Run times
     are given in seconds if below a minute, in minutes if below an hour,
@@ -1480,4 +1508,5 @@ def _compute_run_time_with_unit(start_time, end_time):
     else:
         run_time /= 3600
         unit = 'h'
-    return run_time, unit
+    print('Total time: {:.1f}{} to run {} simulations.'.
+          format(run_time, unit, total_runs))
