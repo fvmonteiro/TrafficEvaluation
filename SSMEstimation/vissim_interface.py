@@ -428,7 +428,7 @@ class VissimInterface:
             simulation_period=60, number_of_runs=2,
             first_platoon_time=10, platoon_creation_period=30,
             random_seed=None, is_fast_mode=False,
-            is_simulation_verbose=False, logged_veh_id=0):
+            is_simulation_verbose=False, logged_veh_id=None):
         """
         For initial test. Allows us to perform single runs of the platoon
         scenario with given parameters.
@@ -447,10 +447,11 @@ class VissimInterface:
         self.set_number_of_runs(number_of_runs)
         self.set_platoon_lane_change_strategy(lane_change_strategy)
         if vehicle_input is not None:
-            veh_volumes = {'main_flow': vehicle_input}
+            veh_volumes = {'left_lane': vehicle_input}
             self.set_vehicle_inputs(veh_volumes)
         self.set_verbose_simulation(is_simulation_verbose)
-        self.set_logged_vehicle_id(logged_veh_id)
+        if logged_veh_id is not None:
+            self.set_logged_vehicle_id(logged_veh_id)
         if is_fast_mode:
             self.vissim.Graphics.CurrentNetworkWindow.SetAttValue(
                 "QuickMode", 1)
@@ -608,10 +609,12 @@ class VissimInterface:
         if is_debugging:
             warm_up_minutes = 0
             runs_per_scenario = 1
-            simulation_period = 360
+            simulation_period = 600
+            first_platoon_time = 180
         else:
             warm_up_minutes = self.network_info.warm_up_minutes
             simulation_period = self.network_info.evaluation_period
+            first_platoon_time = 180
             self.vissim.Graphics.CurrentNetworkWindow.SetAttValue(
                 "QuickMode", 1)
             self.vissim.SuspendUpdateGUI()
@@ -646,7 +649,6 @@ class VissimInterface:
                         if is_debugging:
                             results_folder = (
                                 self.file_handler.get_vissim_test_folder())
-                            first_platoon_time = 10
                         else:
                             results_folder = (
                                 self.file_handler.get_vissim_data_folder(
@@ -655,7 +657,6 @@ class VissimInterface:
                                     platoon_lane_change_strategy=st,
                                     orig_and_dest_lane_speeds=speed_pair)
                             )
-                            first_platoon_time = 180
                         is_folder_set = self.set_results_folder(results_folder)
                         print("Starting series of {} runs with duration {}".
                               format(runs_per_scenario, simulation_period))
