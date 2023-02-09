@@ -51,12 +51,12 @@ class ResultAnalyzer:
                             'CPI': 'CPI',
                             'risk': 'CRI'}
 
+    # TODO: these two only work for the in_and_out scenarios. Reorganize somehow
     _sensor_name_map = {
         'in': 1, 'out': 2,
         'in_main_left': 3, 'in_main_right': 4, 'in_ramp': 5,
         'out_main_left': 6, 'out_main_right': 7, 'out_ramp': 8
     }
-
     _sensor_lane_map = {
         'in': [1, 2, 3], 'out': [1, 2, 3],
         'in_main_left': [1], 'in_main_right': [2], 'in_ramp': [3],
@@ -135,8 +135,9 @@ class ResultAnalyzer:
             vehicles_per_lane: List[int],
             warmup_time: int = 10, accepted_risk: int = None,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, int] = None,
-            flow_sensor_name: List[str] = None,
+            orig_and_dest_lane_speeds: Tuple[int, str] = None,
+            flow_sensor_identifier: Union[str, int] = None,
+            link_segment_number: int = None,
             aggregation_period: int = 30):
 
         density_data = self._load_data('density', [vehicle_percentages],
@@ -148,17 +149,15 @@ class ResultAnalyzer:
                                     [platoon_lane_change_strategy],
                                     [orig_and_dest_lane_speeds])
 
-        flow_data = ResultAnalyzer._prepare_data_collection_data(
-            flow_data, warmup_time=warmup_time * 60,
+        flow_data = self._prepare_data_collection_data(
+            flow_data, flow_sensor_identifier, warmup_time=warmup_time * 60,
             aggregation_period=aggregation_period)
-        density_data = ResultAnalyzer._prepare_link_evaluation_data(
-            density_data, file_handling.get_merging_links(self.scenario_name),
+        # We're assuming scenarios with a single main link
+        link = file_handling.get_scenario_main_links(self.scenario_name)[0]
+        density_data = self._prepare_link_evaluation_data(
+            density_data, link, link_segment_number,
             warmup_time=warmup_time * 60,
             aggregation_period=aggregation_period)
-        self._prepare_data_for_plotting(density_data, warmup_time * 60,
-                                        flow_sensor_name)
-        # self._prepare_data_for_plotting(flow_data, warmup_time * 60,
-        #                                 flow_sensor_name)
         intersection_columns = ['vehicles_per_lane', 'control percentages',
                                 'simulation_number', 'time_interval',
                                 'random_seed']
@@ -188,7 +187,7 @@ class ResultAnalyzer:
             accepted_risks = [0]
         data = self._load_data('flow', vehicle_percentages,
                                vehicles_per_lane, accepted_risks)
-        relevant_data = ResultAnalyzer._prepare_data_collection_data(
+        relevant_data = self._prepare_data_collection_data(
             data, flow_sensor_name, warmup_time * 60, aggregation_period)
         self._ensure_data_source_is_uniform(relevant_data, vehicles_per_lane)
         fig = _box_plot_y_vs_controlled_percentage(relevant_data, 'flow')
@@ -263,7 +262,7 @@ class ResultAnalyzer:
             data, vehicles_per_lane)
 
         no_control_idx = (relevant_data['control percentages']
-                          == 'no control')
+                          == 'human driven')
         relevant_data[['percentage', 'control_type']] = relevant_data[
             'control percentages'].str.split(' ', expand=True)
         relevant_data.loc[no_control_idx, 'control_type'] = 'human'
@@ -416,7 +415,7 @@ class ResultAnalyzer:
             plt.show()
 
         normalizer = data.loc[
-                (data['control percentages'] == 'no control')
+                (data['control percentages'] == 'human driven')
                 & (data['vehicles per hour'] == data[
                     'vehicles per hour'].min()),
                 risk_type].sum()
@@ -459,7 +458,7 @@ class ResultAnalyzer:
         # for cp in control_percentages:
         for item in percentages_per_vehicle_types:
             cp = vehicle_percentage_dict_to_string(item)
-            if cp == 'no control':
+            if cp == 'human driven':
                 continue
             data_to_plot = relevant_data[
                 (relevant_data['control percentages'] == cp)
@@ -680,7 +679,7 @@ class ResultAnalyzer:
                                    accepted_risks)
             self._prepare_data_for_plotting(data, warmup_time * 60,
                                             sensor_name=['out'])
-            data.loc[data['control percentages'] == 'no control',
+            data.loc[data['control percentages'] == 'human driven',
                      'control percentages'] = '100% HD'
             n_simulations = len(data['simulation_number'].unique())
             table = data.pivot_table(values=col_in_df,
@@ -749,7 +748,7 @@ class ResultAnalyzer:
         agg_function = np.sum
         if normalizer is None:
             normalizer = data.loc[
-                (data['control percentages'] == 'no control')
+                (data['control percentages'] == 'human driven')
                 & (data['vehicles per hour'] == data[
                     'vehicles per hour'].min()),
                 risk_type].sum()
@@ -775,7 +774,7 @@ class ResultAnalyzer:
         col_name = '_'.join([y, str(brake_threshold)])
         agg_function = np.mean
         normalizer = data.loc[
-            (data['control percentages'] == 'no control')
+            (data['control percentages'] == 'human driven')
             & (data['vehicles per hour'] == data[
                 'vehicles per hour'].min()),
             col_name].agg(agg_function)
@@ -805,7 +804,7 @@ class ResultAnalyzer:
         y = 'discomfort_' + str(max_brake)
         self._prepare_data_for_plotting(data, 600)
         normalizer = data.loc[
-            (data['control percentages'] == 'no control')
+            (data['control percentages'] == 'human driven')
             & (data['vehicles_per_lane'] == data['vehicles_per_lane'].min()),
             y].sum()
         fig = _plot_heatmap(data, y, 'vehicles_per_lane',
@@ -824,7 +823,7 @@ class ResultAnalyzer:
                                vehicles_per_lane, accepted_risks)
         self._prepare_data_for_plotting(data, 600, ['out'])
         normalizer = data.loc[
-            (data['control percentages'] == 'no control')
+            (data['control percentages'] == 'human driven')
             & (data['vehicles_per_lane'] == data[
                 'vehicles_per_lane'].min()),
             y].sum()
@@ -849,7 +848,7 @@ class ResultAnalyzer:
         self._prepare_pollutant_data(data, pollutant_id)
         title = 'Normalized ' + self._pollutant_id_to_string[pollutant_id]
         normalizer = data.loc[
-            (data['control percentages'] == 'no control')
+            (data['control percentages'] == 'human driven')
             & (data['vehicles per hour']
                == data['vehicles per hour'].min()),
             y].sum()
@@ -937,7 +936,7 @@ class ResultAnalyzer:
             self, vehicle_percentages: Dict[VehicleType, int],
             vehicles_per_lane: int, accepted_risk: int = None,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, int] = None
+            orig_and_dest_lane_speeds: Tuple[int, str] = None
     ):
         """
         Counts the lane changes over all simulations under a determined
@@ -978,7 +977,7 @@ class ResultAnalyzer:
             self, y: str, vehicle_percentages: Dict[VehicleType, int],
             vehicles_per_lane: List[int],
             lane_change_strategies: List[PlatoonLaneChangeStrategy],
-            orig_and_dest_lane_speeds: Tuple[int, int]):
+            orig_and_dest_lane_speeds: Tuple[int, str]):
         """
         Line plot with vehicle input on the x axis and LC strategies as hue
 
@@ -995,7 +994,7 @@ class ResultAnalyzer:
             self, y: str, vehicle_percentages: Dict[VehicleType, int],
             vehicles_per_lane: List[int],
             lane_change_strategies: List[PlatoonLaneChangeStrategy],
-            orig_and_dest_lane_speeds: Tuple[int, int]):
+            orig_and_dest_lane_speeds: Tuple[int, str]):
         """
         Line plot with strategies on the x axis and vehicle input as hue
         :param y: Options: was_lane_change_completed, maneuver_time,
@@ -1011,7 +1010,7 @@ class ResultAnalyzer:
             vehicle_percentages: Dict[VehicleType, int],
             vehicles_per_lane: List[int],
             lane_change_strategies: List[PlatoonLaneChangeStrategy],
-            orig_and_dest_lane_speeds: Tuple[int, int],
+            orig_and_dest_lane_speeds: Tuple[int, str],
             is_bar_plot: bool = False):
         """
 
@@ -1025,8 +1024,8 @@ class ResultAnalyzer:
             lane_change_strategies, [orig_and_dest_lane_speeds])
 
         # TODO: Drop samples that didn't finish simulation
-        # data.drop(index=data.loc[~data['traversed_network']].index,
-        #           inplace=True)
+        data.drop(index=data.loc[~data['traversed_network']].index,
+                  inplace=True)
         # TODO: if plotting was_lc_completed, don't remove
         # TODO: if plotting platoon_maneuver_time, must remove cases where
         #  platoons split
@@ -1037,7 +1036,7 @@ class ResultAnalyzer:
             'vehicle_maneuver_time': 'Maneuver Time per Vehicle (s)',
             'platoon_maneuver_time': 'Platoon Maneuver Time (s)',
             'travel_time': 'Travel Time (s)',
-            'accel_costs': 'Accel Cost (m2/s3)',
+            'accel_cost': 'Accel Cost (m2/s3)',
             'stayed_in_platoon': '% Stayed in Platoon'
         }
         st_name_map = {-1: 'humans', 0: 'CAVs', 1: 'SBP', 2: 'Ld First',
@@ -1432,7 +1431,7 @@ class ResultAnalyzer:
             self, y: str, vehicle_percentages: List[Dict[VehicleType, int]],
             vehicles_per_lane: List[int], accepted_risks: List[int] = None,
             lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
-            orig_and_dest_lane_speeds: List[Tuple[int, int]] = None
+            orig_and_dest_lane_speeds: List[Tuple[int, str]] = None
             ):
         # reader = self._get_data_reader(y)
         reader = self._data_reader_map[y](self.scenario_name)
@@ -1444,76 +1443,61 @@ class ResultAnalyzer:
                 * data['vehicles_per_lane'])
         return data
 
-    @staticmethod
     def _prepare_data_collection_data(
-            data: pd.DataFrame, sensor_name: str = 'in',
+            self, data: pd.DataFrame, sensor_identifier: Union[int, str] = None,
             warmup_time: int = 600,
             aggregation_period: int = 30) -> pd.DataFrame:
         """
         Keeps only data from one sensor, discards data before warmup time, and
         computes flow for the given aggregation period.
         """
-        # TODO: split this in functions
+        # Drop early samples
         post_processing.create_time_in_minutes_from_intervals(data)
         data['time'] *= 60
-        # Drop early samples
         data.drop(index=data[data['time'] < warmup_time].index, inplace=True)
         # Select only one sensor
-        sensor_number = ResultAnalyzer._sensor_name_map[sensor_name]
-        data.drop(data[data['sensor_number'] != sensor_number].index,
-                  inplace=True)
+        if self.scenario_name.startswith('in_and_out'):
+            _select_flow_sensors_from_in_and_out_scenario(data,
+                                                          sensor_identifier)
+        else:
+            data.drop(data[data['sensor_number'] != sensor_identifier].index,
+                      inplace=True)
         # Aggregate
-        data.reset_index(drop=True, inplace=True)
-        t1, t2 = data['time_interval'].iloc[0].split('-')
-        interval = int(t2) - int(t1)
-        if aggregation_period % interval != 0:
-            print('Aggregation period should be a multiple of the data '
-                  'collection interval used in simulation. Keeping the '
-                  'original data collection interval.')
-            aggregation_period = interval
-        n = aggregation_period // interval
-        aggregated_data = data.iloc[[i for i in range(0, data.shape[0],
-                                                      n)]].copy()
-        aggregated_data['vehicle_count'] = data['vehicle_count'].groupby(
-            data.index // n).sum().to_numpy()
+        aggregated_data = _aggregate_data(data, 'vehicle_count',
+                                          aggregation_period, np.sum)
         aggregated_data['flow'] = (3600 / aggregation_period
                                    * aggregated_data['vehicle_count'])
         return aggregated_data
 
-    @staticmethod
     def _prepare_link_evaluation_data(
-            data: pd.DataFrame, links: List[int], lanes: List[int] = None,
+            self, data: pd.DataFrame, link: int, segment: int = None,
+            lanes: List[int] = None, sensor_name: str = None,
             warmup_time: int = 600,
             aggregation_period: int = 30) -> pd.DataFrame:
+
+        # Drop early samples
         post_processing.create_time_in_minutes_from_intervals(data)
         data['time'] *= 60
-        # Drop early samples
         data.drop(index=data[data['time'] < warmup_time].index, inplace=True)
-        # Select only one link
-        data.drop(index=data[~data['link_number'].isin(links)].index,
+
+        # Select link
+        data.drop(index=data[data['link_number'] != link].index,
                   inplace=True)
+        # Select segment
+        if segment is not None:
+            data.drop(index=data[data['link_segment'] != segment].index,
+                      inplace=True)
+        elif len(data['link_segment'].unique()) > 1:
+            print("WARNING: the chosen link has several segments, and we're "
+                  "keeping all of them")
         # Select lanes
-        if (lanes is not None
-                and ResultAnalyzer._has_per_lane_results(data)):
+        if self.scenario_name.startswith('in_and_out'):
+            _select_lanes_for_in_and_out_scenario(data, sensor_name)
+        elif lanes is not None and _has_per_lane_results(data):
             data.drop(data[~data['lane'].isin(lanes)].index,
                       inplace=True)
-        # TODO: Aggregate
-        print('[WARNING] link aggregation function is not ready yet.\n',
-              'We must still deal with long links.')
-        data.reset_index(drop=True, inplace=True)
-        t1, t2 = data['time_interval'].iloc[0].split('-')
-        interval = int(t2) - int(t1)
-        if aggregation_period % interval != 0:
-            print('Aggregation period should be a multiple of the data '
-                  'collection interval used in simulation. Keeping the '
-                  'original data collection interval.')
-            aggregation_period = interval
-        n = aggregation_period // interval
-        aggregated_data = data.iloc[[i for i in range(0, data.shape[0],
-                                                      n)]].copy()
-        aggregated_data['density'] = data['density'].groupby(
-            data.index // n).mean().to_numpy()
-        return aggregated_data
+
+        return _aggregate_data(data, 'density', aggregation_period, np.mean)
 
     @staticmethod
     def _prepare_data_for_plotting(data: pd.DataFrame,
@@ -1540,7 +1524,7 @@ class ResultAnalyzer:
         if 'time' not in data.columns:
             post_processing.create_time_in_minutes_from_intervals(data)
             data['time'] *= 60
-        if 'flow' in data.columns:
+        if 'flow' in data.columns:  # data collection data
             if sensor_name is None:
                 sensor_name = ['in']
             sensor_number = [ResultAnalyzer._sensor_name_map[name] for name
@@ -1548,7 +1532,8 @@ class ResultAnalyzer:
             data.drop(data[~data['sensor_number'].isin(sensor_number)].index,
                       inplace=True)
         if (('density' in data.columns) and (sensor_name is not None)
-                and (ResultAnalyzer._has_per_lane_results(data))):
+                and (_has_per_lane_results(data))):
+            # link evaluation data
             lanes = []
             [lanes.extend(ResultAnalyzer._sensor_lane_map[name])
              for name in sensor_name]
@@ -1609,17 +1594,6 @@ class ResultAnalyzer:
                   'controlled percentages or vehicle inputs had the same '
                   'amount of simulation results')
         return relevant_data
-
-    @staticmethod
-    def _has_per_lane_results(data) -> bool:
-        """
-        :param data: Data from link evaluation records
-        :return: boolean indicating whether the data has results individualized
-        per lane
-        """
-        if 'lane' in data.columns and data['lane'].iloc[0] != 0:
-            return True
-        return False
 
     @staticmethod
     def remove_deadlock_simulations(data):
@@ -1832,11 +1806,77 @@ def list_of_dicts_to_1d_list(dict_list: List[Dict]):
 
 def vehicle_percentage_dict_to_string(vp_dict: Dict[VehicleType, int]) -> str:
     if sum(vp_dict.values()) == 0:
-        return 'no control'
+        return 'human driven'
     ret_str = []
     for veh_type, p in vp_dict.items():
         ret_str.append(str(p) + '% ' + vehicle_type_to_str_map[veh_type])
     return ' '.join(sorted(ret_str))
+
+
+def _aggregate_data(data: pd.DataFrame, aggregated_variable: str,
+                    aggregation_period: int,
+                    aggregation_function):
+    data.reset_index(drop=True, inplace=True)
+    t1, t2 = data['time_interval'].iloc[0].split('-')
+    interval = int(t2) - int(t1)
+    if aggregation_period % interval != 0:
+        print('Aggregation period should be a multiple of the data '
+              'collection interval used in simulation. Keeping the '
+              'original data collection interval.')
+        aggregation_period = interval
+    n = aggregation_period // interval
+    aggregated_data = data.iloc[[i for i in range(0, data.shape[0],
+                                                  n)]].copy()
+    aggregated_data[aggregated_variable] = data[aggregated_variable].groupby(
+        data.index // n).agg(aggregation_function).to_numpy()
+    return aggregated_data
+
+
+def _has_per_lane_results(data: pd.DataFrame) -> bool:
+    """
+    :param data: Data from link evaluation records
+    :return: boolean indicating whether the data has results individualized
+    per lane
+    """
+    if 'lane' in data.columns and data['lane'].iloc[0] != 0:
+        return True
+    return False
+
+
+def _select_flow_sensors_from_in_and_out_scenario(
+        data: pd.DataFrame, sensor_name: str = None):
+    """
+    Keeps only data from the sensors with the given sensor names.
+    """
+    if sensor_name is None:
+        sensor_name = 'in'
+    sensor_name_map = {
+        'in': 1, 'out': 2,
+        'in_main_left': 3, 'in_main_right': 4, 'in_ramp': 5,
+        'out_main_left': 6, 'out_main_right': 7, 'out_ramp': 8
+    }
+    sensor_number = sensor_name_map[sensor_name]
+    data.drop(data[data['sensor_number'] != sensor_number].index,
+              inplace=True)
+
+
+def _select_lanes_for_in_and_out_scenario(data: pd.DataFrame,
+                                          sensor_name: str = None):
+    """
+    Chooses which lanes from the link evaluation data to keep based on the
+    sensor names.
+    """
+    if sensor_name is None:
+        sensor_name = 'in'
+    sensor_lane_map = {
+        'in': [1, 2, 3], 'out': [1, 2, 3],
+        'in_main_left': [1], 'in_main_right': [2], 'in_ramp': [3],
+        'out_main_left': [1], 'out_main_right': [2], 'out_ramp': [3]
+    }
+    if _has_per_lane_results(data):
+        lanes = sensor_lane_map[sensor_name]
+        data.drop(data[~data['lane'].isin(lanes)].index,
+                  inplace=True)
 
 
 def _plot_heatmap(data: pd.DataFrame, value: str, rows: str, columns: str,

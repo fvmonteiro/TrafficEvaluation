@@ -313,8 +313,7 @@ def create_platoon_lane_change_summary(
         lane_change_strategies: List[PlatoonLaneChangeStrategy],
         orig_and_dest_lane_speeds: List[Tuple[int, str]],
         debugging: bool = False):
-
-    post_processors = [PlatoonEfficiencyProcessor(scenario_name)]
+    post_processors = [PlatoonLaneChangeProcessor(scenario_name)]
     for st in lane_change_strategies:
         for vp in vehicle_percentages:
             for vi in vehicle_inputs:
@@ -2923,7 +2922,7 @@ class LaneChangeIssuesProcessor(VISSIMDataPostProcessor):
         return issues_df
 
 
-class PlatoonEfficiencyProcessor(VISSIMDataPostProcessor):
+class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
     _writer = data_writer.PlatoonLaneChangeEfficiencyWriter
 
     def __init__(self, scenario_name):
@@ -2947,34 +2946,45 @@ class PlatoonEfficiencyProcessor(VISSIMDataPostProcessor):
         platoon_veh_ids = grouped_by_id.groups.keys()
         result_df = pd.DataFrame(index=platoon_veh_ids)
         result_df['simulation_number'] = data.iloc[0]['simulation_number']
+
+        # Per vehicle stuff
         result_df['traversed_network'] = (grouped_by_id['time'].last()
                                           != sim_time)
         result_df['was_lane_change_completed'] = grouped_by_id['state'].agg(
             lambda x: np.any(x == 'lane changing')
         )
-        platoon_ids = grouped_by_id.agg({'platoon_id': ['first', 'last']})
-        result_df['initial_platoon_id'] = platoon_ids['platoon_id']['first']
-        result_df['stayed_in_platoon'] = (platoon_ids['platoon_id']['first']
-                                          == platoon_ids['platoon_id']['last'])
         result_df['travel_time'] = compute_time_interval_per_vehicle(
             platoon_vehicles)
         maneuvering_idx = platoon_vehicles['state'] != 'lane keeping'
         result_df['vehicle_maneuver_time'] = compute_time_interval_per_vehicle(
             platoon_vehicles[maneuvering_idx]
         )
-        platoon_maneuver_time = compute_time_interval_per_platoon(
+
+        # Platoon info
+        platoon_ids = grouped_by_id.agg({'platoon_id': ['first', 'last']})
+        result_df['initial_platoon_id'] = platoon_ids['platoon_id']['first']
+        result_df['stayed_in_platoon'] = (platoon_ids['platoon_id']['first']
+                                          == platoon_ids['platoon_id']['last'])
+        platoon_maneuver_time = compute_maneuver_time_per_platoon(
             platoon_vehicles[maneuvering_idx]
         )
+        platoon_vehicles = pd.merge(left=platoon_vehicles,
+                                    right=platoon_maneuver_time,
+                                    left_on='platoon_id', right_index=True,
+                                    how='left')
+        grouped_by_id = platoon_vehicles.groupby('platoon_id')
+        accel_cost = grouped_by_id.apply(lambda g: np.sum(np.power(
+            g.loc[(g['time'] > g['maneuver_start_time'].iloc[0])
+                  & (g['time'] < g['maneuver_end_time'].iloc[0]), 'ax'], 2)))
+
         result_df = pd.merge(left=result_df, right=platoon_maneuver_time,
                              left_on='initial_platoon_id', right_index=True,
                              how='inner')
-        result_df.rename({'duration': 'platoon_maneuver_time'}, axis=1,
-                         inplace=True)
+        result_df['accel_cost'] = accel_cost
+        #     grouped_by_id['ax'].agg(
+        #     lambda x: np.sum(np.power(x, 2)) * sampling_time
+        # )
 
-        # result_df['platoon_maneuver_time']
-        result_df['accel_costs'] = grouped_by_id['ax'].agg(
-            lambda x: np.sum(np.power(x, 2)) * sampling_time
-        )
         result_df.reset_index(inplace=True, names='veh_id')
         return result_df
 
@@ -3017,11 +3027,37 @@ def compute_time_interval_per_vehicle(vehicle_records: pd.DataFrame):
     return times['duration']
 
 
-def compute_time_interval_per_platoon(vehicle_records: pd.DataFrame):
+def compute_maneuver_time_per_platoon(vehicle_records: pd.DataFrame):
+    """
+    :param vehicle_records: Must be filtered to contain only samples during
+     which vehicles are not lane keeping
+    :returns: dataframe with the initial, final, and total maneuver time
+    """
     times = vehicle_records.groupby('platoon_id').agg(
         {'time': ['first', 'last']})
-    times['duration'] = (times['time']['last'] - times['time']['first'])
-    return times['duration']
+    return_df = pd.DataFrame()
+    return_df['maneuver_start_time'] = times['time']['first']
+    return_df['maneuver_end_time'] = times['time']['last']
+    return_df['platoon_maneuver_time'] = (return_df['maneuver_end_time']
+                                          - return_df['maneuver_start_time'])
+    return return_df
+
+
+def compute_accel_cost(platoon_vehicles: pd.DataFrame):
+    grouped_by_id = platoon_vehicles.groupby('platoon_id')
+    df = pd.DataFrame()
+    sampling_time = 0.1
+    df['accel_costs'] = grouped_by_id[[
+        'time', 'ax', 'maneuver_start_time', 'maneuver_end_time']].agg(
+        lambda x: np.sum(np.power(help_filter(x), 2)) * sampling_time
+    )
+
+    a = grouped_by_id.aggregate(func='help_filter')
+
+    def help_filter(data):
+        return data.loc[(data['time'] >= data['maneuver_start_time'])
+                        & (data['time'] <= data['maneuver_end_time']),
+                        'ax']
 
 
 def create_summary_for_single_scenario(
@@ -3070,9 +3106,9 @@ def create_summary_for_single_scenario(
     print('Start of safety summary creation for network {}\nvehicle '
           'percentages {}, input {}, risk {}, lc strategy {}, '
           'speed pair {}'.format(
-            scenario_name, vehicle_percentages, vehicle_input,
-            accepted_risk, platoon_lane_change_strategy.name,
-            orig_and_dest_lane_speeds))
+        scenario_name, vehicle_percentages, vehicle_input,
+        accepted_risk, platoon_lane_change_strategy.name,
+        orig_and_dest_lane_speeds))
     for (vehicle_records, simulation_info) in data_generator:
         file_number = simulation_info['file_number']
         # post_process_data(data_source_VISSIM, vehicle_records)
