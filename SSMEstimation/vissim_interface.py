@@ -5,6 +5,7 @@ import time
 from typing import List, Dict, Callable, Tuple, Union
 import warnings
 
+import numpy as np
 import pandas as pd
 import pywintypes
 import win32com.client as com
@@ -578,9 +579,11 @@ class VissimInterface:
         strategy = PlatoonLaneChangeStrategy.human_driven
         vehicle_type = VehicleType.HUMAN_DRIVEN
         main_road_speeds = ['slower', 'faster']
+        orig_and_dest_lane_speeds = [(90, speed) for speed in main_road_speeds]
         vehicle_inputs = [i for i in range(500, 2501, 500)]
         self.run_multiple_platoon_lane_change_scenarios(
-            [strategy], [vehicle_type], main_road_speeds, vehicle_inputs)
+            [strategy], [vehicle_type], orig_and_dest_lane_speeds,
+            vehicle_inputs)
 
     def run_multiple_platoon_lane_change_scenarios(
             self,
@@ -644,8 +647,10 @@ class VissimInterface:
                     self.set_vehicle_inputs_composition(comp_number)
                     for veh_input in main_road_vehicle_inputs:
                         self.reset_saved_simulations(warning_active=False)
-                        veh_volumes = {'left_lane': veh_input, 'right_lane': 0}
-                        self.set_vehicle_inputs(veh_volumes)
+                        self.set_uniform_vehicle_input_for_all_lanes(veh_input)
+                        # veh_volumes = {'left_lane': veh_input,
+                        #                'right_lane': veh_input}
+                        # self.set_vehicle_inputs(veh_volumes)
                         if is_debugging:
                             results_folder = (
                                 self.file_handler.get_vissim_test_folder())
@@ -1177,34 +1182,36 @@ class VissimInterface:
         vehicles
         """
 
-        cav_type = vehicle.VehicleType.CONNECTED_NO_LANE_CHANGE
-        cav = vehicle.Vehicle(cav_type)
-        cav.free_flow_velocity = desired_speed / 3.6
-        h, d = cav.compute_vehicle_following_parameters(
-            leader_max_brake=cav.max_brake, rho=0.2)
-        cav_safe_gap = h * desired_speed / 3.6 + d
-
         platoon_type = vehicle.VehicleType.PLATOON
         platoon_vehicle = vehicle.Vehicle(platoon_type)
+        vissim_vehicle_type = vehicle.Vehicle.ENUM_TO_VISSIM_ID[platoon_type]
         platoon_vehicle.free_flow_velocity = desired_speed / 3.6
         h, d = platoon_vehicle.compute_vehicle_following_parameters(
             leader_max_brake=platoon_vehicle.max_brake, rho=0.05)
         platoon_safe_gap = h * desired_speed / 3.6 + d
 
-        vehicles = self.vissim.Net.Vehicles
+        net = self.vissim.Net
+        vehicles = net.Vehicles
         right_lane_link = 2
         lane = 1
-        position = 10
-        interaction = True  # optional
+        first_platoon_position = 10
 
-        # Create a vehicle behind the platoon in the origin lane
-        vissim_vehicle_type = vehicle.Vehicle.ENUM_TO_VISSIM_ID[cav_type]
-        added_vehicle = vehicles.AddVehicleAtLinkPosition(
-            vissim_vehicle_type, right_lane_link, lane, position,
-            desired_speed, interaction)
-        position += added_vehicle.AttValue('Length') + cav_safe_gap
+        # Remove any vehicles occupying the platoon space
+        vehicles_in_link = net.Links.ItemByKey(2).Vehs
+        veh_length = 6  # just an estimate
+        extra_margin = 10  # to give the platoon time to react to some slower
+        # moving vehicle ahead
+        min_position = (first_platoon_position
+                        + platoon_size * (veh_length + platoon_safe_gap)
+                        + extra_margin)
+        filter_str = "[Pos]<=" + str(min_position)
+        vehicles_to_delete = vehicles_in_link.FilteredBy(filter_str)
+        for veh in vehicles_to_delete:
+            vehicles.RemoveVehicle(veh)
+
         # Create the platoon
-        vissim_vehicle_type = vehicle.Vehicle.ENUM_TO_VISSIM_ID[platoon_type]
+        interaction = True  # optional
+        position = first_platoon_position
         for i in range(platoon_size):
             added_vehicle = vehicles.AddVehicleAtLinkPosition(
                 vissim_vehicle_type, right_lane_link, lane, position,

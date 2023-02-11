@@ -21,6 +21,7 @@ class _NetworkInfo:
     """Contains information about different VISSIM network"""
     file_name: str
     total_lanes: int
+    main_links: List[int]
     # on_ramp_link: List[int]
     # off_ramp_link: List[int]
     # merging_link: List[int]
@@ -66,21 +67,22 @@ _folders_map = {
                                ),
 }
 
+# TODO: check main links of remaining scenarios
 _network_info = {
     'in_and_out':
-        _NetworkInfo('highway_in_and_out_lanes', 3),
+        _NetworkInfo('highway_in_and_out_lanes', 3, [3]),
     'in_and_merge':
-        _NetworkInfo('highway_in_and_merge', 3),
+        _NetworkInfo('highway_in_and_merge', 3, [3]),
     'i710':
-        _NetworkInfo('I710-MultiSec-3mi', 3),
+        _NetworkInfo('I710-MultiSec-3mi', 3, []),
     'us101':
-        _NetworkInfo('US_101', 6),
+        _NetworkInfo('US_101', 6, []),
     'traffic_lights':
-        _NetworkInfo('traffic_lights_study', 2),
+        _NetworkInfo('traffic_lights_study', 2, []),
     'platoon_mandatory_lane_change':
-        _NetworkInfo('platoon_mandatory_lane_change', 2),
+        _NetworkInfo('platoon_mandatory_lane_change', 2, [3]),
     'platoon_discretionary_lane_change':
-        _NetworkInfo('platoon_discretionary_lane_change', 2)
+        _NetworkInfo('platoon_discretionary_lane_change', 2, [3])
 }
 
 _scenario_info = {
@@ -426,8 +428,8 @@ def get_scenario_number_of_lanes(scenario_name: str) -> int:
     return _scenario_info[scenario_name].network_info.total_lanes
 
 
-def get_merging_links(scneario_name: str) -> List[int]:
-    return _scenario_info[scneario_name].network_info.merging_link
+def get_scenario_main_links(scneario_name: str) -> List[int]:
+    return _scenario_info[scneario_name].network_info.main_links
 
 
 def create_vehs_per_lane_folder_name(vehicles_per_lane: Union[int, str]) -> str:

@@ -2936,6 +2936,7 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
         """
         # TODO Accel costs of cooperating vehicles, travel time of other
         #  vehicles
+        # TODO: split the function
 
         sim_time = data.iloc[-1]['time']
         sampling_time = 0.1  # TODO: read from data
@@ -2972,7 +2973,7 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
                                     right=platoon_maneuver_time,
                                     left_on='platoon_id', right_index=True,
                                     how='left')
-        grouped_by_id = platoon_vehicles.groupby('platoon_id')
+        grouped_by_id = platoon_vehicles.groupby('veh_id')
         accel_cost = grouped_by_id.apply(lambda g: np.sum(np.power(
             g.loc[(g['time'] > g['maneuver_start_time'].iloc[0])
                   & (g['time'] < g['maneuver_end_time'].iloc[0]), 'ax'], 2)))
@@ -2981,9 +2982,6 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
                              left_on='initial_platoon_id', right_index=True,
                              how='inner')
         result_df['accel_cost'] = accel_cost
-        #     grouped_by_id['ax'].agg(
-        #     lambda x: np.sum(np.power(x, 2)) * sampling_time
-        # )
 
         result_df.reset_index(inplace=True, names='veh_id')
         return result_df

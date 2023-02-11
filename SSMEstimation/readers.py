@@ -699,13 +699,12 @@ class LinkEvaluationReader(AggregatedDataReader):
         data['link_number'] = link_information.iloc[:, 0]
         data['link_length'] = (link_information.iloc[:, -1]
                                - link_information.iloc[:, -2])
-        # data['link_segment'] = 0
+        data['link_segment'] = link_information.iloc[:, -2].rank(
+            method='dense').astype(int)
         # If data was not exported per lane, we set all lanes to zero
         data['lane'] = (0 if link_information.shape[1] == 3 else
                         link_information.iloc[:, 1])
 
-        # data['lane'] = (data['link_segment_number'].str.split('-').str[1].
-        #                 astype(int))
         return data
 
 

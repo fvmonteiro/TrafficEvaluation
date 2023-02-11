@@ -194,8 +194,8 @@ def plot_traffic_lights_results(save_results=False):
     percentages_per_vehicle_type = create_vehicle_percentages_dictionary(
         vehicle_types, percentages, 1)
     result_analyzer = result_analysis.ResultAnalyzer(network_name, save_results)
-    result_analyzer.box_plot_y_vs_controlled_percentage(
-        'flow', veh_inputs, percentages_per_vehicle_type, 10)
+    result_analyzer.plot_flow_box_plot_vs_controlled_percentage(
+        veh_inputs, percentages_per_vehicle_type, warmup_time=10)
 
     result_analyzer.accel_vs_time_for_different_vehicle_pairs()
     result_analyzer.plot_heatmap_for_traffic_light_scenario(
@@ -296,9 +296,9 @@ def main():
     strategies = [
         # PlatoonLaneChangeStrategy.human_driven,
         # PlatoonLaneChangeStrategy.no_strategy,
-        # PlatoonLaneChangeStrategy.single_body_platoon,
-        # PlatoonLaneChangeStrategy.leader_first,
-        # PlatoonLaneChangeStrategy.last_vehicle_first,
+        PlatoonLaneChangeStrategy.single_body_platoon,
+        PlatoonLaneChangeStrategy.leader_first,
+        PlatoonLaneChangeStrategy.last_vehicle_first,
         PlatoonLaneChangeStrategy.leader_first_and_reverse
     ]
     vehicle_types = [
@@ -309,17 +309,20 @@ def main():
     # vehicle_percentages = create_vehicle_percentages_dictionary(
     #     vehicle_types, percentages, 1)
     platoon_speed = 90
-    main_road_speeds = ['slower', 'faster']
+    main_road_speeds = ['same']
     orig_and_dest_lane_speeds = [(platoon_speed, s) for s in main_road_speeds]
-    vehicle_inputs = [i for i in range(500, 2001, 500)]
+    vehicle_inputs = [i for i in range(0, 2001, 500)]
 
     # =============== Running =============== #
-    vi = VissimInterface()
-    vi.load_simulation(scenario_name)
-    vi.run_multiple_platoon_lane_change_scenarios(
-        strategies, vehicle_types, orig_and_dest_lane_speeds, vehicle_inputs,
-        runs_per_scenario=3)
-    vi.close_vissim()
+    # vi = VissimInterface()
+    # vi.load_simulation(scenario_name)
+    # # vi.run_platoon_scenario_sample(
+    # #     4, PlatoonLaneChangeStrategy.leader_first, 1500,
+    # #     orig_and_dest_lane_speeds[0], 360, 1, 10, 30)
+    # vi.run_multiple_platoon_lane_change_scenarios(
+    #     strategies, vehicle_types, orig_and_dest_lane_speeds, vehicle_inputs,
+    #     runs_per_scenario=1)
+    # vi.close_vissim()
 
     # =============== Post processing =============== #
     vehicle_percentages = [{vt: 100} for vt in vehicle_types]
@@ -329,19 +332,31 @@ def main():
     #     orig_and_dest_lane_speeds)
 
     # file_handler = file_handling.FileHandler(scenario_name)
-    # file_handler.export_multiple_platoon_results_to_cloud(
+    # file_handler.import_multiple_platoon_results_from_cloud(
     #         vehicle_percentages, vehicle_inputs, strategies,
     #         orig_and_dest_lane_speeds)
 
     # =============== Check results graphically =============== #
-    # ra = result_analysis.ResultAnalyzer(scenario_name, False)
-    # ra.plot_y_vs_platoon_lc_strategy('stayed_in_platoon',
-    #                                  vehicle_percentages[0],
-    #                                  vehicle_inputs[0],
-    #                                  strategies, orig_and_dest_lane_speeds[0])
-    # vehicle_inputs = [i for i in range(1500, 2501, 500)]
+    ra = result_analysis.ResultAnalyzer(scenario_name, False)
+
+    # ra.plot_volume_box_plot_vs_strategy(
+    #     vehicle_inputs, vehicle_percentages, strategies,
+    #     orig_and_dest_lane_speeds[0], 1, [1, 2])
+    # ra.plot_flow_box_plot_vs_strategy(
+    #     vehicle_inputs, vehicle_percentages, strategies,
+    #     orig_and_dest_lane_speeds[0], [1, 2])
+    # ys = ['was_lane_change_completed', 'platoon_maneuver_time',
+    #       'travel_time', 'accel_cost', 'stayed_in_platoon']
+    # for y in ys:
+    #     ra.plot_y_vs_platoon_lc_strategy(y, vehicle_percentages[0],
+    #                                      vehicle_inputs, strategies,
+    #                                      orig_and_dest_lane_speeds[0])
+    #     ra.plot_y_vs_vehicle_input(y, vehicle_percentages[0], vehicle_inputs,
+    #                                strategies, orig_and_dest_lane_speeds[0])
+    # vehicle_inputs = [i for i in range(500, 2501, 500)]
     # for speed_pair in orig_and_dest_lane_speeds:
-    #     ra.plot_fundamental_diagram(vehicle_percentages[0], vehicle_inputs,
+    #     ra.plot_fundamental_diagram({VehicleType.HUMAN_DRIVEN: 100},
+    #                                 vehicle_inputs,
     #                                 warmup_time=5,
     #                                 platoon_lane_change_strategy=strategies[0],
     #                                 orig_and_dest_lane_speeds=speed_pair
