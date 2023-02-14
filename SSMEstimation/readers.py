@@ -482,8 +482,7 @@ class VehicleRecordReader(VissimDataReader):
         'PLATOONID': 'platoon_id', 'PLATOONLCSTRATEGY': 'lc_strategy'
     }
 
-    # Note: we don't necessarily want all the variables listed in each of the
-    # map above
+    # Note: we don't necessarily want all the variables listed in the map above
 
     def __init__(self, scenario_name):
         VissimDataReader.__init__(self, scenario_name,

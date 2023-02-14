@@ -69,6 +69,9 @@ class ResultAnalyzer:
                             'CPI': 'CPI',
                             'risk': 'CRI'}
 
+    _strategy_name_map = {-1: 'humans', 0: 'CAVs', 1: 'SBP', 2: 'Ld First',
+                          3: 'LV First', 4: 'Ld First Rev.'}
+
     # TODO: these two only work for the in_and_out scenarios. Reorganize somehow
     _sensor_name_map = {
         'in': 1, 'out': 2,
@@ -191,90 +194,36 @@ class ResultAnalyzer:
                         hue='control percentages')
         plt.show()
 
-    def plot_fundamental_diagram_2(
+    def plot_fundamental_diagram_per_strategy(
             self, vehicle_percentages: Dict[VehicleType, int],
             vehicles_per_lane: List[int],
-            warmup_time: int = 10, accepted_risk: int = None,
-            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
+            warmup_time: int = 10,
+            lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
             orig_and_dest_lane_speeds: Tuple[int, str] = None,
-            link_segment_number: int = None,
+            link_segment_number: int = None, lanes: List[int] = None,
             aggregation_period: int = 30):
         """
         Uses volume and density from link evaluation.
         """
 
-        link_eval_data = self._load_data('density', [vehicle_percentages],
-                                         vehicles_per_lane, [accepted_risk],
-                                         [platoon_lane_change_strategy],
-                                         [orig_and_dest_lane_speeds])
+        link_eval_data = self._load_data(
+            'density', [vehicle_percentages], vehicles_per_lane,
+            lane_change_strategies=lane_change_strategies,
+            orig_and_dest_lane_speeds=[orig_and_dest_lane_speeds])
+        link_eval_data['Strategy'] = link_eval_data[
+            'lane_change_strategy'].map(self._strategy_name_map)
 
         # We're assuming scenarios with a single main link
         link = file_handling.get_scenario_main_links(self.scenario_name)[0]
         link_eval_data = self._prepare_link_evaluation_data(
-            link_eval_data, link, link_segment_number,
+            link_eval_data, link, link_segment_number, lanes,
             warmup_time=warmup_time,
             aggregation_period=aggregation_period)
         relevant_data = self._ensure_data_source_is_uniform(
             link_eval_data, vehicles_per_lane)
         sns.scatterplot(data=relevant_data, x='density', y='volume',
-                        hue='control percentages')
+                        hue='Strategy', palette='tab10')
         plt.show()
-
-    def plot_flow_box_plot_vs_strategy(
-            self, vehicles_per_lane: List[int],
-            vehicle_percentages: List[Dict[VehicleType, int]],
-            strategies: List[PlatoonLaneChangeStrategy],
-            orig_and_dest_lane_speeds: Tuple[int, str],
-            flow_sensors: List[int],
-            warmup_time: int = 5,
-            aggregation_period: int = 30):
-        """
-
-        """
-        y = 'flow'
-        data = self._load_data(
-            y, vehicle_percentages, vehicles_per_lane,
-            lane_change_strategies=strategies,
-            orig_and_dest_lane_speeds=[orig_and_dest_lane_speeds])
-        relevant_data = self._prepare_data_collection_data(
-            data, flow_sensors, warmup_time, aggregation_period)
-        self._ensure_data_source_is_uniform(relevant_data, vehicles_per_lane)
-        fig = _my_boxplot(relevant_data, 'lane_change_strategy',
-                          y, hue='vehicles_per_lane')
-        if self.should_save_fig:
-            fig_name = self.create_figure_name(
-                'box_plot', y, vehicles_per_lane,
-                vehicle_percentages=vehicle_percentages)
-            self.save_fig(fig, fig_name=fig_name)
-
-    def plot_volume_box_plot_vs_strategy(
-            self, vehicles_per_lane: List[int],
-            vehicle_percentages: List[Dict[VehicleType, int]],
-            strategies: List[PlatoonLaneChangeStrategy],
-            orig_and_dest_lane_speeds: Tuple[int, str],
-            segment: int, lanes: List[int],
-            warmup_time: int = 5,
-            aggregation_period: int = 30):
-        """
-
-        """
-        y = 'volume'
-        data = self._load_data(
-            y, vehicle_percentages, vehicles_per_lane,
-            lane_change_strategies=strategies,
-            orig_and_dest_lane_speeds=[orig_and_dest_lane_speeds])
-        main_link = file_handling.get_scenario_main_links(self.scenario_name)[0]
-        relevant_data = self._prepare_link_evaluation_data(
-            data, main_link, segment, lanes, warmup_time=warmup_time,
-            aggregation_period=aggregation_period)
-        self._ensure_data_source_is_uniform(relevant_data, vehicles_per_lane)
-        fig = _my_boxplot(relevant_data, 'lane_change_strategy',
-                          'volume', hue='vehicles_per_lane')
-        if self.should_save_fig:
-            fig_name = self.create_figure_name(
-                'box_plot', y, vehicles_per_lane,
-                vehicle_percentages=vehicle_percentages)
-            self.save_fig(fig, fig_name=fig_name)
 
     def plot_flow_box_plot_vs_controlled_percentage(
             self, vehicles_per_lane: List[int],
@@ -291,8 +240,8 @@ class ResultAnalyzer:
         relevant_data = self._prepare_data_collection_data(
             data, flow_sensor_name, warmup_time, aggregation_period)
         self._ensure_data_source_is_uniform(relevant_data, vehicles_per_lane)
-        fig = _my_boxplot(relevant_data, 'control percentages', 'flow',
-                          'vehicles per hour')
+        fig, ax = _my_boxplot(relevant_data, 'control percentages', 'flow',
+                              'vehicles per hour')
         if self.should_save_fig:
             fig_name = self.create_figure_name(
                 'box_plot', 'flow', vehicles_per_lane,
@@ -324,8 +273,8 @@ class ResultAnalyzer:
         post_processing.drop_warmup_samples(data, warmup_time)
         relevant_data = self._ensure_data_source_is_uniform(data,
                                                             vehicles_per_lane)
-        fig = _my_boxplot(relevant_data, 'control percentages', y,
-                          'vehicles per hour')
+        fig, ax = _my_boxplot(relevant_data, 'control percentages', y,
+                              'vehicles per hour')
         if self.should_save_fig:
             print('Must double check whether fig is being saved')
             self.save_fig(fig, 'box_plot', y, vehicles_per_lane,
@@ -512,10 +461,10 @@ class ResultAnalyzer:
             plt.show()
 
         normalizer = data.loc[
-                (data['control percentages'] == 'human driven')
-                & (data['vehicles per hour'] == data[
-                    'vehicles per hour'].min()),
-                risk_type].sum()
+            (data['control percentages'] == 'human driven')
+            & (data['vehicles per hour'] == data[
+                'vehicles per hour'].min()),
+            risk_type].sum()
         _produce_console_output(data, risk_type, vehicle_percentages,
                                 accepted_risks, [np.size, np.sum],
                                 normalizer=normalizer)
@@ -942,7 +891,7 @@ class ResultAnalyzer:
         y = 'emission_per_volume'
         data = self._load_data(y, vehicle_percentages,
                                vehicles_per_lane, accepted_risks)
-        self._prepare_pollutant_data(data, pollutant_id)
+        ResultAnalyzer._prepare_pollutant_data(data, pollutant_id)
         title = 'Normalized ' + self._pollutant_id_to_string[pollutant_id]
         normalizer = data.loc[
             (data['control percentages'] == 'human driven')
@@ -1135,10 +1084,9 @@ class ResultAnalyzer:
             'accel_cost': 'Accel Cost (m2/s3)',
             'stayed_in_platoon': '% Stayed in Platoon'
         }
-        st_name_map = {-1: 'humans', 0: 'CAVs', 1: 'SBP', 2: 'Ld First',
-                       3: 'LV First', 4: 'Ld First Rev.'}
-        data['Strategy'] = data['lane_change_strategy'].apply(
-            lambda q: st_name_map[q])
+
+        data['Strategy'] = data['lane_change_strategy'].map(
+            self._strategy_name_map)
         # y = y.replace('_', ' ').title()
         # col_names_map = {name: name.replace('_', ' ').title() for name in
         #                  data.columns}
@@ -1183,10 +1131,8 @@ class ResultAnalyzer:
             'accel_costs': 'Accel Cost (m2/s3)',
             'stayed_in_platoon': '% Stayed in Platoon'
         }
-        st_name_map = {-1: 'humans', 0: 'CAVs', 1: 'SBP', 2: 'Ld First',
-                       3: 'LV First', 4: 'Ld First Rev.'}
         data['Strategy'] = data['lane_change_strategy'].apply(
-            lambda q: st_name_map[q])
+            lambda q: self._strategy_name_map[q])
         # y = y.replace('_', ' ').title()
         # col_names_map = {name: name.replace('_', ' ').title() for name in
         #                  data.columns}
@@ -1202,6 +1148,84 @@ class ResultAnalyzer:
         plt.ylabel(y_name_map[y])
         plt.tight_layout()
         plt.show()
+
+    def plot_flow_box_plot_vs_strategy(
+            self, vehicles_per_lane: List[int],
+            vehicle_percentages: List[Dict[VehicleType, int]],
+            strategies: List[PlatoonLaneChangeStrategy],
+            orig_and_dest_lane_speeds: Tuple[int, str],
+            flow_sensors: List[int],
+            warmup_time: int = 5,
+            aggregation_period: int = 30):
+        """
+
+        """
+        y = 'flow'
+        data = self._load_data(
+            y, vehicle_percentages, vehicles_per_lane,
+            lane_change_strategies=strategies,
+            orig_and_dest_lane_speeds=[orig_and_dest_lane_speeds])
+        data['Strategy'] = data['lane_change_strategy'].map(
+            self._strategy_name_map)
+        relevant_data = self._prepare_data_collection_data(
+            data, flow_sensors, warmup_time, aggregation_period)
+        self._ensure_data_source_is_uniform(relevant_data, vehicles_per_lane)
+        fig, ax = _my_boxplot(relevant_data, 'Strategy',
+                              y, hue='vehicles_per_lane', will_show=False)
+        ax.legend(loc='upper left', bbox_to_anchor=(1.01, 1),
+                  title='Vehicles per lane', ncols=1)
+        plt.tight_layout()
+        plt.show()
+        if self.should_save_fig:
+            fig_name = self.create_figure_name(
+                'box_plot', y, vehicles_per_lane,
+                vehicle_percentages=vehicle_percentages)
+            self.save_fig(fig, fig_name=fig_name)
+
+    def plot_volume_box_plot_vs_strategy(
+            self, vehicles_per_lane: List[int],
+            vehicle_percentages: List[Dict[VehicleType, int]],
+            strategies: List[PlatoonLaneChangeStrategy],
+            orig_and_dest_lane_speeds: Tuple[int, str],
+            segment: int, lanes: List[int],
+            warmup_time: int = 5,
+            aggregation_period: int = 30):
+        """
+
+        """
+        y = 'volume'
+        data = self._load_data(
+            y, vehicle_percentages, vehicles_per_lane,
+            lane_change_strategies=strategies,
+            orig_and_dest_lane_speeds=[orig_and_dest_lane_speeds])
+        data['Strategy'] = data['lane_change_strategy'].map(
+            self._strategy_name_map)
+        main_link = file_handling.get_scenario_main_links(self.scenario_name)[0]
+        relevant_data = self._prepare_link_evaluation_data(
+            data, main_link, segment, lanes, warmup_time=warmup_time,
+            aggregation_period=aggregation_period)
+        self._ensure_data_source_is_uniform(relevant_data, vehicles_per_lane)
+        sns.set_style('whitegrid')
+        ax = sns.pointplot(relevant_data, x='Strategy', y=y,
+                      hue='vehicles_per_lane', errorbar=('se', 2),
+                      palette='tab10'
+                      )
+        ax.legend(loc='upper left', bbox_to_anchor=(1.01, 1),
+                  title='Vehicles per lane', ncols=1)
+        plt.tight_layout()
+        plt.show()
+        fig, ax = _my_boxplot(relevant_data, 'Strategy',
+                              y, hue='vehicles_per_lane',
+                              will_show=False)
+        ax.legend(loc='upper left', bbox_to_anchor=(1.01, 1),
+                  title='Vehicles per lane', ncols=1)
+        plt.tight_layout()
+        plt.show()
+        if self.should_save_fig:
+            fig_name = self.create_figure_name(
+                'box_plot', y, vehicles_per_lane,
+                vehicle_percentages=vehicle_percentages)
+            self.save_fig(fig, fig_name=fig_name)
 
     # Traffic Light Scenario Plots =========================================== #
 
@@ -1455,7 +1479,7 @@ class ResultAnalyzer:
             self.save_fig(fig, fig_name=fig_name)
         plt.show()
         sampling = single_veh['time'].diff().iloc[1]
-        print('total risk:',  single_veh['risk'].sum() * sampling)
+        print('total risk:', single_veh['risk'].sum() * sampling)
 
     def speed_color_map(self, vehicles_per_lane: int,
                         vehicle_percentages: List[Dict[VehicleType, int]]):
@@ -1527,7 +1551,7 @@ class ResultAnalyzer:
             vehicles_per_lane: List[int], accepted_risks: List[int] = None,
             lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
             orig_and_dest_lane_speeds: List[Tuple[int, str]] = None
-            ):
+    ):
         # reader = self._get_data_reader(y)
         reader = self._data_reader_map[y](self.scenario_name)
         data = reader.load_data_from_several_scenarios(
@@ -1605,7 +1629,8 @@ class ResultAnalyzer:
             ['density', 'volume']].groupby(
             data.index // n_lanes).sum().to_numpy()
         # Aggregate time
-        aggregated_data = _aggregate_data(data, ['density', 'volume'],
+        aggregated_data = _aggregate_data(aggregated_data,
+                                          ['density', 'volume'],
                                           aggregation_period, np.mean)
         return aggregated_data
 
@@ -1651,8 +1676,8 @@ class ResultAnalyzer:
             data.drop(data[~(data['pollutant_id'] == pollutant_id)].index,
                       inplace=True)
 
-
-    def _prepare_pollutant_data(self, data: pd.DataFrame,
+    @staticmethod
+    def _prepare_pollutant_data(data: pd.DataFrame,
                                 pollutant_id: int):
         data.drop(data[~(data['pollutant_id'] == pollutant_id)].index,
                   inplace=True)
@@ -2017,9 +2042,8 @@ def _plot_heatmap(data: pd.DataFrame, value: str, rows: str, columns: str,
     return fig
 
 
-def _my_boxplot(relevant_data: pd.DataFrame,
-                x: str, y: str,
-                hue: str = 'vehicles per hour'):
+def _my_boxplot(relevant_data: pd.DataFrame, x: str, y: str,
+                hue: str = 'vehicles per hour', will_show: bool = True):
     # Plot
     fig = plt.figure()
     plt.rc('font', size=20)
@@ -2028,9 +2052,10 @@ def _my_boxplot(relevant_data: pd.DataFrame,
     ax = sns.boxplot(data=relevant_data, x=x, y=y, hue=hue)
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.1),
               title=hue, ncols=2)
-    plt.tight_layout()
-    plt.show()
-    return fig
+    if will_show:
+        plt.tight_layout()
+        plt.show()
+    return fig, ax
 
 
 def _produce_console_output(

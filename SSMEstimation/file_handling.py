@@ -36,7 +36,7 @@ class _ScenarioInfo:
 
     def __init__(self, network_name, results_folder):
         self.network_name = network_name
-        self.network_info = _network_info[network_name]
+        self.network_info = _network_info_all[network_name]
         self.results_folder = results_folder
 
 
@@ -68,7 +68,7 @@ _folders_map = {
 }
 
 # TODO: check main links of remaining scenarios
-_network_info = {
+_network_info_all = {
     'in_and_out':
         _NetworkInfo('highway_in_and_out_lanes', 3, [3]),
     'in_and_merge':
@@ -85,7 +85,7 @@ _network_info = {
         _NetworkInfo('platoon_discretionary_lane_change', 2, [3])
 }
 
-_scenario_info = {
+_scenario_info_all = {
     'in_and_out':
         _ScenarioInfo('in_and_out', ''),
     'in_and_out_safe':
@@ -128,7 +128,7 @@ class FileHandler:
 
     def __init__(self, scenario_name: str, is_data_in_cloud: bool = False):
         self.scenario_name = scenario_name
-        self._scenario_info = _scenario_info[scenario_name]
+        self._scenario_info = _scenario_info_all[scenario_name]
         self._is_data_in_cloud = is_data_in_cloud
         # self.network_name = _scenario_info[scenario_name].network
 
@@ -159,6 +159,9 @@ class FileHandler:
         return os.path.join(self.get_networks_folder(),
                             self.get_results_relative_address())
 
+    def get_main_links(self) -> List[int]:
+        return self._scenario_info.network_info.main_links
+
     def get_results_relative_address(self):
         return os.path.join(self.get_network_file_relative_address(),
                             self._scenario_info.results_folder)
@@ -166,15 +169,6 @@ class FileHandler:
     def get_moves_default_data_folder(self):
         return os.path.join(get_moves_folder(),
                             self.get_network_file_relative_address())
-
-    # def get_on_ramp_links(self):
-    #     return self._scenario_info.network_info.on_ramp_link
-    #
-    # def get_off_ramp_links(self):
-    #     return self._scenario_info.network_info.off_ramp_link
-    #
-    # def get_merging_links(self):
-    #     return self._scenario_info.network_info.merging_link
 
     def get_vissim_test_folder(self):
         return os.path.join(self.get_results_base_folder(), 'test')
@@ -425,11 +419,11 @@ def get_moves_folder() -> str:
 
 
 def get_scenario_number_of_lanes(scenario_name: str) -> int:
-    return _scenario_info[scenario_name].network_info.total_lanes
+    return _scenario_info_all[scenario_name].network_info.total_lanes
 
 
 def get_scenario_main_links(scneario_name: str) -> List[int]:
-    return _scenario_info[scneario_name].network_info.main_links
+    return _scenario_info_all[scneario_name].network_info.main_links
 
 
 def create_vehs_per_lane_folder_name(vehicles_per_lane: Union[int, str]) -> str:

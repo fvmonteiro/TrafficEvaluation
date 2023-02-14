@@ -141,7 +141,7 @@ def run_all_safe_lane_change_scenarios():
         for sp in full_penetration:
             print(sp)
             post_processing.create_summary_with_risks(
-                scenario_name, sp, inputs_per_lane, accepted_risks)
+                scenario_name, [sp], inputs_per_lane, accepted_risks)
             # for ipl in inputs_per_lane:
             #     post_processing.get_individual_vehicle_trajectories_to_moves(
             #         scenario_name, ipl, sp, 0)
@@ -149,7 +149,7 @@ def run_all_safe_lane_change_scenarios():
         # Transfer files to the cloud
         file_handler = file_handling.FileHandler(scenario_name)
         try:
-            file_handler.copy_results_from_multiple_scenarios(
+            file_handler.export_multiple_results_to_cloud(
                 simulation_percentages, inputs_per_lane, accepted_risks)
         except FileNotFoundError:
             print("Couldn't copy files to shared folder.")
@@ -311,18 +311,18 @@ def main():
     platoon_speed = 90
     main_road_speeds = ['same']
     orig_and_dest_lane_speeds = [(platoon_speed, s) for s in main_road_speeds]
-    vehicle_inputs = [i for i in range(0, 2001, 500)]
+    vehicle_inputs = [i for i in range(3000, 3001, 500)]
 
     # =============== Running =============== #
-    # vi = VissimInterface()
-    # vi.load_simulation(scenario_name)
-    # # vi.run_platoon_scenario_sample(
-    # #     4, PlatoonLaneChangeStrategy.leader_first, 1500,
-    # #     orig_and_dest_lane_speeds[0], 360, 1, 10, 30)
-    # vi.run_multiple_platoon_lane_change_scenarios(
-    #     strategies, vehicle_types, orig_and_dest_lane_speeds, vehicle_inputs,
-    #     runs_per_scenario=1)
-    # vi.close_vissim()
+    vi = VissimInterface()
+    vi.load_simulation(scenario_name)
+    # vi.run_platoon_scenario_sample(
+    #     4, PlatoonLaneChangeStrategy.leader_first, 1500,
+    #     orig_and_dest_lane_speeds[0], 360, 1, 10, 30)
+    vi.run_multiple_platoon_lane_change_scenarios(
+        strategies, vehicle_types, orig_and_dest_lane_speeds, vehicle_inputs,
+        runs_per_scenario=3)
+    vi.close_vissim()
 
     # =============== Post processing =============== #
     vehicle_percentages = [{vt: 100} for vt in vehicle_types]
@@ -331,20 +331,29 @@ def main():
     #     scenario_name, vehicle_percentages, vehicle_inputs, strategies,
     #     orig_and_dest_lane_speeds)
 
-    # file_handler = file_handling.FileHandler(scenario_name)
+    file_handler = file_handling.FileHandler(scenario_name)
+    file_handler.export_multiple_platoon_results_to_cloud(
+            vehicle_percentages, vehicle_inputs, strategies,
+            orig_and_dest_lane_speeds)
     # file_handler.import_multiple_platoon_results_from_cloud(
-    #         vehicle_percentages, vehicle_inputs, strategies,
-    #         orig_and_dest_lane_speeds)
+    #     vehicle_percentages, vehicle_inputs, strategies,
+    #     orig_and_dest_lane_speeds)
 
     # =============== Check results graphically =============== #
+    vehicle_inputs = [i for i in range(0, 3001, 500)]
     ra = result_analysis.ResultAnalyzer(scenario_name, False)
+    ra.plot_fundamental_diagram_per_strategy(
+            vehicle_percentages[0], vehicle_inputs, warmup_time=5,
+            lane_change_strategies=strategies,
+            orig_and_dest_lane_speeds=orig_and_dest_lane_speeds[0],
+            link_segment_number=1, lanes=[1, 2], aggregation_period=30)
 
     # ra.plot_volume_box_plot_vs_strategy(
     #     vehicle_inputs, vehicle_percentages, strategies,
-    #     orig_and_dest_lane_speeds[0], 1, [1, 2])
+    #     orig_and_dest_lane_speeds[0], 3, [1, 2], aggregation_period=60)
     # ra.plot_flow_box_plot_vs_strategy(
     #     vehicle_inputs, vehicle_percentages, strategies,
-    #     orig_and_dest_lane_speeds[0], [1, 2])
+    #     orig_and_dest_lane_speeds[0], [5, 6], aggregation_period=60)
     # ys = ['was_lane_change_completed', 'platoon_maneuver_time',
     #       'travel_time', 'accel_cost', 'stayed_in_platoon']
     # for y in ys:

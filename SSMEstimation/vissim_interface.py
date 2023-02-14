@@ -24,13 +24,14 @@ class _ScenarioInfo:
     run_function: Callable
 
 
-class _UDA_number(Enum):
+class _UDANumber(Enum):
     risk_to_leaders = 9
     risk_to_follower = 10
     use_linear_lane_change_gap = 11
     platoon_lane_change_strategy = 13
     verbose_simulation = 98
     logged_vehicle = 99
+
 
 class VissimInterface:
     vissim_net_ext = '.inpx'
@@ -590,7 +591,7 @@ class VissimInterface:
             strategies: List[PlatoonLaneChangeStrategy],
             main_road_vehicle_types: List[VehicleType],
             orig_and_dest_lane_speeds: List[Tuple[int, str]],
-            main_road_vehicle_inputs: List[int],
+            input_per_lane: List[int],
             runs_per_scenario: int = 5,
             is_debugging: bool = False
     ):
@@ -603,7 +604,7 @@ class VissimInterface:
         :param orig_and_dest_lane_speeds: Tuple where the first element is the
          platoon desired speed and the second is a string indicating "slower",
          "same" or "faster" than the platoon
-        :param main_road_vehicle_inputs: TBD
+        :param input_per_lane: TBD
         :param runs_per_scenario:
         :param is_debugging: If true, runs the scenario only once for a
          short time period, and results are saved to a test folder.
@@ -612,8 +613,8 @@ class VissimInterface:
         if is_debugging:
             warm_up_minutes = 0
             runs_per_scenario = 1
-            simulation_period = 600
-            first_platoon_time = 180
+            simulation_period = 300
+            first_platoon_time = 10
         else:
             warm_up_minutes = self.network_info.warm_up_minutes
             simulation_period = self.network_info.evaluation_period
@@ -623,6 +624,7 @@ class VissimInterface:
             self.vissim.SuspendUpdateGUI()
 
         platoon_size = 4
+        orig_lane_speed_distribution = 'same'
         self.set_evaluation_options(True, True, True, True, True,
                                     warm_up_minutes * 60,
                                     data_frequency=5)
@@ -641,11 +643,18 @@ class VissimInterface:
                 veh_percent = {vt: 100}
                 for speed_pair in orig_and_dest_lane_speeds:
                     platoon_desired_speed = speed_pair[0]
-                    comp_number = (
+                    orig_lane_comp_number = (
+                        self.find_composition_matching_speed_distributions(
+                            {vt: orig_lane_speed_distribution}))
+                    dest_lane_comp_number = (
                         self.find_composition_matching_speed_distributions(
                             {vt: speed_pair[1]}))
-                    self.set_vehicle_inputs_composition(comp_number)
-                    for veh_input in main_road_vehicle_inputs:
+                    input_to_comp_map = {
+                        'right_lane': orig_lane_comp_number,
+                        'left_lane': dest_lane_comp_number
+                    }
+                    self.set_vehicle_inputs_compositions(input_to_comp_map)
+                    for veh_input in input_per_lane:
                         self.reset_saved_simulations(warning_active=False)
                         self.set_uniform_vehicle_input_for_all_lanes(veh_input)
                         # veh_volumes = {'left_lane': veh_input,
@@ -685,7 +694,7 @@ class VissimInterface:
         multiple_sim_end_time = time.perf_counter()
         total_runs = (len(strategies) * len(main_road_vehicle_types)
                       * len(orig_and_dest_lane_speeds)
-                      * len(main_road_vehicle_inputs) * runs_per_scenario)
+                      * len(input_per_lane) * runs_per_scenario)
         _print_run_time_with_unit(multiple_sim_start_time,
                                   multiple_sim_end_time, total_runs)
 
@@ -913,7 +922,7 @@ class VissimInterface:
                   format(veh_input.AttValue('Name'),
                          veh_input.AttValue('Volume(1)')))
 
-    def set_vehicle_inputs_composition(self, composition_number: int):
+    def set_all_vehicle_inputs_composition(self, composition_number: int):
         """
         Sets the desired composition to all the vehicle inputs in the
         network.
@@ -929,6 +938,27 @@ class VissimInterface:
                   format(veh_input.AttValue('Name'),
                          veh_compositions_container.ItemByKey(
                              composition_number).AttValue('Name')))
+
+    def set_vehicle_inputs_compositions(
+            self, input_to_composition_map: Dict[str, int]):
+        """
+        Sets the desired composition to each vehicle input in the network.
+
+        :param input_to_composition_map: Dictionary describing the composition
+         number of each vehicle input
+        """
+
+        veh_compositions_container = self.vissim.Net.VehicleCompositions
+        veh_input_container = self.vissim.Net.VehicleInputs
+        for veh_input in veh_input_container:
+            veh_input_name = veh_input.AttValue('Name')
+            if veh_input_name in input_to_composition_map:
+                comp_number = input_to_composition_map[veh_input_name]
+                veh_input.SetAttValue('VehComp(1)', comp_number)
+                print('[Client] Composition of vehicle input {} set to {}'.
+                      format(veh_input_name,
+                             veh_compositions_container.ItemByKey(
+                                 comp_number).AttValue('Name')))
 
     def set_controlled_vehicles_percentage(
             self, vehicle_percentages: Dict[VehicleType, int]) -> int:
@@ -955,7 +985,7 @@ class VissimInterface:
         percentages_with_humans.update(vehicle_percentages)
         composition_number = self.find_composition_matching_percentages(
             percentages_with_humans)
-        self.set_vehicle_inputs_composition(composition_number)
+        self.set_all_vehicle_inputs_composition(composition_number)
 
         # Modify the relative flows
         desired_flows = {Vehicle.ENUM_TO_VISSIM_ID[vt]: p for vt, p
@@ -979,18 +1009,18 @@ class VissimInterface:
         """
         composition_number = self.find_vehicle_composition_by_name(
             composition_name)
-        self.set_vehicle_inputs_composition(composition_number)
+        self.set_all_vehicle_inputs_composition(composition_number)
 
     def set_accepted_lane_change_risk_to_leaders(self, accepted_risk: float):
         if accepted_risk is None:
             accepted_risk = 0
-        self.set_uda_default_value(_UDA_number.risk_to_leaders,
+        self.set_uda_default_value(_UDANumber.risk_to_leaders,
                                    accepted_risk)
 
     def set_accepted_lane_change_risk_to_follower(self, accepted_risk: float):
         if accepted_risk is None:
             accepted_risk = 0
-        self.set_uda_default_value(_UDA_number.risk_to_follower,
+        self.set_uda_default_value(_UDANumber.risk_to_follower,
                                    accepted_risk)
 
     def set_use_linear_lane_change_gap(self, use_linear_lane_change_gap: bool):
@@ -1000,7 +1030,7 @@ class VissimInterface:
         :param use_linear_lane_change_gap:
         :return:
         """
-        self.set_uda_default_value(_UDA_number.use_linear_lane_change_gap,
+        self.set_uda_default_value(_UDANumber.use_linear_lane_change_gap,
                                    use_linear_lane_change_gap)
 
     def set_platoon_lane_change_strategy(
@@ -1008,18 +1038,18 @@ class VissimInterface:
         print("[Client] Setting platoon lane change strategy to",
               platoon_lc_strategy.value, "(" + platoon_lc_strategy.name + ")")
         self.set_uda_default_value(
-            _UDA_number.platoon_lane_change_strategy,
+            _UDANumber.platoon_lane_change_strategy,
             platoon_lc_strategy.value)
 
     def set_verbose_simulation(self, is_simulation_verbose: bool):
-        self.set_uda_default_value(_UDA_number.verbose_simulation,
+        self.set_uda_default_value(_UDANumber.verbose_simulation,
                                    is_simulation_verbose)
 
     def set_logged_vehicle_id(self, veh_id: int):
-        self.set_uda_default_value(_UDA_number.logged_vehicle,
+        self.set_uda_default_value(_UDANumber.logged_vehicle,
                                    veh_id)
 
-    def set_uda_default_value(self, uda_number: _UDA_number,
+    def set_uda_default_value(self, uda_number: _UDANumber,
                               uda_value: Union[bool, int, float]):
         """
         Sets the default value of a user defined attribute

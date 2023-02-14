@@ -313,7 +313,8 @@ def create_platoon_lane_change_summary(
         lane_change_strategies: List[PlatoonLaneChangeStrategy],
         orig_and_dest_lane_speeds: List[Tuple[int, str]],
         debugging: bool = False):
-    post_processors = [PlatoonLaneChangeProcessor(scenario_name)]
+    post_processors = [PlatoonLaneChangeProcessor(scenario_name),
+                       PlatoonLaneChangeImpactsProcessor(scenario_name)]
     for st in lane_change_strategies:
         for vp in vehicle_percentages:
             for vi in vehicle_inputs:
@@ -2934,8 +2935,6 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
         """
 
         """
-        # TODO Accel costs of cooperating vehicles, travel time of other
-        #  vehicles
         # TODO: split the function
 
         sim_time = data.iloc[-1]['time']
@@ -2948,7 +2947,7 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
         result_df = pd.DataFrame(index=platoon_veh_ids)
         result_df['simulation_number'] = data.iloc[0]['simulation_number']
 
-        # Per vehicle stuff
+        # Per platoon vehicle results
         result_df['traversed_network'] = (grouped_by_id['time'].last()
                                           != sim_time)
         result_df['was_lane_change_completed'] = grouped_by_id['state'].agg(
@@ -2961,7 +2960,7 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
             platoon_vehicles[maneuvering_idx]
         )
 
-        # Platoon info
+        # Per platoon results
         platoon_ids = grouped_by_id.agg({'platoon_id': ['first', 'last']})
         result_df['initial_platoon_id'] = platoon_ids['platoon_id']['first']
         result_df['stayed_in_platoon'] = (platoon_ids['platoon_id']['first']
@@ -2976,7 +2975,8 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
         grouped_by_id = platoon_vehicles.groupby('veh_id')
         accel_cost = grouped_by_id.apply(lambda g: np.sum(np.power(
             g.loc[(g['time'] > g['maneuver_start_time'].iloc[0])
-                  & (g['time'] < g['maneuver_end_time'].iloc[0]), 'ax'], 2)))
+                  & (g['time'] < g['maneuver_end_time'].iloc[0]), 'ax'], 2))
+                                         * sampling_time)
 
         result_df = pd.merge(left=result_df, right=platoon_maneuver_time,
                              left_on='initial_platoon_id', right_index=True,
@@ -3016,6 +3016,106 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
                                           != sim_time)
         result_df['travel_time'] = compute_time_interval_per_vehicle(
             platoon_vehicles)
+
+
+class PlatoonLaneChangeImpactsProcessor(VISSIMDataPostProcessor):
+    _writer = data_writer.PlatoonLaneChangeEffectsImpacts
+
+    def __init__(self, scenario_name):
+        VISSIMDataPostProcessor.__init__(self, scenario_name,
+                                         'platoon_lane_change_impacts',
+                                         self._writer)
+        self.sampling_time = 0.0
+
+    def post_process(self, data) -> pd.DataFrame:
+        """
+
+        """
+        results = dict()
+        self.sampling_time = 0.1  # TODO: read from data
+
+        # Get origin and destination lanes (the same for all platoons)
+        main_links = self.file_handler.get_main_links()
+        relevant_data = data[data['link'].isin(main_links)]
+        first_and_last_lanes = relevant_data.groupby(
+            'platoon_id').agg({'lane': ['first', 'last']})
+        first_and_last_lanes = first_and_last_lanes[
+            first_and_last_lanes.index >= 0]
+        # We assume the first platoon always finishes the maneuver
+        lanes = {'orig_lane': first_and_last_lanes['lane']['first'].iloc[0],
+                 'dest_lane': first_and_last_lanes['lane']['last'].iloc[0]}
+
+        # Aggregated for all vehicles
+        results.update(self.support_1(relevant_data))
+        # Per lane
+        for lane_name, lane_number in lanes.items():
+            data_on_lane = relevant_data[relevant_data['lane'] == lane_number]
+            results.update(self.support_1(data_on_lane,
+                           suffix=lane_name))
+            results.update(self.support_2(relevant_data, lane_number,
+                                          lane_name))
+
+        results['simulation_number'] = relevant_data.iloc[0][
+            'simulation_number']
+        results['total_vehicles'] = relevant_data['veh_id'].nunique()
+
+        return pd.DataFrame(data=results, index=[0])
+
+    def support_1(self, data: pd.DataFrame, suffix: str = None):
+        """
+        Computes and aggregates travel times and accel costs for all vehicles in
+         data
+        """
+        if suffix is None:
+            suffix = ''
+        else:
+            suffix = '_' + suffix
+
+        travel_times = compute_time_interval_per_vehicle(data)
+        grouped_by_id = data.groupby('veh_id')
+        accel_costs = grouped_by_id.apply(lambda g: self.accel_cost(g['ax']))
+        results = {
+            'travel_time_mean' + suffix: travel_times.mean(),
+            'travel_time_std' + suffix: travel_times.std(),
+            'accel_cost_mean' + suffix: accel_costs.mean(),
+            'accel_cost_std' + suffix: accel_costs.std()
+        }
+
+        return results
+
+    def support_2(self, data: pd.DataFrame, lane: int, lane_name: str):
+        """
+        Computes accel costs for a vehicle that followed the platoon during the
+         simulation
+        """
+        grouped_by_id = data.groupby('veh_id')
+        veh_types = grouped_by_id['veh_type'].first()
+        veh_types.name = 'leader_type'
+        df = pd.merge(left=data, right=veh_types, left_on='leader_id',
+                      right_index=True)
+        followers = df[(df['leader_type'] == Vehicle.VISSIM_PLATOON_CAR_ID)
+                       & (df['veh_type'] != Vehicle.VISSIM_PLATOON_CAR_ID)]
+        followers_in_lane = followers[followers['lane'] == lane]
+
+        if followers_in_lane.empty:
+            results = {'fo_maneuver_accel_cost': 0, 'fo_total_accel_cost': 0}
+        else:
+            followers_ids = followers_in_lane['veh_id'].unique()
+            results = {
+                # Accel while we're behind the platoon vehicle
+                # Doesn't make sense. Either only during maneuver, or whole time
+                '_'.join(['maneuver_accel_cost', lane_name, 'follower']):
+                    self.accel_cost(followers_in_lane['ax']),
+                # Accel during the entire simulation
+                '_'.join(['total_accel_cost', lane_name, 'follower']):
+                    self.accel_cost(
+                        data.loc[data['veh_id'].isin(followers_ids), 'ax'])
+            }
+
+        return results
+
+    def accel_cost(self, accel):
+        return np.sum(np.power(accel, 2)) * self.sampling_time
 
 
 def compute_time_interval_per_vehicle(vehicle_records: pd.DataFrame):
@@ -3146,3 +3246,8 @@ def create_summary_for_single_scenario(
                 accepted_risk=accepted_risk,
                 platoon_lane_change_strategy=platoon_lane_change_strategy,
                 orig_and_dest_lane_speeds=orig_and_dest_lane_speeds)
+
+
+def is_value_unique_in_column(s: pd.Series):
+    a = s.to_numpy()
+    return (a[0] == a).all()
