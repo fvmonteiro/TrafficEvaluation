@@ -449,7 +449,8 @@ class VissimInterface:
         self.set_number_of_runs(number_of_runs)
         self.set_platoon_lane_change_strategy(lane_change_strategy)
         if vehicle_input is not None:
-            veh_volumes = {'left_lane': vehicle_input}
+            veh_volumes = {'left_lane': vehicle_input,
+                           'right_lane': vehicle_input}
             self.set_vehicle_inputs(veh_volumes)
         self.set_verbose_simulation(is_simulation_verbose)
         if logged_veh_id is not None:

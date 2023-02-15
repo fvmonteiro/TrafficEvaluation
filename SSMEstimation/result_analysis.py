@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from sklearn.linear_model import LinearRegression
 
 import file_handling
 import post_processing
@@ -152,6 +153,36 @@ class ResultAnalyzer:
         plt.show()
 
     def plot_fundamental_diagram(
+            self, vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicles_per_lane: List[int], link_number: int,
+            accepted_risks: List[int] = None,
+            lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
+            orig_and_dest_lane_speeds: List[Tuple[int, str]] = None,
+            link_segment_number: int = None, lanes: List[int] = None,
+            aggregate_lanes: bool = True, hue: str = None,
+            aggregation_period: int = 30, warmup_time: int = 10):
+        """
+        Computes flow from link evaluation data.
+        """
+
+        link_eval_data = self._load_data(
+            'density', vehicle_percentages, vehicles_per_lane,
+            accepted_risks=accepted_risks,
+            lane_change_strategies=lane_change_strategies,
+            orig_and_dest_lane_speeds=orig_and_dest_lane_speeds)
+
+        link_eval_data = self._prepare_link_evaluation_data(
+            link_eval_data, link_number, link_segment_number, lanes,
+            aggregate_lanes=aggregate_lanes, warmup_time=warmup_time,
+            aggregation_period=aggregation_period)
+        relevant_data = self._ensure_data_source_is_uniform(
+            link_eval_data, vehicles_per_lane)
+        sns.scatterplot(data=relevant_data, x='density', y='volume',
+                        hue=hue, palette='tab10')
+        plt.tight_layout()
+        plt.show()
+
+    def plot_fundamental_diagram_from_flow(
             self, vehicle_percentages: Dict[VehicleType, int],
             vehicles_per_lane: List[int],
             warmup_time: int = 10, accepted_risk: int = None,
@@ -194,36 +225,17 @@ class ResultAnalyzer:
                         hue='control percentages')
         plt.show()
 
-    def plot_fundamental_diagram_per_strategy(
-            self, vehicle_percentages: Dict[VehicleType, int],
-            vehicles_per_lane: List[int],
-            warmup_time: int = 10,
-            lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
-            orig_and_dest_lane_speeds: Tuple[int, str] = None,
-            link_segment_number: int = None, lanes: List[int] = None,
-            aggregation_period: int = 30):
-        """
-        Uses volume and density from link evaluation.
-        """
-
-        link_eval_data = self._load_data(
-            'density', [vehicle_percentages], vehicles_per_lane,
-            lane_change_strategies=lane_change_strategies,
-            orig_and_dest_lane_speeds=[orig_and_dest_lane_speeds])
-        link_eval_data['Strategy'] = link_eval_data[
-            'lane_change_strategy'].map(self._strategy_name_map)
-
-        # We're assuming scenarios with a single main link
-        link = file_handling.get_scenario_main_links(self.scenario_name)[0]
-        link_eval_data = self._prepare_link_evaluation_data(
-            link_eval_data, link, link_segment_number, lanes,
-            warmup_time=warmup_time,
-            aggregation_period=aggregation_period)
-        relevant_data = self._ensure_data_source_is_uniform(
-            link_eval_data, vehicles_per_lane)
-        sns.scatterplot(data=relevant_data, x='density', y='volume',
-                        hue='Strategy', palette='tab10')
-        plt.show()
+    def plot_fundamental_diagram_per_control_percentage(
+            self, vehicle_percentages: List[Dict[VehicleType, int]],
+            vehicles_per_lane: List[int], accepted_risk: int = None,
+            warmup_time: int = 10, aggregation_period: int = 30):
+        main_link = file_handling.get_scenario_main_links(
+            self.scenario_name)[0]
+        self.plot_fundamental_diagram(
+            vehicle_percentages, vehicles_per_lane, main_link,
+            accepted_risks=[accepted_risk], hue='control percentages',
+            aggregation_period=aggregation_period,
+            warmup_time=warmup_time)
 
     def plot_flow_box_plot_vs_controlled_percentage(
             self, vehicles_per_lane: List[int],
@@ -1018,6 +1030,29 @@ class ResultAnalyzer:
 
     # Platoon LC plots ======================================================= #
 
+    def plot_fundamental_diagram_per_strategy(
+            self, vehicle_percentages: Dict[VehicleType, int],
+            vehicles_per_lane: List[int],
+            lane_change_strategies: List[PlatoonLaneChangeStrategy],
+            orig_and_dest_lane_speeds: Tuple[int, str],
+            use_upstream_link: bool,
+            link_segment_number: int = None, lanes: List[int] = None,
+            aggregation_period: int = 30, warmup_time: int = 10):
+        """
+        Uses volume and density from link evaluation.
+        """
+
+        main_links = file_handling.get_scenario_main_links(
+            self.scenario_name)
+        link = main_links[0] if use_upstream_link else main_links[1]
+        self.plot_fundamental_diagram(
+            [vehicle_percentages], vehicles_per_lane, link,
+            lane_change_strategies=lane_change_strategies,
+            orig_and_dest_lane_speeds=[orig_and_dest_lane_speeds],
+            link_segment_number=link_segment_number, lanes=lanes,
+            hue='Strategy', aggregation_period=aggregation_period,
+            warmup_time=warmup_time)
+
     def plot_y_vs_vehicle_input(
             self, y: str, vehicle_percentages: Dict[VehicleType, int],
             vehicles_per_lane: List[int],
@@ -1206,14 +1241,14 @@ class ResultAnalyzer:
             aggregation_period=aggregation_period)
         self._ensure_data_source_is_uniform(relevant_data, vehicles_per_lane)
         sns.set_style('whitegrid')
-        ax = sns.pointplot(relevant_data, x='Strategy', y=y,
-                      hue='vehicles_per_lane', errorbar=('se', 2),
-                      palette='tab10'
-                      )
-        ax.legend(loc='upper left', bbox_to_anchor=(1.01, 1),
-                  title='Vehicles per lane', ncols=1)
-        plt.tight_layout()
-        plt.show()
+        # ax = sns.pointplot(relevant_data, x='Strategy', y=y,
+        #               hue='vehicles_per_lane', errorbar=('se', 2),
+        #               palette='tab10'
+        #               )
+        # ax.legend(loc='upper left', bbox_to_anchor=(1.01, 1),
+        #           title='Vehicles per lane', ncols=1)
+        # plt.tight_layout()
+        # plt.show()
         fig, ax = _my_boxplot(relevant_data, 'Strategy',
                               y, hue='vehicles_per_lane',
                               will_show=False)
@@ -1599,7 +1634,7 @@ class ResultAnalyzer:
     def _prepare_link_evaluation_data(
             self, data: pd.DataFrame, link: int, segment: int = None,
             lanes: List[int] = None, sensor_name: str = None,
-            warmup_time: int = 10,
+            aggregate_lanes: bool = True, warmup_time: int = 10,
             aggregation_period: int = 30) -> pd.DataFrame:
 
         # Drop early samples
@@ -1620,18 +1655,29 @@ class ResultAnalyzer:
         elif lanes is not None and _has_per_lane_results(data):
             data.drop(data[~data['lane'].isin(lanes)].index,
                       inplace=True)
-        # Aggregate lanes
-        data.reset_index(drop=True, inplace=True)
-        n_lanes = len(lanes)
-        aggregated_data = data.iloc[[i for i in range(0, data.shape[0],
-                                                      n_lanes)]].copy()
-        aggregated_data[['density', 'volume']] = data[
-            ['density', 'volume']].groupby(
-            data.index // n_lanes).sum().to_numpy()
-        # Aggregate time
-        aggregated_data = _aggregate_data(aggregated_data,
-                                          ['density', 'volume'],
-                                          aggregation_period, np.mean)
+        # Aggregate
+        if aggregate_lanes:
+            data.reset_index(drop=True, inplace=True)
+            n_lanes = len(lanes)
+            aggregated_data = data.iloc[[i for i in range(0, data.shape[0],
+                                                          n_lanes)]].copy()
+            aggregated_data[['density', 'volume']] = data[
+                ['density', 'volume']].groupby(
+                data.index // n_lanes).sum().to_numpy()
+            aggregated_data = _aggregate_data(aggregated_data,
+                                              ['density', 'volume'],
+                                              aggregation_period, np.mean)
+        else:
+            temp = []
+            data_per_lane = data.groupby('lane')
+            for n in lanes:
+                temp.append(_aggregate_data(data_per_lane.get_group(n),
+                            ['density', 'volume'], aggregation_period, np.mean))
+            aggregated_data = pd.concat(temp)
+
+        if 'lane_change_strategy' in aggregated_data.columns:
+            aggregated_data['Strategy'] = aggregated_data[
+                'lane_change_strategy'].map(self._strategy_name_map)
         return aggregated_data
 
     @staticmethod
@@ -2056,6 +2102,49 @@ def _my_boxplot(relevant_data: pd.DataFrame, x: str, y: str,
         plt.tight_layout()
         plt.show()
     return fig, ax
+
+
+def _fit_fundamental_diagram(data: pd.DataFrame, by: str):
+    """
+    :param data: Link evaluation treated data
+    :param by: How to split the data; must be column of data
+    """
+    grouped = data.groupby(by)
+    coefficients = []
+    fig, ax = plt.subplots()
+    for group_id, group in grouped:
+        find_critical_density()
+        # ax.plot(x, y, linewidth=2.0, label=group_id)
+        ax.scatter(group['density'], group['volume'])
+    ax.legend()
+    plt.show()
+
+
+def find_critical_density(data):
+    max_density = data['density'].max()
+    reg_u = LinearRegression(fit_intercept=False)
+    reg_c = LinearRegression()
+    best_d = 0
+    best_coefficients = (0, 0)
+    best_score = np.float('inf')
+    for d in np.linspace(max_density/4, 3*max_density/4, 10):
+        idx = data['density'] < d
+        uncongested = data[idx]
+        congested = data[~idx]
+        x_u = uncongested['density'].to_numpy().reshape(-1, 1)
+        y_u = uncongested['volume']
+        x_c = congested['density'].to_numpy().reshape(-1, 1)
+        y_c = congested['volume']
+
+        reg_u.fit(x_u, y_u)
+        reg_c.fit(x_c, y_c)
+        y_u_hat = reg_u.predict(x_u)
+        y_c_hat = reg_c.predict(x_c)
+        mse = ((y_u - y_u_hat)**2 + (y_c - y_c_hat)**2) / data.shape[0]
+        if mse < best_score:
+            best_score = mse
+            best_d = d
+            best_coefficients = (reg_u.coef_, reg_c.coef_)
 
 
 def _produce_console_output(

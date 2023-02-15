@@ -82,7 +82,7 @@ _network_info_all = {
     'platoon_mandatory_lane_change':
         _NetworkInfo('platoon_mandatory_lane_change', 2, [3]),
     'platoon_discretionary_lane_change':
-        _NetworkInfo('platoon_discretionary_lane_change', 2, [3])
+        _NetworkInfo('platoon_discretionary_lane_change', 2, [1, 3])
 }
 
 _scenario_info_all = {
