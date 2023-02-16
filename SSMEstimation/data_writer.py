@@ -34,7 +34,7 @@ class DataWriter:
                                      file_name), index=False)
 
     @staticmethod
-    def _save_as_xls(self, data: pd.DataFrame, folder_path: str,
+    def _save_as_xls(data: pd.DataFrame, folder_path: str,
                      file_name: str, sheet_name: str):
         if not os.path.isdir(folder_path):
             os.makedirs(folder_path)
@@ -63,7 +63,7 @@ class PostProcessedDataWriter(DataWriter):
             vehicle_input_per_lane: int,
             accepted_risk: int = None,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, int] = None):
+            orig_and_dest_lane_speeds: Tuple[int, str] = None):
         """
         Saves the data on the proper results folder based on the simulated
         network, controlled vehicles percentage and vehicle input.
@@ -168,7 +168,7 @@ class MOVESDataWriter(DataWriter):
             vehicle_input_per_lane: int,
             accepted_risk: int = None,
             platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, int] = None
+            orig_and_dest_lane_speeds: Tuple[int, str] = None
             ):
         folder_path = self.file_handler.get_moves_data_folder(
             vehicle_percentages, vehicle_input_per_lane,

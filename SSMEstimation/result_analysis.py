@@ -160,10 +160,12 @@ class ResultAnalyzer:
             orig_and_dest_lane_speeds: List[Tuple[int, str]] = None,
             link_segment_number: int = None, lanes: List[int] = None,
             aggregate_lanes: bool = True, hue: str = None,
-            aggregation_period: int = 30, warmup_time: int = 10):
+            aggregation_period: int = 30, warmup_time: int = 10,
+            will_plot: bool = False):
         """
         Computes flow from link evaluation data.
         """
+        plt.rc('font', size=15)
 
         link_eval_data = self._load_data(
             'density', vehicle_percentages, vehicles_per_lane,
@@ -177,10 +179,21 @@ class ResultAnalyzer:
             aggregation_period=aggregation_period)
         relevant_data = self._ensure_data_source_is_uniform(
             link_eval_data, vehicles_per_lane)
-        sns.scatterplot(data=relevant_data, x='density', y='volume',
-                        hue=hue, palette='tab10')
-        plt.tight_layout()
-        plt.show()
+        # ax = sns.scatterplot(data=relevant_data, x='density', y='volume',
+        #                      hue=hue, palette='tab10')
+        # ax.set_xlabel('density (veh/km)')
+        # ax.set_ylabel('flow (veh/h)')
+        rp = sns.relplot(data=relevant_data, x='density', y='volume',
+                         col=hue, col_wrap=2, palette='tab10')
+        for ax in rp.axes:
+            ax.set_xlabel('density (veh/km)')
+            ax.set_ylabel('flow (veh/h)')
+
+        if will_plot:
+            plt.tight_layout()
+            plt.show()
+        # return ax
+        return rp
 
     def plot_fundamental_diagram_from_flow(
             self, vehicle_percentages: Dict[VehicleType, int],
@@ -236,6 +249,8 @@ class ResultAnalyzer:
             accepted_risks=[accepted_risk], hue='control percentages',
             aggregation_period=aggregation_period,
             warmup_time=warmup_time)
+        plt.tight_layout()
+        plt.show()
 
     def plot_flow_box_plot_vs_controlled_percentage(
             self, vehicles_per_lane: List[int],
@@ -1035,23 +1050,37 @@ class ResultAnalyzer:
             vehicles_per_lane: List[int],
             lane_change_strategies: List[PlatoonLaneChangeStrategy],
             orig_and_dest_lane_speeds: Tuple[int, str],
-            use_upstream_link: bool,
-            link_segment_number: int = None, lanes: List[int] = None,
+            use_upstream_link: bool, lanes: str,
+            link_segment_number: int = None,
             aggregation_period: int = 30, warmup_time: int = 10):
         """
         Uses volume and density from link evaluation.
         """
+        if lanes == 'orig':
+            lane_numbers = [1]
+        elif lanes == 'dest':
+            lane_numbers = [2]
+        elif lanes == 'both':
+            lane_numbers = [1, 2]
+        else:
+            raise ValueError("[Warning] lanes must be 'orig', 'dest', "
+                             "or 'both'.")
 
         main_links = file_handling.get_scenario_main_links(
             self.scenario_name)
         link = main_links[0] if use_upstream_link else main_links[1]
-        self.plot_fundamental_diagram(
+        ax = self.plot_fundamental_diagram(
             [vehicle_percentages], vehicles_per_lane, link,
             lane_change_strategies=lane_change_strategies,
             orig_and_dest_lane_speeds=[orig_and_dest_lane_speeds],
-            link_segment_number=link_segment_number, lanes=lanes,
+            link_segment_number=link_segment_number, lanes=lane_numbers,
             hue='Strategy', aggregation_period=aggregation_period,
             warmup_time=warmup_time)
+        # title = (lanes + ' lane' + ('s' if lanes == 'both' else '')
+        #          + '; dest lane speed ' + orig_and_dest_lane_speeds[1])
+        # ax.set_title(title)
+        plt.tight_layout()
+        plt.show()
 
     def plot_y_vs_vehicle_input(
             self, y: str, vehicle_percentages: Dict[VehicleType, int],
@@ -1202,6 +1231,7 @@ class ResultAnalyzer:
             orig_and_dest_lane_speeds=[orig_and_dest_lane_speeds])
         data['Strategy'] = data['lane_change_strategy'].map(
             self._strategy_name_map)
+        data['# CAVs (veh/h)'] = data['vehicles_per_lane'] * 2
         relevant_data = self._prepare_data_collection_data(
             data, flow_sensors, warmup_time, aggregation_period)
         self._ensure_data_source_is_uniform(relevant_data, vehicles_per_lane)
@@ -1235,6 +1265,7 @@ class ResultAnalyzer:
             orig_and_dest_lane_speeds=[orig_and_dest_lane_speeds])
         data['Strategy'] = data['lane_change_strategy'].map(
             self._strategy_name_map)
+        data['# CAVs (veh/h)'] = data['vehicles_per_lane'] * 2
         main_link = file_handling.get_scenario_main_links(self.scenario_name)[0]
         relevant_data = self._prepare_link_evaluation_data(
             data, main_link, segment, lanes, warmup_time=warmup_time,
@@ -1250,10 +1281,11 @@ class ResultAnalyzer:
         # plt.tight_layout()
         # plt.show()
         fig, ax = _my_boxplot(relevant_data, 'Strategy',
-                              y, hue='vehicles_per_lane',
+                              y, hue='# CAVs (veh/h)',
                               will_show=False)
         ax.legend(loc='upper left', bbox_to_anchor=(1.01, 1),
-                  title='Vehicles per lane', ncols=1)
+                  ncols=1)
+        ax.set_ylabel('flow (veh/h)')
         plt.tight_layout()
         plt.show()
         if self.should_save_fig:
@@ -2092,7 +2124,7 @@ def _my_boxplot(relevant_data: pd.DataFrame, x: str, y: str,
                 hue: str = 'vehicles per hour', will_show: bool = True):
     # Plot
     fig = plt.figure()
-    plt.rc('font', size=20)
+    plt.rc('font', size=15)
     fig.set_size_inches(9, 6)
     sns.set_style('whitegrid')
     ax = sns.boxplot(data=relevant_data, x=x, y=y, hue=hue)

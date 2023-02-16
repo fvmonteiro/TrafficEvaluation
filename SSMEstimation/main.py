@@ -311,18 +311,18 @@ def main():
     platoon_speed = 90
     main_road_speeds = ['same']
     orig_and_dest_lane_speeds = [(platoon_speed, s) for s in main_road_speeds]
-    vehicle_inputs = [i for i in range(3000, 3001, 500)]
+    vehicle_inputs = [i for i in range(0, 3001, 1000)]
 
     # =============== Running =============== #
-    vi = VissimInterface()
-    vi.load_simulation(scenario_name)
-    # vi.run_platoon_scenario_sample(
-    #     4, PlatoonLaneChangeStrategy.leader_first, 1500,
-    #     orig_and_dest_lane_speeds[0], 360, 1, 10, 30)
-    vi.run_multiple_platoon_lane_change_scenarios(
-        strategies, vehicle_types, orig_and_dest_lane_speeds, vehicle_inputs,
-        runs_per_scenario=3)
-    vi.close_vissim()
+    # vi = VissimInterface()
+    # vi.load_simulation(scenario_name)
+    # # vi.run_platoon_scenario_sample(
+    # #     4, PlatoonLaneChangeStrategy.leader_first, 1500,
+    # #     orig_and_dest_lane_speeds[0], 360, 1, 10, 30)
+    # vi.run_multiple_platoon_lane_change_scenarios(
+    #     strategies, vehicle_types, orig_and_dest_lane_speeds, vehicle_inputs,
+    #     runs_per_scenario=3)
+    # vi.close_vissim()
 
     # =============== Post processing =============== #
     vehicle_percentages = [{vt: 100} for vt in vehicle_types]
@@ -335,22 +335,46 @@ def main():
     file_handler.export_multiple_platoon_results_to_cloud(
             vehicle_percentages, vehicle_inputs, strategies,
             orig_and_dest_lane_speeds)
-    # file_handler.import_multiple_platoon_results_from_cloud(
-    #     vehicle_percentages, vehicle_inputs, strategies,
-    #     orig_and_dest_lane_speeds)
+    file_handler.import_multiple_platoon_results_from_cloud(
+        vehicle_percentages, vehicle_inputs, strategies,
+        orig_and_dest_lane_speeds)
+
+    # =============== To MOVES =============== #
+    # for st in strategies[:1]:
+    #     for vi in [1000]:
+    #         post_processing.translate_platoon_lane_changing_links_to_moves(
+    #             vi, vehicle_percentages[0],
+    #             platoon_lane_change_strategy=st,
+    #             orig_and_dest_lane_speeds=orig_and_dest_lane_speeds[0]
+    #             )
 
     # =============== Check results graphically =============== #
-    vehicle_inputs = [i for i in range(0, 3001, 500)]
-    ra = result_analysis.ResultAnalyzer(scenario_name, False)
-    ra.plot_fundamental_diagram_per_strategy(
-            vehicle_percentages[0], vehicle_inputs, warmup_time=5,
-            lane_change_strategies=strategies,
-            orig_and_dest_lane_speeds=orig_and_dest_lane_speeds[0],
-            link_segment_number=1, lanes=[1, 2], aggregation_period=30)
+    # vehicle_inputs = [0]
+    # vehicle_inputs.extend([i for i in range(500, 2501, 1000)])
+    # vehicle_inputs.extend([i for i in range(1000, 3001, 2000)])
+    # ra = result_analysis.ResultAnalyzer(scenario_name, False)
+    # link_segment = 2
+    # lanes = [1, 2]
+    # for speed_pair in orig_and_dest_lane_speeds:
+    #     ra.plot_fundamental_diagram_per_strategy(
+    #             vehicle_percentages[0], vehicle_inputs, strategies,
+    #             speed_pair, use_upstream_link=True,
+    #             link_segment_number=link_segment, lanes='both',
+    #             warmup_time=5, aggregation_period=30
+    #     )
+    #     ra.plot_volume_box_plot_vs_strategy(
+    #         vehicle_inputs, vehicle_percentages, strategies,
+    #         speed_pair, segment=link_segment, lanes=lanes,
+    #         aggregation_period=30)
+    # ra.plot_fundamental_diagram(
+    #     vehicle_percentages, vehicle_inputs, 1,
+    #     lane_change_strategies=strategies,
+    #     orig_and_dest_lane_speeds=orig_and_dest_lane_speeds,
+    #     link_segment_number=link_segment, lanes=lanes, aggregate_lanes=True,
+    #     hue='vehicles_per_lane', aggregation_period=30,
+    #     warmup_time=5)
 
-    # ra.plot_volume_box_plot_vs_strategy(
-    #     vehicle_inputs, vehicle_percentages, strategies,
-    #     orig_and_dest_lane_speeds[0], 3, [1, 2], aggregation_period=60)
+
     # ra.plot_flow_box_plot_vs_strategy(
     #     vehicle_inputs, vehicle_percentages, strategies,
     #     orig_and_dest_lane_speeds[0], [5, 6], aggregation_period=60)
