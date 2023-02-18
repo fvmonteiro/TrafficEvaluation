@@ -305,6 +305,7 @@ def main():
         # VehicleType.HUMAN_DRIVEN,
         VehicleType.CONNECTED_NO_LANE_CHANGE
     ]
+    vehicle_percentages = [{vt: 100 for vt in vehicle_types}]
     # percentages = [100]
     # vehicle_percentages = create_vehicle_percentages_dictionary(
     #     vehicle_types, percentages, 1)
@@ -312,6 +313,10 @@ def main():
     main_road_speeds = ['same']
     orig_and_dest_lane_speeds = [(platoon_speed, s) for s in main_road_speeds]
     vehicle_inputs = [i for i in range(0, 3001, 1000)]
+
+    scenarios = file_handling.create_multiple_scenarios(
+        vehicle_percentages, vehicle_inputs, lane_change_strategies=strategies,
+        orig_and_dest_lane_speeds=orig_and_dest_lane_speeds)
 
     # =============== Running =============== #
     # vi = VissimInterface()
@@ -331,13 +336,13 @@ def main():
     #     scenario_name, vehicle_percentages, vehicle_inputs, strategies,
     #     orig_and_dest_lane_speeds)
 
-    file_handler = file_handling.FileHandler(scenario_name)
-    file_handler.export_multiple_platoon_results_to_cloud(
-            vehicle_percentages, vehicle_inputs, strategies,
-            orig_and_dest_lane_speeds)
-    file_handler.import_multiple_platoon_results_from_cloud(
-        vehicle_percentages, vehicle_inputs, strategies,
-        orig_and_dest_lane_speeds)
+    # file_handler = file_handling.FileHandler(scenario_name)
+    # file_handler.export_multiple_platoon_results_to_cloud(
+    #         vehicle_percentages, vehicle_inputs, strategies,
+    #         orig_and_dest_lane_speeds)
+    # file_handler.import_multiple_platoon_results_from_cloud(
+    #     vehicle_percentages, vehicle_inputs, strategies,
+    #     orig_and_dest_lane_speeds)
 
     # =============== To MOVES =============== #
     # for st in strategies[:1]:
@@ -352,16 +357,26 @@ def main():
     # vehicle_inputs = [0]
     # vehicle_inputs.extend([i for i in range(500, 2501, 1000)])
     # vehicle_inputs.extend([i for i in range(1000, 3001, 2000)])
-    # ra = result_analysis.ResultAnalyzer(scenario_name, False)
-    # link_segment = 2
-    # lanes = [1, 2]
-    # for speed_pair in orig_and_dest_lane_speeds:
-    #     ra.plot_fundamental_diagram_per_strategy(
-    #             vehicle_percentages[0], vehicle_inputs, strategies,
-    #             speed_pair, use_upstream_link=True,
-    #             link_segment_number=link_segment, lanes='both',
-    #             warmup_time=5, aggregation_period=30
-    #     )
+    ra = result_analysis.ResultAnalyzer(scenario_name, False)
+    link_segment = 2
+    lanes = [1, 2]
+    for speed_pair in orig_and_dest_lane_speeds:
+        scenarios = file_handling.create_multiple_scenarios(
+            vehicle_percentages, [3000],
+            lane_change_strategies=strategies,
+            orig_and_dest_lane_speeds=[speed_pair])
+        # ra.plot_fundamental_diagram_per_strategy(
+        #         scenarios, use_upstream_link=True,
+        #         link_segment_number=link_segment, lanes='both',
+        #         warmup_time=5, aggregation_period=30
+        # )
+        # ra.plot_flows_vs_time_per_strategy(scenarios, 'after', lanes)
+        ra.plot_link_data_vs_time_per_strategy(
+            'average_speed', scenarios, use_upstream_link=True, lanes='both',
+            link_segment_number=link_segment)
+        ra.plot_link_data_vs_time_per_strategy(
+            'volume', scenarios, use_upstream_link=True, lanes='both',
+            link_segment_number=link_segment)
     #     ra.plot_volume_box_plot_vs_strategy(
     #         vehicle_inputs, vehicle_percentages, strategies,
     #         speed_pair, segment=link_segment, lanes=lanes,

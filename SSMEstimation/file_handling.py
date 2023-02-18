@@ -1,3 +1,4 @@
+import itertools
 import warnings
 from dataclasses import dataclass
 import os
@@ -19,26 +20,42 @@ class _PCInfo:
 @dataclass
 class _NetworkInfo:
     """Contains information about different VISSIM network"""
+    name: str
     file_name: str
-    total_lanes: int
+    n_lanes: int
     main_links: List[int]
-    # on_ramp_link: List[int]
-    # off_ramp_link: List[int]
-    # merging_link: List[int]
 
 
 @dataclass
-class _ScenarioInfo:
-    """Contains information about different simulation scenarios"""
-    network_name: str
-    network: _NetworkInfo
-    results_folder: str
+class ScenarioInfo:
+    """Defines a VISSIM scenario. The scenario parameters must agree with
+    the network being run
+    vehicle_percentages: Describes the percentages of controlled
+     vehicles in the simulations.
+    vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
+     values depend on the controlled_vehicles_percentage: 500:500:2500
+    accepted_risk: maximum lane changing risk in m/s
+    platoon_lane_change_strategy: Coordination strategy used in platoon lane
+     changing scenarios.
+    orig_and_dest_lane_speeds: Mean desired speeds in the platoon lane
+     changing scenario
+    """
+    vehicle_percentages: Dict[VehicleType, int]
+    vehicles_per_lane: int
+    accepted_risk: int = None
+    platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None
+    orig_and_dest_lane_speeds: Tuple[int, str] = None
 
-    def __init__(self, network_name, results_folder):
-        self.network_name = network_name
-        self.network_info = _network_info_all[network_name]
-        self.results_folder = results_folder
 
+# @dataclass
+# class _ScenarioInfo:
+#     """Contains information about different simulation scenarios"""
+#     network: _NetworkInfo
+#     results_folder: str
+#
+#     def __init__(self, network_name, results_folder):
+#         self.network_info = _network_info_all[network_name]
+#         self.results_folder = results_folder
 
 _folders_map = {
     'DESKTOP-P2O85S9': _PCInfo('personal_pc',
@@ -70,43 +87,45 @@ _folders_map = {
 # TODO: check main links of remaining scenarios
 _network_info_all = {
     'in_and_out':
-        _NetworkInfo('highway_in_and_out_lanes', 3, [3]),
+        _NetworkInfo('in_and_out', 'highway_in_and_out_lanes', 3, [3]),
     'in_and_merge':
-        _NetworkInfo('highway_in_and_merge', 3, [3]),
+        _NetworkInfo('in_and_merge', 'highway_in_and_merge', 3, [3]),
     'i710':
-        _NetworkInfo('I710-MultiSec-3mi', 3, []),
+        _NetworkInfo('i710', 'I710-MultiSec-3mi', 3, []),
     'us101':
-        _NetworkInfo('US_101', 6, []),
+        _NetworkInfo('us101', 'US_101', 6, []),
     'traffic_lights':
-        _NetworkInfo('traffic_lights_study', 2, []),
+        _NetworkInfo('traffic_lights', 'traffic_lights_study', 2, []),
     'platoon_mandatory_lane_change':
-        _NetworkInfo('platoon_mandatory_lane_change', 2, [3]),
+        _NetworkInfo('platoon_mandatory_lane_change',
+                     'platoon_mandatory_lane_change', 2, [3]),
     'platoon_discretionary_lane_change':
-        _NetworkInfo('platoon_discretionary_lane_change', 2, [1, 3])
+        _NetworkInfo('platoon_discretionary_lane_change',
+                     'platoon_discretionary_lane_change', 2, [1, 3])
 }
 
-_scenario_info_all = {
-    'in_and_out':
-        _ScenarioInfo('in_and_out', ''),
-    'in_and_out_safe':
-        _ScenarioInfo('in_and_out', 'safe'),
-    'in_and_out_risk_in_headway':
-        _ScenarioInfo('in_and_out', 'risk_in_headway'),
-    'in_and_out_risk_in_gap':
-        _ScenarioInfo('in_and_out', 'risk_in_gap'),
-    'in_and_merge':
-        _ScenarioInfo('in_and_merge', 'results'),
-    'i710':
-        _ScenarioInfo('i710', 'results'),
-    'us101':
-        _ScenarioInfo('us101', 'results'),
-    'traffic_lights':
-        _ScenarioInfo('traffic_lights', 'traffic_lights_study'),
-    'platoon_mandatory_lane_change':
-        _ScenarioInfo('platoon_mandatory_lane_change', 'results'),
-    'platoon_discretionary_lane_change':
-        _ScenarioInfo('platoon_discretionary_lane_change', 'results')
-}
+# _scenario_info_all = {
+#     'in_and_out':
+#         _ScenarioInfo('in_and_out', ''),
+#     'in_and_out_safe':
+#         _ScenarioInfo('in_and_out', 'safe'),
+#     'in_and_out_risk_in_headway':
+#         _ScenarioInfo('in_and_out', 'risk_in_headway'),
+#     'in_and_out_risk_in_gap':
+#         _ScenarioInfo('in_and_out', 'risk_in_gap'),
+#     'in_and_merge':
+#         _ScenarioInfo('in_and_merge', 'results'),
+#     'i710':
+#         _ScenarioInfo('i710', 'results'),
+#     'us101':
+#         _ScenarioInfo('us101', 'results'),
+#     'traffic_lights':
+#         _ScenarioInfo('traffic_lights', 'traffic_lights_study'),
+#     'platoon_mandatory_lane_change':
+#         _ScenarioInfo('platoon_mandatory_lane_change', 'results'),
+#     'platoon_discretionary_lane_change':
+#         _ScenarioInfo('platoon_discretionary_lane_change', 'results')
+# }
 
 
 def temp_name_editing():
@@ -123,27 +142,58 @@ def temp_name_editing():
         os.rename(old_file, new_file)
 
 
+def create_multiple_scenarios(
+        vehicle_percentages: List[Dict[VehicleType, int]],
+        vehicle_inputs: List[int],
+        accepted_risks: List[int] = None,
+        lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
+        orig_and_dest_lane_speeds: List[Tuple[int, str]] = None):
+    if accepted_risks is None:
+        accepted_risks = [None]
+        if lane_change_strategies is None:  # not a platoon scenario
+            print('[WARNING] Using empty list of accepted risks instead of '
+                  '[None] might prevent the readers from working.')
+    if lane_change_strategies is None:
+        lane_change_strategies = [None]
+    if orig_and_dest_lane_speeds is None:
+        orig_and_dest_lane_speeds = [None]
+    scenarios = []
+    for vp, vi, ar, st, sp in itertools.product(
+            vehicle_percentages, vehicle_inputs, accepted_risks,
+            lane_change_strategies, orig_and_dest_lane_speeds):
+        if sum(vp.values()) == 0 and ar > 0:
+            continue
+        scenarios.append(ScenarioInfo(vp, vi, ar, st, sp))
+    return scenarios
+
+
 class FileHandler:
     """Class is the interface between scenario names and all their properties"""
 
     def __init__(self, scenario_name: str, is_data_in_cloud: bool = False):
         self.scenario_name = scenario_name
-        self._scenario_info = _scenario_info_all[scenario_name]
+        if scenario_name.startswith('in_and_out'):
+            self._network_info = _network_info_all['in_and_out']
+            # Get the string after 'in_and_out'
+            self.simulation_output_folder = scenario_name[len('in_and_out_'):]
+        else:
+            self._network_info = _network_info_all[scenario_name]
+            self.simulation_output_folder = 'results'
+        # self._scenario_info = _scenario_info_all[scenario_name]
         self._is_data_in_cloud = is_data_in_cloud
-        # self.network_name = _scenario_info[scenario_name].network
 
     def set_is_data_in_cloud(self, use_cloud_directory: bool = False):
         self._is_data_in_cloud = use_cloud_directory
 
     def get_network_name(self):
-        return self._scenario_info.network_name
+        return self._network_info.name
 
     def get_file_name(self):
-        return self._scenario_info.network_info.file_name
+        return self._network_info.file_name
 
     def get_network_file_relative_address(self):
         # The network files are in folder with the same name as the file
-        return self._scenario_info.network_info.file_name
+        return self._network_info.file_name
 
     def get_networks_folder(self):
         if self._is_data_in_cloud:
@@ -160,11 +210,14 @@ class FileHandler:
                             self.get_results_relative_address())
 
     def get_main_links(self) -> List[int]:
-        return self._scenario_info.network_info.main_links
+        return self._network_info.main_links
+    
+    def get_n_lanes(self) -> int:
+        return self._network_info.n_lanes
 
     def get_results_relative_address(self):
         return os.path.join(self.get_network_file_relative_address(),
-                            self._scenario_info.results_folder)
+                            self.simulation_output_folder)
 
     def get_moves_default_data_folder(self):
         return os.path.join(get_moves_folder(),
@@ -174,77 +227,46 @@ class FileHandler:
         return os.path.join(self.get_results_base_folder(), 'test')
 
     def get_vissim_data_folder(
-            self, vehicle_percentages: Dict[VehicleType, int],
-            vehicle_input_per_lane: int, accepted_risk: int = None,
-            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, str] = None) -> str:
+            self, scenario_info: ScenarioInfo) -> str:
         """
         Creates a string with the full path of the VISSIM simulation results
         data folder.
         """
 
-        if (vehicle_percentages is not None
-                and sum(vehicle_percentages.values()) == 0):
-            accepted_risk = None
+        if (scenario_info.vehicle_percentages is not None
+                and sum(scenario_info.vehicle_percentages.values()) == 0):
+            scenario_info.accepted_risk = None
             base_folder = self.get_network_file_folder()
         else:
             base_folder = self.get_results_base_folder()
 
         return create_file_path(
-            base_folder, vehicle_percentages, vehicle_input_per_lane,
-            accepted_risk, platoon_lane_change_strategy,
-            orig_and_dest_lane_speeds)
+            base_folder, scenario_info)
 
     def get_moves_data_folder(
-            self, vehicle_percentages: Dict[VehicleType, int],
-            vehicles_per_lane: int, accepted_risk: int,
-            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, str] = None) -> str:
+            self, scenario_info: ScenarioInfo) -> str:
         """
         Creates a string with the full path of the MOVES data
         folder. If all parameters are None, returns the test data folder
-
-        :param vehicle_percentages: Describes the percentages of controlled
-         vehicles in the simulations.
-        :param vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
-         values depend on the controlled_vehicles_percentage: 500:500:2500
-        :param accepted_risk: maximum lane changing risk in m/s
-        :return: string with the folder where the data is
         """
         return create_file_path(
-            self.get_moves_default_data_folder(), vehicle_percentages,
-            vehicles_per_lane, accepted_risk, platoon_lane_change_strategy,
-            orig_and_dest_lane_speeds)
+            self.get_moves_default_data_folder(), scenario_info)
 
     def find_min_max_file_number(
             self, data_identifier: str, file_format: str,
-            vehicle_percentages: Dict[VehicleType, int],
-            vehicle_input_per_lane: int,
-            accepted_risk: int = None,
-            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, str] = None) -> (int, int):
+            scenario_info: ScenarioInfo) -> (int, int):
         """"
         Looks for the file with the highest simulation number. This is
         usually the file containing results from all simulations.
 
         :param data_identifier: last part of the file name
         :param file_format: file extension
-        :param vehicle_percentages: Describes the percentages of controlled
-         vehicles in the simulations.
-        :param vehicle_input_per_lane: Vehicle input per lane used in simulation
-        :param platoon_lane_change_strategy: Coordination strategy used in
-         platoon lane changing scenarios.
-        :param accepted_risk: accepted lane change risk
-        :param orig_and_dest_lane_speeds: Mean desired speeds in the platoon
-         lane changing scenario
         :return: (min, max) simulation number.
         """
         max_simulation_number = -1
         min_simulation_number = 10000
 
-        results_folder = self.get_vissim_data_folder(
-            vehicle_percentages, vehicle_input_per_lane, accepted_risk,
-            platoon_lane_change_strategy, orig_and_dest_lane_speeds)
+        results_folder = self.get_vissim_data_folder(scenario_info)
         network_file = self.get_file_name()
         for file in os.listdir(results_folder):
             file_str = os.fsdecode(file)
@@ -346,10 +368,11 @@ class FileHandler:
             target_base = get_local_networks_folder()
             source_base = get_cloud_networks_folder()
 
-        source_dir = self.get_vissim_data_folder(
-            vehicle_percentages, vehicle_input_per_lane,
-            accepted_risk, platoon_lane_change_strategy,
-            origin_and_dest_lane_speeds)
+        scenario_info = ScenarioInfo(
+            vehicle_percentages, vehicle_input_per_lane, accepted_risk,
+            platoon_lane_change_strategy, origin_and_dest_lane_speeds)
+
+        source_dir = self.get_vissim_data_folder(scenario_info)
         target_dir = os.path.join(target_base,
                                   source_dir.split(source_base + "\\")[1])
         if not os.path.exists(target_dir):
@@ -360,9 +383,7 @@ class FileHandler:
                          file.endswith('csv')]
         try:
             _, max_file_number = self.find_min_max_file_number(
-                '', 'att', vehicle_percentages, vehicle_input_per_lane,
-                accepted_risk, platoon_lane_change_strategy,
-                origin_and_dest_lane_speeds)
+                '', 'att', scenario_info)
         except FileNotFoundError:
             print("No data collection measurements or link evaluation results"
                   " files found.")
@@ -418,12 +439,12 @@ def get_moves_folder() -> str:
     return _folders_map[os.environ['COMPUTERNAME']].moves_folder
 
 
-def get_scenario_number_of_lanes(scenario_name: str) -> int:
-    return _scenario_info_all[scenario_name].network_info.total_lanes
-
-
-def get_scenario_main_links(scneario_name: str) -> List[int]:
-    return _scenario_info_all[scneario_name].network_info.main_links
+# def get_scenario_number_of_lanes(scenario_name: str) -> int:
+#     return _scenario_info_all[scenario_name].network_info.n_lanes
+# 
+# 
+# def get_scenario_main_links(scneario_name: str) -> List[int]:
+#     return _scenario_info_all[scneario_name].network_info.main_links
 
 
 def create_vehs_per_lane_folder_name(vehicles_per_lane: Union[int, str]) -> str:
@@ -462,44 +483,37 @@ def create_speeds_folder_name(orig_and_dest_lane_speeds: Tuple[int, str]
 
 
 def create_file_path(
-        base_folder: str, vehicle_percentages: Dict[VehicleType, int],
-        vehicle_input_per_lane: int, accepted_risk: Union[int, None],
-        platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-        orig_and_dest_lane_speeds: Tuple[int, str] = None) -> str:
+        base_folder: str, scenario_info: ScenarioInfo) -> str:
     """
     Creates a string with the full path of the data
     folder. If all parameters are None, returns the test data folder
 
     :param base_folder: full path of the base folder where the data is
-    :param vehicle_percentages: Describes the percentages of controlled
-     vehicles in the simulations.
-    :param vehicle_input_per_lane: Vehicle input per lane on VISSIM. Possible
-     values depend on the controlled_vehicles_percentage: 500:500:2500
-    :param accepted_risk: maximum lane changing risk in m/s
     :return: string with the folder where the data is
     """
-    if (vehicle_percentages is None
-            and vehicle_input_per_lane is None):
+    if (scenario_info.vehicle_percentages is None
+            and scenario_info.vehicles_per_lane is None):
         warnings.warn("Using create_file_path to obtain the test folder"
                       " is deprecated. Use get_vissim_test_folder instead.")
         return os.path.join(base_folder, 'test')
 
     folder_list = [base_folder]
-    if platoon_lane_change_strategy is not None:
+    if scenario_info.platoon_lane_change_strategy is not None:
         folder_list.append(create_platoon_lc_strategy_folder_name(
-            platoon_lane_change_strategy))
-    if vehicle_input_per_lane > 0:
-        folder_list.append(create_percent_folder_name(vehicle_percentages))
+            scenario_info.platoon_lane_change_strategy))
+    if scenario_info.vehicles_per_lane > 0:
+        folder_list.append(create_percent_folder_name(
+            scenario_info.vehicle_percentages))
         folder_list.append(create_vehs_per_lane_folder_name(
-                vehicle_input_per_lane))
-        if orig_and_dest_lane_speeds is not None:
+                scenario_info.vehicles_per_lane))
+        if scenario_info.orig_and_dest_lane_speeds is not None:
             folder_list.append(create_speeds_folder_name(
-                orig_and_dest_lane_speeds))
+                scenario_info.orig_and_dest_lane_speeds))
     else:
         folder_list.append(create_vehs_per_lane_folder_name(
-                vehicle_input_per_lane))
-    if accepted_risk is not None:
+                scenario_info.vehicles_per_lane))
+    if scenario_info.accepted_risk is not None:
         folder_list.append(create_accepted_risk_folder_name(
-            accepted_risk))
+            scenario_info.accepted_risk))
 
     return os.path.join(*folder_list)
