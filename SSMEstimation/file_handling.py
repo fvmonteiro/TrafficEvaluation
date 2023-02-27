@@ -1,11 +1,13 @@
 import itertools
 import warnings
 from dataclasses import dataclass
+from collections import defaultdict
 import os
 import shutil
 from typing import Dict, List, Tuple, Union
 
-from vehicle import VehicleType, PlatoonLaneChangeStrategy
+from vehicle import VehicleType, PlatoonLaneChangeStrategy, \
+    vehicle_type_to_str_map
 
 
 @dataclass
@@ -42,20 +44,10 @@ class ScenarioInfo:
     """
     vehicle_percentages: Dict[VehicleType, int]
     vehicles_per_lane: int
-    accepted_risk: int = None
-    platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None
-    orig_and_dest_lane_speeds: Tuple[int, str] = None
+    accepted_risk: Union[int, None] = None
+    platoon_lane_change_strategy: Union[PlatoonLaneChangeStrategy, None] = None
+    orig_and_dest_lane_speeds: Union[Tuple[int, str], None] = None
 
-
-# @dataclass
-# class _ScenarioInfo:
-#     """Contains information about different simulation scenarios"""
-#     network: _NetworkInfo
-#     results_folder: str
-#
-#     def __init__(self, network_name, results_folder):
-#         self.network_info = _network_info_all[network_name]
-#         self.results_folder = results_folder
 
 _folders_map = {
     'DESKTOP-P2O85S9': _PCInfo('personal_pc',
@@ -104,29 +96,6 @@ _network_info_all = {
                      'platoon_discretionary_lane_change', 2, [1, 3])
 }
 
-# _scenario_info_all = {
-#     'in_and_out':
-#         _ScenarioInfo('in_and_out', ''),
-#     'in_and_out_safe':
-#         _ScenarioInfo('in_and_out', 'safe'),
-#     'in_and_out_risk_in_headway':
-#         _ScenarioInfo('in_and_out', 'risk_in_headway'),
-#     'in_and_out_risk_in_gap':
-#         _ScenarioInfo('in_and_out', 'risk_in_gap'),
-#     'in_and_merge':
-#         _ScenarioInfo('in_and_merge', 'results'),
-#     'i710':
-#         _ScenarioInfo('i710', 'results'),
-#     'us101':
-#         _ScenarioInfo('us101', 'results'),
-#     'traffic_lights':
-#         _ScenarioInfo('traffic_lights', 'traffic_lights_study'),
-#     'platoon_mandatory_lane_change':
-#         _ScenarioInfo('platoon_mandatory_lane_change', 'results'),
-#     'platoon_discretionary_lane_change':
-#         _ScenarioInfo('platoon_discretionary_lane_change', 'results')
-# }
-
 
 def temp_name_editing():
     folder = ("C:\\Users\\fvall\\Documents\\Research\\TrafficSimulation"
@@ -161,10 +130,39 @@ def create_multiple_scenarios(
     for vp, vi, ar, st, sp in itertools.product(
             vehicle_percentages, vehicle_inputs, accepted_risks,
             lane_change_strategies, orig_and_dest_lane_speeds):
-        if sum(vp.values()) == 0 and ar > 0:
+        if sum(vp.values()) == 0 and ar is not None and ar > 0:
             continue
         scenarios.append(ScenarioInfo(vp, vi, ar, st, sp))
     return scenarios
+
+
+def split_scenario_by(scenarios: List[ScenarioInfo], attribute: str):
+    """
+    Splits a list of scenarios in subsets based on the value of the attribute.
+    :returns: Dictionary where keys are unique values of the attribute and
+     values are lists of scenarios.
+    """
+    def attribute_value_to_str(value):
+        if attribute == 'vehicle_percentages':
+            return vehicle_percentage_dict_to_string(value)
+        elif attribute == 'platoon_lane_change_strategy':
+            return value.name.lower()
+        else:
+            return value
+
+    subsets = defaultdict(list)
+    for sc in scenarios:
+        subsets[attribute_value_to_str(getattr(sc, attribute))].append(sc)
+    return subsets
+
+
+def vehicle_percentage_dict_to_string(vp_dict: Dict[VehicleType, int]) -> str:
+    if sum(vp_dict.values()) == 0:
+        return '100% HDV'
+    ret_str = []
+    for veh_type, p in vp_dict.items():
+        ret_str.append(str(p) + '% ' + vehicle_type_to_str_map[veh_type])
+    return ' '.join(sorted(ret_str))
 
 
 class FileHandler:
@@ -226,8 +224,7 @@ class FileHandler:
     def get_vissim_test_folder(self):
         return os.path.join(self.get_results_base_folder(), 'test')
 
-    def get_vissim_data_folder(
-            self, scenario_info: ScenarioInfo) -> str:
+    def get_vissim_data_folder(self, scenario_info: ScenarioInfo) -> str:
         """
         Creates a string with the full path of the VISSIM simulation results
         data folder.
@@ -240,14 +237,12 @@ class FileHandler:
         else:
             base_folder = self.get_results_base_folder()
 
-        return create_file_path(
-            base_folder, scenario_info)
+        return create_file_path(base_folder, scenario_info)
 
-    def get_moves_data_folder(
-            self, scenario_info: ScenarioInfo) -> str:
+    def get_moves_data_folder(self, scenario_info: ScenarioInfo) -> str:
         """
         Creates a string with the full path of the MOVES data
-        folder. If all parameters are None, returns the test data folder
+        folder.
         """
         return create_file_path(
             self.get_moves_default_data_folder(), scenario_info)
@@ -261,6 +256,7 @@ class FileHandler:
 
         :param data_identifier: last part of the file name
         :param file_format: file extension
+        :param scenario_info: Simulation scenario parameters
         :return: (min, max) simulation number.
         """
         max_simulation_number = -1
@@ -291,67 +287,26 @@ class FileHandler:
 
         return min_simulation_number, max_simulation_number
 
-    def export_multiple_results_to_cloud(
-            self, vehicle_percentages: List[Dict[VehicleType, int]],
-            vehicles_per_lane: List[int],
-            accepted_risks: List[int]):
-        for vp in vehicle_percentages:
-            for vi in vehicles_per_lane:
-                for ar in accepted_risks:
-                    try:
-                        self.move_result_files(True, vp, vi, accepted_risk=ar)
-                    except FileNotFoundError:
-                        print("Couldn't export {}, {}, {} to shared "
-                              "folder.".format(vp, vi, ar))
-                        continue
+    def export_multiple_results_to_cloud(self, scenarios: List[ScenarioInfo]):
+        self._move_multiple_results(True, scenarios)
 
-    def export_multiple_platoon_results_to_cloud(
-            self, vehicle_percentages: List[Dict[VehicleType, int]],
-            vehicles_per_lane: List[int],
-            lane_change_strategies: List[PlatoonLaneChangeStrategy],
-            origin_and_dest_lane_speeds: List[Tuple[int, str]]):
-        self._move_multiple_platoon_results(
-            True, vehicle_percentages, vehicles_per_lane,
-            lane_change_strategies, origin_and_dest_lane_speeds)
+    def import_multiple_results_from_cloud(
+            self, scenarios: List[ScenarioInfo]):
+        self._move_multiple_results(False, scenarios)
 
-    def import_multiple_platoon_results_from_cloud(
-            self, vehicle_percentages: List[Dict[VehicleType, int]],
-            vehicles_per_lane: List[int],
-            lane_change_strategies: List[PlatoonLaneChangeStrategy],
-            origin_and_dest_lane_speeds: List[Tuple[int, str]]):
-        self._move_multiple_platoon_results(
-            False, vehicle_percentages, vehicles_per_lane,
-            lane_change_strategies, origin_and_dest_lane_speeds)
+    def _move_multiple_results(
+            self, is_exporting: bool, scenarios: List[ScenarioInfo]):
+        for sc in scenarios:
+            try:
+                self.move_result_files(is_exporting, sc)
+            except FileNotFoundError:
+                destination = 'cloud' if is_exporting else 'local'
+                print("Couldn't move scenario {} to {} "
+                      "folder.".format(sc, destination))
+                continue
 
-    def _move_multiple_platoon_results(
-            self, is_exporting: bool,
-            vehicle_percentages: List[Dict[VehicleType, int]],
-            vehicles_per_lane: List[int],
-            lane_change_strategies: List[PlatoonLaneChangeStrategy],
-            origin_and_dest_lane_speeds: List[Tuple[int, str]]):
-        for st in lane_change_strategies:
-            for vp in vehicle_percentages:
-                for vi in vehicles_per_lane:
-                    for speed_pair in origin_and_dest_lane_speeds:
-                        try:
-                            self.move_result_files(
-                                is_exporting, vp, vi,
-                                platoon_lane_change_strategy=st,
-                                origin_and_dest_lane_speeds=speed_pair)
-                        except FileNotFoundError:
-                            destination = 'cloud' if is_exporting else 'local'
-                            print("Couldn't move {}, {}, {}, {} to {} "
-                                  "folder.".format(st.name, vp, vi,
-                                                   speed_pair, destination))
-                            continue
-
-    def move_result_files(
-            self, is_exporting: bool,
-            vehicle_percentages: Dict[VehicleType, int],
-            vehicle_input_per_lane: int,
-            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            accepted_risk: int = None,
-            origin_and_dest_lane_speeds: Tuple[int, str] = None):
+    def move_result_files(self, is_exporting: bool,
+                          scenario_info: ScenarioInfo):
         """
         Moves data collections, link segments, and all post-processed data
         from the local to cloud folder is is_exporting is true, or from cloud
@@ -367,10 +322,6 @@ class FileHandler:
             self.set_is_data_in_cloud(True)
             target_base = get_local_networks_folder()
             source_base = get_cloud_networks_folder()
-
-        scenario_info = ScenarioInfo(
-            vehicle_percentages, vehicle_input_per_lane, accepted_risk,
-            platoon_lane_change_strategy, origin_and_dest_lane_speeds)
 
         source_dir = self.get_vissim_data_folder(scenario_info)
         target_dir = os.path.join(target_base,
@@ -486,9 +437,10 @@ def create_file_path(
         base_folder: str, scenario_info: ScenarioInfo) -> str:
     """
     Creates a string with the full path of the data
-    folder. If all parameters are None, returns the test data folder
+    folder.
 
     :param base_folder: full path of the base folder where the data is
+    :param scenario_info: Simulation scenario parameters
     :return: string with the folder where the data is
     """
     if (scenario_info.vehicle_percentages is None

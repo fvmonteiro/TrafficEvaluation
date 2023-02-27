@@ -1,31 +1,15 @@
-import time
 from typing import List, Dict
-from math import pi
 
 import matplotlib.pyplot as plt
-import numpy as np
 
 import data_writer
 import file_handling
+import moves_file_handling
 import post_processing
 import result_analysis
 import vehicle
-from data_writer import SyntheticDataWriter
-import readers
 from vehicle import VehicleType, Vehicle, PlatoonLaneChangeStrategy
 from vissim_interface import VissimInterface
-
-
-def run_toy_example():
-    network_file = 'highway_in_and_out_lanes'
-    sim_params = {'SimPeriod': 200, 'RandSeed': 1}
-    vi = VissimInterface()
-    if not vi.load_simulation(network_file):
-        return
-    vi.set_evaluation_options()  # save nothing
-    vi.set_simulation_parameters(sim_params)
-    vi.run_in_and_out_scenario()
-    vi.close_vissim()
 
 
 def run_i170_scenario(save_results=False):
@@ -81,79 +65,110 @@ def test_risk_computation():
     plt.show()
 
 
-# def test_safe_gap_computation():
-#     # create_and_save_synthetic_data()
-#     data_source = 'synthetic'
-#     # post_process_and_save('synthetic_data', network_file)
-#     data_reader = readers.PostProcessedDataReader_OLD(data_source)
-#     data = data_reader.load_data()
-#
-#     gamma = 1 / 0.8
-#     rho = 0.2
-#     ssm_estimator = post_processing.SSMEstimator(data)
-#     ssm_estimator.include_risk(same_type_gamma=gamma)
-#     ssm_estimator.include_estimated_risk(rho=rho, same_type_gamma=gamma)
-#     risk_gap = data.loc[data['delta_x'] <= (data['safe_gap'] + 0.02),
-#                         'delta_x']
-#     risk = data.loc[data['delta_x']
-#                     <= (data['safe_gap'] + 0.02), 'exact_risk']
-#     estimated_risk_gap = data.loc[data['delta_x'] <= (data['vf_gap'] + 0.02),
-#                                   'delta_x']
-#     estimated_risk = data.loc[data['delta_x'] <= (data['vf_gap'] + 0.02),
-#                               'estimated_risk']
-#
-#     # Plot
-#     fig, ax = plt.subplots()
-#     ax.plot(risk_gap, risk)
-#     ax.plot(estimated_risk_gap, estimated_risk)
-#     plt.show()
-#     # save_post_processed_data(ssm_estimator.veh_data,
-#     #                          data_reader.data_source, data_reader.file_name)
-
-
 def run_all_safe_lane_change_scenarios():
     # Scenario definition
     scenario_name = 'in_and_out_safe'
     vehicle_type = [
-        VehicleType.ACC,
-        VehicleType.AUTONOMOUS,
         VehicleType.CONNECTED,
+        VehicleType.AUTONOMOUS,
+        VehicleType.ACC
     ]
 
-    percentages = [i for i in range(0, 101, 100)]
+    percentages = [100]  # [i for i in range(0, 101, 100)]
     full_penetration = create_vehicle_percentages_dictionary(
         vehicle_type, percentages, 1)
-    varied_cav_penetration = create_vehicle_percentages_dictionary(
-        [VehicleType.CONNECTED], [i for i in range(0, 76, 25)], 1)
+    # varied_cav_penetration = create_vehicle_percentages_dictionary(
+    #     [VehicleType.CONNECTED], [i for i in range(0, 76, 25)], 1)
     inputs_per_lane = [1000, 2000]
-    accepted_risks = [0]
+
+    full_penetration_scenarios = file_handling.create_multiple_scenarios(
+        full_penetration, inputs_per_lane
+    )
+    # varied_penetration_scenarios = file_handling.create_multiple_scenarios(
+    #     varied_cav_penetration, inputs_per_lane
+    # )
+    # all_scenarios = [full_penetration_scenarios, varied_penetration_scenarios]
 
     # Running
     vi = VissimInterface()
     vi.load_simulation(scenario_name)
-    for simulation_percentages in [full_penetration, varied_cav_penetration]:
-        for ipl in inputs_per_lane:
-            vi.run_multiple_scenarios(simulation_percentages, [ipl],
-                                      accepted_risks)
-        vi.close_vissim()
+    for scenario_subset in [full_penetration_scenarios]:
+        vi.run_multiple_scenarios(scenario_subset)
+    vi.close_vissim()
 
-        # Post processing
-        for sp in full_penetration:
-            print(sp)
-            post_processing.create_summary_with_risks(
-                scenario_name, [sp], inputs_per_lane, accepted_risks)
-            # for ipl in inputs_per_lane:
-            #     post_processing.get_individual_vehicle_trajectories_to_moves(
-            #         scenario_name, ipl, sp, 0)
+    for scenario_subset in [full_penetration_scenarios]:
+        # Post-processing
+        post_processing.create_summary_with_risks(
+            scenario_name, scenario_subset)
+        # for ipl in inputs_per_lane:
+        #     post_processing.get_individual_vehicle_trajectories_to_moves(
+        #         scenario_name, ipl, sp, 0)
 
         # Transfer files to the cloud
         file_handler = file_handling.FileHandler(scenario_name)
         try:
             file_handler.export_multiple_results_to_cloud(
-                simulation_percentages, inputs_per_lane, accepted_risks)
+                scenario_subset)
         except FileNotFoundError:
             print("Couldn't copy files to shared folder.")
             continue
+
+
+def run_comparison_method():
+    scenario_name = 'in_and_out_safe'
+    inputs_per_lane = [1000, 2000]
+
+    # Running
+    vi = VissimInterface()
+    vi.load_simulation(scenario_name)
+    for vt in [VehicleType.VIRDI,
+               # VehicleType.AUTONOMOUS, VehicleType.ACC
+               ]:
+        scenarios = file_handling.create_multiple_scenarios(
+            [{vt: 100}], inputs_per_lane)
+        vi.run_multiple_scenarios(scenarios)
+        post_processing.create_summary_with_risks(
+            scenario_name, scenarios)
+    vi.close_vissim()
+
+    # Post-processing
+
+    # for ipl in inputs_per_lane:
+    #     post_processing.get_individual_vehicle_trajectories_to_moves(
+    #         scenario_name, ipl, sp, 0)
+
+    # Transfer files to the cloud
+    file_handler = file_handling.FileHandler(scenario_name)
+    try:
+        file_handler.export_multiple_results_to_cloud(
+            scenarios)
+    except FileNotFoundError:
+        print("Couldn't copy files to shared folder.")
+
+
+def run_platoon_scenarios():
+    scenario_name = 'platoon_discretionary_lane_change'
+    strategies = [
+        PlatoonLaneChangeStrategy.single_body_platoon,
+        PlatoonLaneChangeStrategy.leader_first,
+        PlatoonLaneChangeStrategy.last_vehicle_first,
+        PlatoonLaneChangeStrategy.leader_first_and_reverse
+    ]
+    vehicle_percentages = [{VehicleType.CONNECTED_NO_LANE_CHANGE: 100}]
+    platoon_speed = 90
+    main_road_speeds = ['same']
+    orig_and_dest_lane_speeds = [(platoon_speed, s) for s in main_road_speeds]
+    vehicle_inputs = [i for i in range(500, 2501, 1000)]
+
+    scenarios = file_handling.create_multiple_scenarios(
+        vehicle_percentages, vehicle_inputs, lane_change_strategies=strategies,
+        orig_and_dest_lane_speeds=orig_and_dest_lane_speeds)
+
+    vi = VissimInterface()
+    vi.load_simulation(scenario_name)
+    vi.run_multiple_platoon_lane_change_scenarios(scenarios,
+                                                  runs_per_scenario=3)
+    vi.close_vissim()
 
 
 def plot_acc_av_and_cav_results(save_results=False):
@@ -161,17 +176,51 @@ def plot_acc_av_and_cav_results(save_results=False):
     vehicle_types = [
         VehicleType.ACC,
         VehicleType.AUTONOMOUS,
+        VehicleType.VIRDI,
         VehicleType.CONNECTED
     ]
     percentage = [0, 100]
-    veh_inputs = [1000]
+    veh_inputs = [1000, 2000]
     simulation_percentages = create_vehicle_percentages_dictionary(
         vehicle_types, percentage, 1)
+    # Our own scenarios
+    scenarios = file_handling.create_multiple_scenarios(
+        simulation_percentages, veh_inputs)
+    # The comparison scenarios
+    scenarios.extend(file_handling.create_multiple_scenarios(
+        [{VehicleType.VIRDI: 100}], veh_inputs))
     result_analyzer = result_analysis.ResultAnalyzer(scenario_name,
                                                      save_results)
-    result_analyzer.get_flow_and_risk_plots(veh_inputs,
-                                            simulation_percentages,
-                                            )
+    result_analyzer.plot_flow_box_plot_vs_controlled_percentage(
+        scenarios, warmup_time=10)
+    result_analyzer.plot_volume_box_plot_vs_controlled_percentage(
+        scenarios, warmup_time=10)
+    # result_analyzer.plot_risk_histograms('total_risk', scenarios, min_risk=1)
+    # result_analyzer.plot_risk_histograms('total_lane_change_risk', scenarios,
+    #                                      min_risk=1)
+    # result_analyzer.plot_fd_discomfort(scenarios)
+
+
+def plot_comparison_scenario(save_results=False):
+    scenario_name = 'in_and_out_safe'
+    vehicle_types = [
+        VehicleType.VIRDI,
+        VehicleType.CONNECTED
+    ]
+    percentage = [0, 100]
+    veh_inputs = [1000, 2000]
+    simulation_percentages = create_vehicle_percentages_dictionary(
+        vehicle_types, percentage, 1)
+    scenarios = file_handling.create_multiple_scenarios(
+        simulation_percentages, veh_inputs)
+    result_analyzer = result_analysis.ResultAnalyzer(scenario_name,
+                                                     save_results)
+    result_analyzer.plot_flow_box_plot_vs_controlled_percentage(
+        scenarios, warmup_time=10)
+    result_analyzer.plot_risk_histograms('total_risk', scenarios, min_risk=1)
+    result_analyzer.plot_risk_histograms('total_lane_change_risk', scenarios,
+                                         min_risk=1)
+    result_analyzer.plot_fd_discomfort(scenarios)
 
 
 def plot_cav_varying_percentage_results(save_results=False):
@@ -181,8 +230,10 @@ def plot_cav_varying_percentage_results(save_results=False):
     veh_inputs = [1000, 2000]
     simulation_percentages = create_vehicle_percentages_dictionary(
         vehicle_types, percentages, 1)
+    scenarios = file_handling.create_multiple_scenarios(simulation_percentages,
+                                                        veh_inputs)
     result_analyzer = result_analysis.ResultAnalyzer(network_name, save_results)
-    result_analyzer.get_flow_and_risk_plots(veh_inputs, simulation_percentages)
+    result_analyzer.get_flow_and_risk_plots(scenarios)
 
 
 def plot_traffic_lights_results(save_results=False):
@@ -193,72 +244,55 @@ def plot_traffic_lights_results(save_results=False):
     veh_inputs = [500, 1000]
     percentages_per_vehicle_type = create_vehicle_percentages_dictionary(
         vehicle_types, percentages, 1)
+    scenarios = file_handling.create_multiple_scenarios(
+        percentages_per_vehicle_type, veh_inputs)
     result_analyzer = result_analysis.ResultAnalyzer(network_name, save_results)
     result_analyzer.plot_flow_box_plot_vs_controlled_percentage(
-        veh_inputs, percentages_per_vehicle_type, warmup_time=10)
+        scenarios, warmup_time=10)
 
     result_analyzer.accel_vs_time_for_different_vehicle_pairs()
     result_analyzer.plot_heatmap_for_traffic_light_scenario(
-        'vehicle_count', percentages_per_vehicle_type, veh_inputs, 10)
+        'vehicle_count', scenarios, 10)
     result_analyzer.plot_heatmap_for_traffic_light_scenario(
-        'barrier_function_risk', percentages_per_vehicle_type, veh_inputs, 10)
+        'barrier_function_risk', scenarios, 10)
     result_analyzer.plot_heatmap_for_traffic_light_scenario(
-        'discomfort', percentages_per_vehicle_type, veh_inputs, 10)
-    result_analyzer.plot_violations_heatmap(percentages_per_vehicle_type,
-                                            veh_inputs, 10)
+        'discomfort', scenarios, 10)
+    result_analyzer.plot_violations_heatmap(scenarios, 10)
 
 
 def all_plots_for_scenarios_with_risk(
-        network_name: str, simulation_percentages: List[Dict[VehicleType, int]],
-        inputs_per_lane: List[int], accepted_risks: List[int],
+        network_name: str, scenarios: List[file_handling.ScenarioInfo],
         save_fig=False):
     ra = result_analysis.ResultAnalyzer(network_name,
                                         should_save_fig=save_fig)
-    # ra.plot_grid_of_risk_histograms('total_risk', simulation_percentages,
-    #                                 inputs_per_lane, accepted_risks,
-    #                                 min_risk=1)
-    # ra.plot_grid_of_lane_change_risk_histograms('total_lane_change_risk',
-    #                                             simulation_percentages,
-    #                                             inputs_per_lane, accepted_risks)
-    # ra.plot_grid_of_lane_change_risk_histograms('initial_risk',
-    #                                             simulation_percentages,
-    #                                             inputs_per_lane, accepted_risks)
-    # for veh_name in ['lo', 'ld', 'fd']:
-    #     ra.plot_grid_of_risk_histograms('initial_risk_to_' + veh_name,
-    #                                     simulation_percentages,
-    #                                     inputs_per_lane, accepted_risks)
-    for ipl in inputs_per_lane:
-        # ra.box_plot_y_vs_vehicle_type('total_lane_change_risk',
-        #                               'accepted_risk', ipl,
-        #                               simulation_percentages, accepted_risks)
-        # ra.box_plot_y_vs_vehicle_type('initial_risk',
-        #                               'accepted_risk', ipl,
-        #                               simulation_percentages, accepted_risks)
-        ra.box_plot_y_vs_vehicle_type('flow', 'accepted_risk', [ipl],
-                                      simulation_percentages, accepted_risks)
-        # ra.box_plot_y_vs_vehicle_type('risk', 'accepted_risk', ipl,
-        #                               simulation_percentages, accepted_risks)
-        # ra.plot_heatmap('lane_change_count', simulation_percentages,
-        #                 [ipl], accepted_risks)
-        # ra.plot_heatmap('initial_risk', simulation_percentages,
-        #                 [ipl], accepted_risks)
-        # ra.plot_heatmap('total_lane_change_risk', simulation_percentages,
-        #                 [ipl], accepted_risks)
-        # ra.plot_heatmap('vehicle_count', simulation_percentages,
-        #                 [ipl], accepted_risks, normalize=False)
+    ra.plot_grid_of_lane_change_risk_histograms('total_lane_change_risk',
+                                                scenarios)
+    ra.plot_grid_of_lane_change_risk_histograms('initial_risk',
+                                                scenarios)
+    all_vehicle_inputs = set(sc.vehicles_per_lane for sc in scenarios)
+    for veh_input in all_vehicle_inputs:
+        scenario_subset = [sc for sc in scenarios
+                           if sc.vehicles_per_lane == veh_input]
+        ra.box_plot_y_vs_vehicle_type('total_lane_change_risk',
+                                      'accepted_risk', scenario_subset)
+        ra.box_plot_y_vs_vehicle_type('initial_risk',
+                                      'accepted_risk', scenario_subset)
+        ra.box_plot_y_vs_vehicle_type('flow', 'accepted_risk', scenario_subset)
+        ra.box_plot_y_vs_vehicle_type('risk', 'accepted_risk', scenario_subset)
+        ra.plot_lane_change_count_heatmap(scenarios)
+        ra.plot_risk_heatmap('initial_risk', scenarios)
+        ra.plot_risk_heatmap('total_lane_change_risk', scenarios)
+        ra.plot_total_output_heatmap(scenarios)
 
 
 def all_plots_for_scenarios_with_risk_and_varying_penetration(
-        network_name: str, simulation_percentages: List[Dict[VehicleType, int]],
-        inputs_per_lane: int, accepted_risks: List[int],
+        network_name: str, scenarios: List[file_handling.ScenarioInfo],
         save_fig=False):
     ra = result_analysis.ResultAnalyzer(network_name,
                                         should_save_fig=save_fig)
 
-    ra.box_plot_y_vs_vehicle_type('flow', 'accepted_risk', [inputs_per_lane],
-                                  simulation_percentages, accepted_risks)
-    ra.plot_heatmap_risk_vs_control('lane_change_count', simulation_percentages,
-                                    [inputs_per_lane], accepted_risks)
+    ra.box_plot_y_vs_vehicle_type('flow', 'accepted_risk', scenarios)
+    ra.plot_heatmap_risk_vs_control('lane_change_count', scenarios)
 
 
 # TODO: move this to some other file
@@ -289,52 +323,35 @@ def create_vehicle_percentages_dictionary(
 
 
 def main():
-    # image_folder = "G:\\My Drive\\Safety in Mixed Traffic\\images"
-
     # =============== Scenario Definition =============== #
-    scenario_name = 'platoon_discretionary_lane_change'
-    strategies = [
-        # PlatoonLaneChangeStrategy.human_driven,
-        # PlatoonLaneChangeStrategy.no_strategy,
-        PlatoonLaneChangeStrategy.single_body_platoon,
-        PlatoonLaneChangeStrategy.leader_first,
-        PlatoonLaneChangeStrategy.last_vehicle_first,
-        PlatoonLaneChangeStrategy.leader_first_and_reverse
+    # scenario_name = 'platoon_discretionary_lane_change'
+    scenario_name = 'in_and_out_safe'
+    vehicle_type = [
+        # VehicleType.CONNECTED,
+        # VehicleType.AUTONOMOUS,
+        # VehicleType.ACC
+        VehicleType.VIRDI
     ]
-    vehicle_types = [
-        # VehicleType.HUMAN_DRIVEN,
-        VehicleType.CONNECTED_NO_LANE_CHANGE
-    ]
-    vehicle_percentages = [{vt: 100 for vt in vehicle_types}]
-    # percentages = [100]
-    # vehicle_percentages = create_vehicle_percentages_dictionary(
-    #     vehicle_types, percentages, 1)
-    platoon_speed = 90
-    main_road_speeds = ['same']
-    orig_and_dest_lane_speeds = [(platoon_speed, s) for s in main_road_speeds]
-    vehicle_inputs = [i for i in range(0, 3001, 1000)]
 
+    percentages = [100]  # [i for i in range(0, 101, 100)]
+    full_penetration = create_vehicle_percentages_dictionary(
+        vehicle_type, percentages, 1)
+    inputs_per_lane = [1000, 2000]
     scenarios = file_handling.create_multiple_scenarios(
-        vehicle_percentages, vehicle_inputs, lane_change_strategies=strategies,
-        orig_and_dest_lane_speeds=orig_and_dest_lane_speeds)
+        full_penetration, inputs_per_lane)
 
     # =============== Running =============== #
+
     # vi = VissimInterface()
     # vi.load_simulation(scenario_name)
-    # # vi.run_platoon_scenario_sample(
-    # #     4, PlatoonLaneChangeStrategy.leader_first, 1500,
-    # #     orig_and_dest_lane_speeds[0], 360, 1, 10, 30)
     # vi.run_multiple_platoon_lane_change_scenarios(
-    #     strategies, vehicle_types, orig_and_dest_lane_speeds, vehicle_inputs,
-    #     runs_per_scenario=3)
+    #     scenarios, runs_per_scenario=3)
     # vi.close_vissim()
 
     # =============== Post processing =============== #
-    vehicle_percentages = [{vt: 100} for vt in vehicle_types]
 
     # post_processing.create_platoon_lane_change_summary(
-    #     scenario_name, vehicle_percentages, vehicle_inputs, strategies,
-    #     orig_and_dest_lane_speeds)
+    #     scenario_name, scenarios)
 
     # file_handler = file_handling.FileHandler(scenario_name)
     # file_handler.export_multiple_platoon_results_to_cloud(
@@ -345,62 +362,49 @@ def main():
     #     orig_and_dest_lane_speeds)
 
     # =============== To MOVES =============== #
-    # for st in strategies[:1]:
-    #     for vi in [1000]:
-    #         post_processing.translate_platoon_lane_changing_links_to_moves(
-    #             vi, vehicle_percentages[0],
-    #             platoon_lane_change_strategy=st,
-    #             orig_and_dest_lane_speeds=orig_and_dest_lane_speeds[0]
-    #             )
+    for sc in scenarios:
+        moves_file_handling.get_individual_vehicle_trajectories_to_moves(
+            scenario_name, sc)
 
     # =============== Check results graphically =============== #
-    # vehicle_inputs = [0]
-    # vehicle_inputs.extend([i for i in range(500, 2501, 1000)])
-    # vehicle_inputs.extend([i for i in range(1000, 3001, 2000)])
-    ra = result_analysis.ResultAnalyzer(scenario_name, False)
-    link_segment = 2
-    lanes = [1, 2]
-    for speed_pair in orig_and_dest_lane_speeds:
-        scenarios = file_handling.create_multiple_scenarios(
-            vehicle_percentages, [3000],
-            lane_change_strategies=strategies,
-            orig_and_dest_lane_speeds=[speed_pair])
-        # ra.plot_fundamental_diagram_per_strategy(
-        #         scenarios, use_upstream_link=True,
-        #         link_segment_number=link_segment, lanes='both',
-        #         warmup_time=5, aggregation_period=30
-        # )
-        # ra.plot_flows_vs_time_per_strategy(scenarios, 'after', lanes)
-        ra.plot_link_data_vs_time_per_strategy(
-            'average_speed', scenarios, use_upstream_link=True, lanes='both',
-            link_segment_number=link_segment)
-        ra.plot_link_data_vs_time_per_strategy(
-            'volume', scenarios, use_upstream_link=True, lanes='both',
-            link_segment_number=link_segment)
-    #     ra.plot_volume_box_plot_vs_strategy(
-    #         vehicle_inputs, vehicle_percentages, strategies,
-    #         speed_pair, segment=link_segment, lanes=lanes,
-    #         aggregation_period=30)
-    # ra.plot_fundamental_diagram(
-    #     vehicle_percentages, vehicle_inputs, 1,
-    #     lane_change_strategies=strategies,
-    #     orig_and_dest_lane_speeds=orig_and_dest_lane_speeds,
-    #     link_segment_number=link_segment, lanes=lanes, aggregate_lanes=True,
-    #     hue='vehicles_per_lane', aggregation_period=30,
-    #     warmup_time=5)
+    # ra = result_analysis.ResultAnalyzer(scenario_name, should_save_fig=False,
+    #                                     is_debugging=True)
+    # scenario = file_handling.ScenarioInfo({VehicleType.CONNECTED: 100}, 2000)
+    # ra.plot_volume_box_plot_vs_controlled_percentage([scenario])
+    # plot_comparison_scenario(False)
+    # plot_acc_av_and_cav_results(False)
+    # link_segment = 2
+    # lanes = [1, 2]
+    # for speed_pair in orig_and_dest_lane_speeds:
+    #     # fundamental_diagram_scenarios = file_handling.create_multiple_scenarios(
+    #     #     vehicle_percentages, vehicle_inputs,
+    #     #     lane_change_strategies=strategies,
+    #     #     orig_and_dest_lane_speeds=[speed_pair])
+    #     # ra.plot_fundamental_diagram_per_strategy(
+    #     #     fundamental_diagram_scenarios, use_upstream_link=True,
+    #     #     link_segment_number=link_segment, lanes='both',
+    #     #     warmup_time=10, aggregation_period=120
+    #     # )
+    #     vehicle_count_scenarios = file_handling.create_multiple_scenarios(
+    #         vehicle_percentages, [2500],
+    #         lane_change_strategies=strategies,
+    #         orig_and_dest_lane_speeds=[speed_pair])
+    #     ra.plot_flows_vs_time_per_strategy(vehicle_count_scenarios,
+    #                                        'after', lanes,
+    #                                        warmup_time=0)
+    #     # ra.plot_link_data_vs_time_per_strategy(
+    #     #     'average_speed', scenarios, use_upstream_link=True,
+    #     #     lanes='both', link_segment_number=link_segment)
+    #     # ra.plot_link_data_vs_time_per_strategy(
+    #     #     'volume', scenarios, use_upstream_link=True, lanes='both',
+    #     #     link_segment_number=link_segment)
 
-
-    # ra.plot_flow_box_plot_vs_strategy(
-    #     vehicle_inputs, vehicle_percentages, strategies,
-    #     orig_and_dest_lane_speeds[0], [5, 6], aggregation_period=60)
     # ys = ['was_lane_change_completed', 'platoon_maneuver_time',
     #       'travel_time', 'accel_cost', 'stayed_in_platoon']
     # for y in ys:
-    #     ra.plot_y_vs_platoon_lc_strategy(y, vehicle_percentages[0],
-    #                                      vehicle_inputs, strategies,
-    #                                      orig_and_dest_lane_speeds[0])
-    #     ra.plot_y_vs_vehicle_input(y, vehicle_percentages[0], vehicle_inputs,
-    #                                strategies, orig_and_dest_lane_speeds[0])
+    #     ra.plot_y_vs_platoon_lc_strategy(y, scenarios)
+        # ra.plot_y_vs_vehicle_input(y, vehicle_percentages[0], vehicle_inputs,
+        #                            strategies, orig_and_dest_lane_speeds[0])
     # vehicle_inputs = [i for i in range(500, 2501, 500)]
     # for speed_pair in orig_and_dest_lane_speeds:
     #     ra.plot_fundamental_diagram({VehicleType.HUMAN_DRIVEN: 100},
@@ -409,41 +413,6 @@ def main():
     #                                 platoon_lane_change_strategy=strategies[0],
     #                                 orig_and_dest_lane_speeds=speed_pair
     #                                 )
-
-    # all_plots_for_scenarios_with_risk(scenario_name, simulation_percentages,
-    #                                   inputs_per_lane, accepted_risks,
-    #                                   save_fig=False)
-
-    # simulation_percentages = varied_cav_penetration
-    #
-    # ra.plot_risk_histograms('total_risk', simulation_percentages,
-    #                         inputs_per_lane, [0], min_risk=1)
-    # ra.plot_risk_histograms('total_lane_change_risk', simulation_percentages,
-    #                         inputs_per_lane, [0], min_risk=1)
-    # ra.plot_flow_box_plot_vs_controlled_percentage(
-    #     inputs_per_lane, simulation_percentages, aggregation_period=60)
-    # ra.plot_fd_discomfort(simulation_percentages, inputs_per_lane, [0])
-    # ra.plot_emission_heatmap(simulation_percentages, inputs_per_lane,
-    #                          accepted_risks)
-    # ra.plot_risk_heatmap('total_lane_change_risk', simulation_percentages,
-    #                      inputs_per_lane, [0])
-    # ra.plot_risk_heatmap('total_lane_change_risk', simulation_percentages,
-    #                      inputs_per_lane, [0])
-
-    # ra.accel_vs_time_for_different_vehicle_pairs()
-    # ra.risk_vs_time_example()
-    # ra.find_unfinished_simulations(simulation_percentages, inputs_per_lane)
-    # ra.plot_lane_change_count_heatmap(full_penetration, inputs_per_lane,
-    #                                   [0])
-    # for b in range(4, 8):
-    #     ra.plot_discomfort_heatmap(simulation_percentages, inputs_per_lane,
-    #                                accepted_risks, max_brake=b)
-    # ra.print_summary_of_issues(simulation_percentages, inputs_per_lane,
-    #                            accepted_risks)
-
-    # plot_acc_av_and_cav_results(False)
-    # plot_cav_varying_percentage_results(False)
-    # plot_traffic_lights_results(False)
 
 
 if __name__ == '__main__':

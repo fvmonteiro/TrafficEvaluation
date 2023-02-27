@@ -2,7 +2,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 import warnings
-from typing import Dict, List, Tuple, Union
+from typing import List, Union
 
 import numpy as np
 import pandas as pd
@@ -11,7 +11,7 @@ from scipy.stats import truncnorm
 import data_writer
 import file_handling
 import readers
-from vehicle import PlatoonLaneChangeStrategy, Vehicle, VehicleType
+from vehicle import Vehicle
 
 # ============================== Constants =================================== #
 # TODO: determine highway or traffic light from network_info dictionary in
@@ -100,7 +100,7 @@ def post_process_ngsim_data(vehicle_records):
     # Define warm up time as the first moment some vehicle has a leader
     warm_up_time = min(vehicle_records.loc[vehicle_records['leader_id'] > 0,
                                            'time'])
-    remove_early_samples_from_vehicle_records(warm_up_time, vehicle_records)
+    drop_warmup_samples(warm_up_time, vehicle_records)
     # By convention, if vehicle has no leader, we set it as its own leader
     no_leader_idx = vehicle_records['leader_id'] == 0
     vehicle_records.loc[no_leader_idx,
@@ -277,10 +277,15 @@ def create_platoon_lane_change_summary(
     """
     post_processors = [PlatoonLaneChangeProcessor(scenario_name),
                        PlatoonLaneChangeImpactsProcessor(scenario_name)]
+    n = len(scenarios)
+    print("Starting processing of {} platoon scenarios".format(n))
+    counter = 1
     for sc in scenarios:
+        print("Scenario: {}/{}".format(counter, n))
         create_summary_for_single_scenario(
             scenario_name, sc, post_processors,
             analyze_lane_change=False, debugging=debugging)
+        counter += 1
 
 
 def find_lane_change_issues(
@@ -541,33 +546,6 @@ def compute_gap_between_vehicles(leader_rear_x, leader_rear_y,
                    + (leader_rear_y - follower_front_y) ** 2)
 
 
-def remove_early_samples_from_vehicle_records(vehicle_records: pd.DataFrame,
-                                              warm_up_time: float):
-    """Remove samples with time below some warm up time
-
-    :param vehicle_records: vehicle records loaded from VISSIM
-    :param warm_up_time: time below which samples are removed"""
-
-    veh_data = vehicle_records
-    below_warmup = veh_data.loc[veh_data['time'] <= warm_up_time].index
-    print('Removing {} warm up time samples'.format(len(below_warmup)))
-    veh_data.drop(index=below_warmup, inplace=True)
-
-
-def remove_early_samples_from_sensors(data: pd.DataFrame, warmup_time: int):
-    """
-    Removes samples from link evaluation and data collection output files.
-
-    :param data: the dataframe containing the data
-    :param warmup_time: time, in minutes, below which samples are removed
-    :returns: nothing; alters data in place
-    """
-    data['interval_init_time'] = (data['time_interval'].str.split('-').str[
-                                      0].astype(int))
-    data.drop(index=data[data['interval_init_time'] < warmup_time * 60].index,
-              inplace=True)
-
-# TODO [nov 8, 2022]: can probably replace the two preceeding functions
 def drop_warmup_samples(data: pd.DataFrame, warmup_time: int):
     """
     Drops samples with time below warmup time.
@@ -1073,7 +1051,7 @@ def label_lane_changes(scenario_name: str, veh_data: pd.DataFrame,
     :param lc_data: lane change data for the entire simulation
     :return:
     """
-    if scenario_name == 'in_and_out':
+    if scenario_name.startswith('in_and_out'):
         off_ramp_links = [10003, 5],
         merging_links = [3]
     else:
@@ -2452,9 +2430,10 @@ class DiscomfortProcessor(VISSIMDataPostProcessor):
         'aggregation period' seconds
         """
         vehicle_records = data
-        print('[WARNING] are you sure the sampling interval is correct?')
-        sampling_interval = (vehicle_records['time'].iloc[1]
-                             - vehicle_records['time'].iloc[0])
+        # print('[WARNING] are you sure the sampling interval is correct?')
+        sampling_interval = 0.1
+            # (vehicle_records['time'].iloc[1]
+            #                  - vehicle_records['time'].iloc[0])
         discomfort_columns = []
         for b in self.comfortable_brake:
             discomfort_idx = vehicle_records['ax'] < b

@@ -2,10 +2,9 @@ from dataclasses import dataclass
 from enum import Enum
 import os
 import time
-from typing import List, Dict, Callable, Tuple, Union
+from typing import List, Dict, Callable, Union
 import warnings
 
-import numpy as np
 import pandas as pd
 import pywintypes
 import win32com.client as com
@@ -423,8 +422,7 @@ class VissimInterface:
 
     def run_platoon_scenario_sample(
             self, platoon_size: int,
-            lane_change_strategy: PlatoonLaneChangeStrategy,
-            vehicle_input: int, orig_and_dest_lane_speeds: Tuple[int, str],
+            scenario_info: file_handling.ScenarioInfo,
             simulation_period=60, number_of_runs=2,
             first_platoon_time=10, platoon_creation_period=30,
             random_seed=None, is_fast_mode=False,
@@ -432,11 +430,6 @@ class VissimInterface:
         """
         For initial test. Allows us to perform single runs of the platoon
         scenario with given parameters.
-
-        :param vehicle_input: Vehicles per hour entering the main road
-        :param lane_change_strategy: 0: No Strategy; 1: Synchronous;
-         2: Leader First; 3: Last Vehicle First; 4: Leader First and Invert
-        :return:
         """
         if not self.is_correct_network_loaded():
             return
@@ -446,11 +439,11 @@ class VissimInterface:
 
         self.set_simulation_period(simulation_period)
         self.set_number_of_runs(number_of_runs)
-        self.set_platoon_lane_change_strategy(lane_change_strategy)
-        if vehicle_input is not None:
-            veh_volumes = {'left_lane': vehicle_input,
-                           'right_lane': vehicle_input}
-            self.set_vehicle_inputs(veh_volumes)
+        self.set_platoon_lane_change_strategy(
+            scenario_info.platoon_lane_change_strategy)
+        veh_volumes = {'left_lane': scenario_info.vehicles_per_lane,
+                       'right_lane': scenario_info.vehicles_per_lane}
+        self.set_vehicle_inputs(veh_volumes)
         self.set_verbose_simulation(is_simulation_verbose)
         if logged_veh_id is not None:
             self.set_logged_vehicle_id(logged_veh_id)
@@ -458,7 +451,7 @@ class VissimInterface:
             self.vissim.Graphics.CurrentNetworkWindow.SetAttValue(
                 "QuickMode", 1)
 
-        platoon_speed = orig_and_dest_lane_speeds[0]
+        platoon_speed = scenario_info.orig_and_dest_lane_speeds[0]
 
         self.run_platoon_scenario(
             platoon_size, platoon_speed,
@@ -502,26 +495,25 @@ class VissimInterface:
     # MULTIPLE SCENARIO RUN ---------------------------------------------------#
 
     def run_multiple_scenarios(
-            self,
-            vehicle_percentages: List[Dict[VehicleType, int]],
-            inputs_per_lane: List[int],
-            accepted_risks: List[int] = None,
-            runs_per_scenario: int = 10,
-            simulation_period: int = None,
+            self, scenarios: List[file_handling.ScenarioInfo],
+            runs_per_scenario: int = 10, simulation_period: int = None,
             is_debugging: bool = False
     ):
         # Set-up simulation parameters
-        if accepted_risks is None:
-            accepted_risks = [0]
         if is_debugging:
             warm_up_minutes = 0
             runs_per_scenario = 1
             simulation_period = 360
         else:
             warm_up_minutes = self.network_info.warm_up_minutes
+            self.set_verbose_simulation(False)
+            self.set_logged_vehicle_id(0)
+            self.vissim.Graphics.CurrentNetworkWindow.SetAttValue(
+                "QuickMode", 1)
+            self.vissim.SuspendUpdateGUI()
+
         if simulation_period is None:
             simulation_period = self.network_info.evaluation_period
-
         self.set_evaluation_options(True, False, True, True, True,
                                     warm_up_minutes * 60,
                                     data_frequency=5)
@@ -529,67 +521,45 @@ class VissimInterface:
         self.set_random_seed_increment(1)
         self.set_simulation_period(simulation_period)
         self.set_number_of_runs(runs_per_scenario)
-        if not is_debugging:
-            self.vissim.Graphics.CurrentNetworkWindow.SetAttValue(
-                "QuickMode", 1)
-            self.vissim.SuspendUpdateGUI()
 
         print("Starting multiple-scenario run.")
-        for vp in vehicle_percentages:
-            self.set_controlled_vehicles_percentage(vp)
-            for ipl in inputs_per_lane:
-                self.set_uniform_vehicle_input_for_all_lanes(ipl)
-                # accepted risk does not impact simulations without any AVs
-                relevant_risks = (accepted_risks if sum(vp.values()) > 0
-                                  else [0])
-                for ar in relevant_risks:
-                    self.reset_saved_simulations(warning_active=False)
-                    self.set_accepted_lane_change_risk_to_leaders(ar)
-                    self.set_accepted_lane_change_risk_to_follower(ar / 2)
-                    if is_debugging:
-                        results_folder = (
-                            self.file_handler.get_vissim_test_folder())
-                    else:
-                        scenario_info = file_handling.ScenarioInfo(
-                            vp, ipl, accepted_risk=ar)
-                        results_folder = (
-                            self.file_handler.get_vissim_data_folder(
-                                scenario_info))
-                    is_folder_set = self.set_results_folder(results_folder)
-                    print("Starting series of {} runs with duration {}".format(
-                        runs_per_scenario, simulation_period
-                    ))
-                    start_time = time.perf_counter()
-                    self.network_info.run_function()
-                    end_time = time.perf_counter()
-                    _print_run_time_with_unit(
-                        start_time, end_time, runs_per_scenario)
-                    if not is_folder_set:
-                        self.file_handler.copy_all_files_from_temp_folder(
-                            results_folder)
+        multiple_sim_start_time = time.perf_counter()
+        for sc in scenarios:
+            self.reset_saved_simulations(warning_active=False)
+            self.set_controlled_vehicles_percentage(sc.vehicle_percentages)
+            self.set_uniform_vehicle_input_for_all_lanes(sc.vehicles_per_lane)
+            ar = sc.accepted_risk
+            self.set_accepted_lane_change_risk_to_leaders(ar)
+            # self.set_accepted_lane_change_risk_to_follower(ar / 2)
+            if is_debugging:
+                results_folder = self.file_handler.get_vissim_test_folder()
+            else:
+                results_folder = self.file_handler.get_vissim_data_folder(sc)
+            is_folder_set = self.set_results_folder(results_folder)
+            print("Starting series of {} runs with duration {}".format(
+                runs_per_scenario, simulation_period))
+            start_time = time.perf_counter()
+            self.network_info.run_function()
+            end_time = time.perf_counter()
+            _print_run_time_with_unit(start_time, end_time, runs_per_scenario)
+            if not is_folder_set:
+                self.file_handler.copy_all_files_from_temp_folder(
+                    results_folder)
         self.vissim.ResumeUpdateGUI()
         self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode", 0)
 
-    def run_capacity_tests_platoon_lane_change_scenario(self):
-        """
-        Runs the scenario only with human driven vehicles and increasing main
-        road input to find out the scenarios capacity.
-        """
-        strategy = PlatoonLaneChangeStrategy.human_driven
-        vehicle_type = VehicleType.HUMAN_DRIVEN
-        main_road_speeds = ['slower', 'faster']
-        orig_and_dest_lane_speeds = [(90, speed) for speed in main_road_speeds]
-        vehicle_inputs = [i for i in range(500, 2501, 500)]
-        self.run_multiple_platoon_lane_change_scenarios(
-            [strategy], [vehicle_type], orig_and_dest_lane_speeds,
-            vehicle_inputs)
+        multiple_sim_end_time = time.perf_counter()
+        total_runs = len(scenarios) * runs_per_scenario
+        _print_run_time_with_unit(multiple_sim_start_time,
+                                  multiple_sim_end_time, total_runs)
 
     def run_multiple_platoon_lane_change_scenarios(
             self, scenarios: List[file_handling.ScenarioInfo],
-            runs_per_scenario: int = 5, is_debugging: bool = False
+            runs_per_scenario: int = 3, is_debugging: bool = False
     ):
         """
 
+        :param scenarios: List of simulation parameters for several scenarios
         :param runs_per_scenario:
         :param is_debugging: If true, runs the scenario only once for a
          short time period, and results are saved to a test folder.
@@ -604,6 +574,8 @@ class VissimInterface:
             warm_up_minutes = self.network_info.warm_up_minutes
             simulation_period = self.network_info.evaluation_period
             first_platoon_time = 180
+            self.set_verbose_simulation(False)
+            self.set_logged_vehicle_id(0)
             self.vissim.Graphics.CurrentNetworkWindow.SetAttValue(
                 "QuickMode", 1)
             self.vissim.SuspendUpdateGUI()
@@ -617,11 +589,11 @@ class VissimInterface:
         self.set_random_seed_increment(1)
         self.set_simulation_period(simulation_period)
         self.set_number_of_runs(runs_per_scenario)
-        self.set_verbose_simulation(False)
 
         print("Starting multiple-scenario run.")
         multiple_sim_start_time = time.perf_counter()
         for sc in scenarios:
+            print('Scenario ', sc)
             self.reset_saved_simulations(warning_active=False)
             self.set_platoon_lane_change_strategy(
                 sc.platoon_lane_change_strategy)
@@ -661,57 +633,6 @@ class VissimInterface:
                 self.file_handler.copy_all_files_from_temp_folder(
                     results_folder)
 
-        # for st in strategies:
-        #     self.set_platoon_lane_change_strategy(st)
-        #     for vt in main_road_vehicle_types:
-        #         veh_percent = {vt: 100}
-        #         for speed_pair in orig_and_dest_lane_speeds:
-        #             platoon_desired_speed = speed_pair[0]
-        #             orig_lane_comp_number = (
-        #                 self.find_composition_matching_speed_distributions(
-        #                     {vt: orig_lane_speed_distribution}))
-        #             dest_lane_comp_number = (
-        #                 self.find_composition_matching_speed_distributions(
-        #                     {vt: speed_pair[1]}))
-        #             input_to_comp_map = {
-        #                 'right_lane': orig_lane_comp_number,
-        #                 'left_lane': dest_lane_comp_number
-        #             }
-        #             self.set_vehicle_inputs_compositions(input_to_comp_map)
-        #             for veh_input in input_per_lane:
-        #                 self.reset_saved_simulations(warning_active=False)
-        #                 self.set_uniform_vehicle_input_for_all_lanes(veh_input)
-        #                 # veh_volumes = {'left_lane': veh_input,
-        #                 #                'right_lane': veh_input}
-        #                 # self.set_vehicle_inputs(veh_volumes)
-        #                 if is_debugging:
-        #                     results_folder = (
-        #                         self.file_handler.get_vissim_test_folder())
-        #                 else:
-        #                     scenario_info = file_handling.ScenarioInfo(
-        #                         veh_percent, veh_input,
-        #                         platoon_lane_change_strategy=st,
-        #                         orig_and_dest_lane_speeds=speed_pair)
-        #                     results_folder = (
-        #                         self.file_handler.get_vissim_data_folder(
-        #                             scenario_info)
-        #                     )
-        #                 is_folder_set = self.set_results_folder(results_folder)
-        #                 print("Starting series of {} runs with duration {}".
-        #                       format(runs_per_scenario, simulation_period))
-        #                 start_time = time.perf_counter()
-        #                 self.run_platoon_scenario(
-        #                     platoon_size, platoon_desired_speed,
-        #                     first_platoon_time=first_platoon_time,
-        #                     platoon_creation_period=60)
-        #                 end_time = time.perf_counter()
-        #                 _print_run_time_with_unit(
-        #                     start_time, end_time, runs_per_scenario)
-        #                 if not is_folder_set:
-        #                     print("Copying result files to their proper "
-        #                           "location")
-        #                     self.file_handler.copy_all_files_from_temp_folder(
-        #                         results_folder)
         self.vissim.ResumeUpdateGUI()
         self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode", 0)
 
@@ -998,10 +919,10 @@ class VissimInterface:
         # The percentage of non-controlled vehicles must be human
         total_controlled_percentage = 0
         for vt, p in vehicle_percentages.items():
-            if vt != VehicleType.HUMAN_DRIVEN:
+            if vt != VehicleType.HDV:
                 total_controlled_percentage += p
         # sum(vehicle_percentages.values())
-        percentages_with_humans = {VehicleType.HUMAN_DRIVEN:
+        percentages_with_humans = {VehicleType.HDV:
                                    100 - total_controlled_percentage}
         percentages_with_humans.update(vehicle_percentages)
         composition_number = self.find_composition_matching_percentages(

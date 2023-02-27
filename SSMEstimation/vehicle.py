@@ -60,7 +60,7 @@ def find_collision_time_and_severity(initial_gaps,
 # TODO: these VehicleType and Vehicle classes are messy. Consider better
 #  organizing the data. Perhaps make VehicleType a regular class.
 class VehicleType(Enum):
-    HUMAN_DRIVEN = 0
+    HDV = 0
     ACC = 1
     AUTONOMOUS = 2
     CONNECTED = 3
@@ -68,6 +68,7 @@ class VehicleType(Enum):
     PLATOON = 5
     TRAFFIC_LIGHT_ACC = 6
     TRAFFIC_LIGHT_CACC = 7
+    VIRDI = 8
     TRUCK = 100
     BUS = 200
     MOTORCYCLE = 300
@@ -83,7 +84,7 @@ class PlatoonLaneChangeStrategy(Enum):
 
 
 vehicle_type_to_str_map = {
-    VehicleType.HUMAN_DRIVEN: 'no control',
+    VehicleType.HDV: 'HDV',
     VehicleType.ACC: 'ACC',
     VehicleType.AUTONOMOUS: 'AV',
     VehicleType.CONNECTED: 'CAV',
@@ -91,6 +92,7 @@ vehicle_type_to_str_map = {
     VehicleType.PLATOON: 'Platoon',
     VehicleType.TRAFFIC_LIGHT_ACC: 'TL-ACC',
     VehicleType.TRAFFIC_LIGHT_CACC: 'TL-CACC',
+    VehicleType.VIRDI: 'Virdi',
     VehicleType.TRUCK: 'truck',
     VehicleType.BUS: 'bus',
     VehicleType.MOTORCYCLE: 'motorcycle'
@@ -111,6 +113,7 @@ class Vehicle:
     VISSIM_TRAFFIC_LIGHT_ACC_ID = 130
     VISSIM_TRAFFIC_LIGHT_CACC_ID = 135
     VISSIM_PLATOON_CAR_ID = 140
+    VISSIM_VIRDI_CAR_ID = 150
     VISSIM_TRUCK_ID = 200
     VISSIM_BUS_ID = 300
     # TYPE_CAR = 'car'
@@ -120,19 +123,20 @@ class Vehicle:
     # TYPE_BUS = 'bus'
     # TYPE_MOTORCYCLE = 'motorcycle'
 
-    RELEVANT_TYPES = {VehicleType.HUMAN_DRIVEN, VehicleType.TRUCK,
+    RELEVANT_TYPES = {VehicleType.HDV, VehicleType.TRUCK,
                       VehicleType.ACC, VehicleType.PLATOON,
                       VehicleType.AUTONOMOUS, VehicleType.CONNECTED,
                       VehicleType.CONNECTED_NO_LANE_CHANGE,
                       VehicleType.TRAFFIC_LIGHT_ACC,
-                      VehicleType.TRAFFIC_LIGHT_CACC}
+                      VehicleType.TRAFFIC_LIGHT_CACC,
+                      VehicleType.VIRDI}
 
     # VISSIM and NGSIM codes for different vehicle types. This dictionary is
     # necessary when reading results, i.e., from data source to python.
     _INT_TO_ENUM = {NGSIM_MOTORCYCLE_ID: VehicleType.MOTORCYCLE,
-                    NGSIM_CAR_ID: VehicleType.HUMAN_DRIVEN,
+                    NGSIM_CAR_ID: VehicleType.HDV,
                     NGSIM_TRUCK_ID: VehicleType.TRUCK,
-                    VISSIM_CAR_ID: VehicleType.HUMAN_DRIVEN,
+                    VISSIM_CAR_ID: VehicleType.HDV,
                     VISSIM_ACC_CAR_ID: VehicleType.ACC,
                     VISSIM_AUTONOMOUS_CAR_ID: VehicleType.AUTONOMOUS,
                     VISSIM_CONNECTED_CAR_ID: VehicleType.CONNECTED,
@@ -142,12 +146,13 @@ class Vehicle:
                     VISSIM_TRAFFIC_LIGHT_CACC_ID:
                         VehicleType.TRAFFIC_LIGHT_CACC,
                     VISSIM_PLATOON_CAR_ID: VehicleType.PLATOON,
+                    VISSIM_VIRDI_CAR_ID: VehicleType.VIRDI,
                     VISSIM_TRUCK_ID: VehicleType.TRUCK,
                     VISSIM_BUS_ID: VehicleType.BUS}
 
     # Useful when editing vissim simulation parameters
     ENUM_TO_VISSIM_ID = {
-        VehicleType.HUMAN_DRIVEN: VISSIM_CAR_ID,
+        VehicleType.HDV: VISSIM_CAR_ID,
         VehicleType.ACC: VISSIM_ACC_CAR_ID,
         VehicleType.AUTONOMOUS: VISSIM_AUTONOMOUS_CAR_ID,
         VehicleType.CONNECTED: VISSIM_CONNECTED_CAR_ID,
@@ -155,7 +160,8 @@ class Vehicle:
             VISSIM_CONNECTED_CAR_NO_LANE_CHANGE_ID,
         VehicleType.TRAFFIC_LIGHT_ACC: VISSIM_TRAFFIC_LIGHT_ACC_ID,
         VehicleType.TRAFFIC_LIGHT_CACC: VISSIM_TRAFFIC_LIGHT_CACC_ID,
-        VehicleType.PLATOON: VISSIM_PLATOON_CAR_ID
+        VehicleType.PLATOON: VISSIM_PLATOON_CAR_ID,
+        VehicleType.VIRDI: VISSIM_VIRDI_CAR_ID
     }
 
     # Typical parameters values
@@ -164,7 +170,7 @@ class Vehicle:
     _CAR_FREE_FLOW_VELOCITY = 33  # 33 m/s ~= 120km/h ~= 75 mph
     _TRUCK_MAX_BRAKE = 3  # From VISSIM: 5.5
     _TRUCK_MAX_JERK = 30
-    _MAX_BRAKE_PER_TYPE = {VehicleType.HUMAN_DRIVEN: _CAR_MAX_BRAKE,
+    _MAX_BRAKE_PER_TYPE = {VehicleType.HDV: _CAR_MAX_BRAKE,
                            VehicleType.ACC: _CAR_MAX_BRAKE,
                            VehicleType.AUTONOMOUS: _CAR_MAX_BRAKE,
                            VehicleType.CONNECTED: _CAR_MAX_BRAKE,
@@ -172,8 +178,9 @@ class Vehicle:
                            VehicleType.TRAFFIC_LIGHT_ACC: _CAR_MAX_BRAKE,
                            VehicleType.TRAFFIC_LIGHT_CACC: _CAR_MAX_BRAKE,
                            VehicleType.PLATOON: _CAR_MAX_BRAKE,
+                           VehicleType.VIRDI: _CAR_MAX_BRAKE,
                            VehicleType.TRUCK: _TRUCK_MAX_BRAKE}
-    _MAX_JERK_PER_TYPE = {VehicleType.HUMAN_DRIVEN: _CAR_MAX_JERK,
+    _MAX_JERK_PER_TYPE = {VehicleType.HDV: _CAR_MAX_JERK,
                           VehicleType.ACC: _CAR_MAX_JERK,
                           VehicleType.AUTONOMOUS: _CAR_MAX_JERK,
                           VehicleType.CONNECTED: _CAR_MAX_JERK,
@@ -181,8 +188,9 @@ class Vehicle:
                           VehicleType.TRAFFIC_LIGHT_ACC: _CAR_MAX_JERK,
                           VehicleType.TRAFFIC_LIGHT_CACC: _CAR_MAX_JERK,
                           VehicleType.PLATOON: _CAR_MAX_JERK,
+                          VehicleType.VIRDI: _CAR_MAX_JERK,
                           VehicleType.TRUCK: _TRUCK_MAX_JERK}
-    _BRAKE_DELAY_PER_TYPE = {VehicleType.HUMAN_DRIVEN: 0.75,
+    _BRAKE_DELAY_PER_TYPE = {VehicleType.HDV: 0.75,
                              VehicleType.ACC: 0.2,
                              VehicleType.AUTONOMOUS: 0.2,
                              VehicleType.CONNECTED: 0.1,
@@ -190,9 +198,10 @@ class Vehicle:
                              VehicleType.TRAFFIC_LIGHT_ACC: 0.2,
                              VehicleType.TRAFFIC_LIGHT_CACC: 0.1,
                              VehicleType.PLATOON: 0.1,
+                             VehicleType.VIRDI: 0.1,
                              VehicleType.TRUCK: 0.5}
     _FREE_FLOW_VELOCITY_PER_TYPE = {
-        VehicleType.HUMAN_DRIVEN: _CAR_FREE_FLOW_VELOCITY,
+        VehicleType.HDV: _CAR_FREE_FLOW_VELOCITY,
         VehicleType.ACC: _CAR_FREE_FLOW_VELOCITY,
         VehicleType.AUTONOMOUS: _CAR_FREE_FLOW_VELOCITY,
         VehicleType.CONNECTED: _CAR_FREE_FLOW_VELOCITY,
@@ -200,6 +209,7 @@ class Vehicle:
         VehicleType.TRAFFIC_LIGHT_ACC: _CAR_FREE_FLOW_VELOCITY,
         VehicleType.TRAFFIC_LIGHT_CACC: _CAR_FREE_FLOW_VELOCITY,
         VehicleType.PLATOON: _CAR_FREE_FLOW_VELOCITY,
+        VehicleType.VIRDI: _CAR_FREE_FLOW_VELOCITY,
         VehicleType.TRUCK: 25}
 
     _sampling_time = 0.01

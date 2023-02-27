@@ -1,5 +1,5 @@
 import os
-from typing import List, Dict, Tuple, Union
+from typing import List, Dict, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,8 +10,7 @@ from sklearn.linear_model import LinearRegression
 import file_handling
 import post_processing
 import readers
-from vehicle import PlatoonLaneChangeStrategy, VehicleType, \
-    vehicle_type_to_str_map
+from vehicle import VehicleType, vehicle_type_to_str_map
 
 
 class ResultAnalyzer:
@@ -35,6 +34,11 @@ class ResultAnalyzer:
         'fd_discomfort': readers.LaneChangeReader,
         'average_speed': readers.LinkEvaluationReader,
         'emission_per_volume': readers.MOVESDatabaseReader,
+        'was_lane_change_completed': readers.PlatoonLaneChangeEfficiencyReader,
+        'platoon_maneuver_time': readers.PlatoonLaneChangeEfficiencyReader,
+        'travel_time': readers.PlatoonLaneChangeEfficiencyReader,
+        'accel_cost': readers.PlatoonLaneChangeEfficiencyReader,
+        'stayed_in_platoon': readers.PlatoonLaneChangeEfficiencyReader
     }
 
     _units_map = {'TTC': 's', 'low_TTC': '# vehicles',
@@ -70,7 +74,8 @@ class ResultAnalyzer:
         91: 'Energy Consumption', 98: 'CO2 Equivalent',
     }
 
-    def __init__(self, scenario_name: str, should_save_fig: bool = False):
+    def __init__(self, scenario_name: str, should_save_fig: bool = False,
+                 is_debugging: bool = False):
         if os.environ['COMPUTERNAME'] == 'DESKTOP-626HHGI':
             self._figure_folder = ('C:\\Users\\fvall\\Google Drive\\'
                                    'PhD Research\\Lane Change\\images')
@@ -80,6 +85,7 @@ class ResultAnalyzer:
         self.file_handler = file_handling.FileHandler(scenario_name)
         self.scenario_name = scenario_name
         self.should_save_fig = should_save_fig
+        self.is_debugging = is_debugging
 
     # Plots aggregating results from multiple simulations ==================== #
     def plot_xy(self, x: str, y: str, hue: str,
@@ -88,15 +94,13 @@ class ResultAnalyzer:
         """
 
         """
-
         data = self._load_data(y, scenarios)
         post_processing.drop_warmup_samples(data, warmup_time)
-        # self.remove_deadlock_simulations(relevant_data)
-
         # Plot
         sns.set_style('whitegrid')
         ax = sns.lineplot(data=data, x=x, y=y, hue=hue, ci='sd')
         plt.show()
+        return ax
 
     def plot_y_vs_time(self, y: str,
                        scenarios: List[file_handling.ScenarioInfo],
@@ -112,7 +116,7 @@ class ResultAnalyzer:
 
         data = self._load_data(y, scenarios)
         post_processing.drop_warmup_samples(data, warmup_time)
-        ResultAnalyzer._check_if_data_is_uniform(data)
+        # ResultAnalyzer._check_if_data_is_uniform(data)
         # self.remove_deadlock_simulations(relevant_data)
 
         # Plot
@@ -122,6 +126,7 @@ class ResultAnalyzer:
         if self.should_save_fig:
             self.save_fig(plt.gcf(), 'time_plot', y, scenarios)
         plt.show()
+        return ax
 
     def plot_fundamental_diagram(
             self, scenarios: List[file_handling.ScenarioInfo],
@@ -144,7 +149,7 @@ class ResultAnalyzer:
             link_eval_data, link_number, link_segment_number, lanes,
             aggregate_lanes=aggregate_lanes, warmup_time=warmup_time,
             aggregation_period=aggregation_period)
-        ResultAnalyzer._check_if_data_is_uniform(link_eval_data)
+        # ResultAnalyzer._check_if_data_is_uniform(link_eval_data)
         if col is None:
             ax = sns.scatterplot(data=link_eval_data, x='density', y='volume',
                                  hue=hue, palette='tab10')
@@ -194,7 +199,7 @@ class ResultAnalyzer:
                                 'random_seed']
         data = flow_data.merge(density_data, on=intersection_columns)
 
-        ResultAnalyzer._check_if_data_is_uniform(data)
+        # ResultAnalyzer._check_if_data_is_uniform(data)
         sns.scatterplot(data=data, x='density', y='flow',
                         hue='control percentages')
         plt.show()
@@ -216,21 +221,41 @@ class ResultAnalyzer:
             flow_sensor_name: str = 'in',
             aggregation_period: int = 30):
 
-        for sc in scenarios:
-            if sc.accepted_risk is None:
-                sc.accepted_risk = [0]
+        # for sc in scenarios:
+        #     if sc.accepted_risk is None:
+        #         sc.accepted_risk = 0
         data = self._load_data('flow', scenarios)
         relevant_data = self._prepare_data_collection_data(
-            data, flow_sensor_name, warmup_time, aggregation_period)
-        ResultAnalyzer._check_if_data_is_uniform(relevant_data)
+            data, flow_sensor_name, warmup_time=warmup_time,
+            aggregation_period=aggregation_period)
+        # ResultAnalyzer._check_if_data_is_uniform(relevant_data)
         fig, ax = _my_boxplot(relevant_data, 'control percentages', 'flow',
                               'vehicles per hour')
         if self.should_save_fig:
-            fig_name = self.create_figure_name(
-                'box_plot', 'flow', scenarios)
-            self.save_fig(fig, fig_name=fig_name + '_presentation')
+            fig_name = self.create_figure_name('box_plot', 'flow', scenarios)
+            self.save_fig(fig, fig_name=fig_name)
 
-        _produce_console_output(relevant_data, 'flow', scenarios, np.median)
+        _produce_console_output(relevant_data, 'flow', scenarios, np.median,
+                                show_variation=True)
+
+    def plot_volume_box_plot_vs_controlled_percentage(
+            self, scenarios: List[file_handling.ScenarioInfo],
+            warmup_time: int = 10, aggregation_period: int = 30):
+
+        y = 'volume'
+        link = file_handling.FileHandler(self.scenario_name).get_main_links()[0]
+        data = self._load_data(y, scenarios)
+        relevant_data = self._prepare_link_evaluation_data(
+            data, link, lanes=[1, 2, 3], warmup_time=warmup_time,
+            aggregation_period=aggregation_period)
+        fig, ax = _my_boxplot(relevant_data, 'control percentages', y,
+                              'vehicles per hour')
+        if self.should_save_fig:
+            fig_name = self.create_figure_name('box_plot', y, scenarios)
+            self.save_fig(fig, fig_name=fig_name)
+
+        _produce_console_output(relevant_data, y, scenarios, np.median,
+                                show_variation=True)
 
     def box_plot_y_vs_controlled_percentage(
             self, y: str, scenarios: List[file_handling.ScenarioInfo],
@@ -246,7 +271,7 @@ class ResultAnalyzer:
 
         data = self._load_data(y, scenarios)
         post_processing.drop_warmup_samples(data, warmup_time)
-        ResultAnalyzer._check_if_data_is_uniform(data)
+        # ResultAnalyzer._check_if_data_is_uniform(data)
         fig, ax = _my_boxplot(data, 'control percentages', y,
                               'vehicles per hour')
         if self.should_save_fig:
@@ -272,10 +297,10 @@ class ResultAnalyzer:
         """
         data = self._load_data(y, scenarios)
         self._prepare_data_for_plotting(y, data, warmup_time, sensor_name)
-        ResultAnalyzer._check_if_data_is_uniform(data)
+        # ResultAnalyzer._check_if_data_is_uniform(data)
 
         no_control_idx = (data['control percentages']
-                          == 'human driven')
+                          == '100% HDV')
         data[['percentage', 'control_type']] = data[
             'control percentages'].str.split(' ', expand=True)
         data.loc[no_control_idx, 'control_type'] = 'human'
@@ -305,71 +330,6 @@ class ResultAnalyzer:
         plt.tight_layout()
         plt.show()
 
-    # def plot_risky_maneuver_histogram_per_vehicle_type(
-    #         self, vehicle_percentages: List[Dict[VehicleType, int]],
-    #         vehicles_per_lane: List[int],
-    #         warmup_time: int = 10, min_total_risk: float = 1):
-    #     """
-    #     Plots histograms of risky maneuvers' total risk.
-    #
-    #     :param vehicle_percentages: each dictionary in the list must
-    #      define the percentage of different vehicles type in the simulation
-    #     :param vehicles_per_lane: input per lane used to generate the data.
-    #      If this is a list, a single plot with different colors for each
-    #      value is drawn.
-    #     :param warmup_time: must be given in minutes. Samples before
-    #      warmup_time are ignored.
-    #     :param min_total_risk: risky maneuvers with total risk below this
-    #      value are ignored.
-    #     :return: Nothing, just plots figures
-    #     """
-    #
-    #     data = self._load_data('total_risk', vehicle_percentages,
-    #                            vehicles_per_lane, accepted_risks=[0])
-    #     warmup_time *= 60  # minutes to seconds
-    #     data.drop(index=data[data['total_risk'] < min_total_risk].index,
-    #               inplace=True)
-    #     self._prepare_data_for_plotting(data, warmup_time)
-    #
-    #     plt.rc('font', size=30)
-    #     for control_percentage, data_to_plot in data.groupby(
-    #             'control percentages'):
-    #         data_to_plot = data[data['control percentages']
-    #                             == control_percentage]
-    #         # min_bin = int(np.floor(min_total_risk))
-    #         # max_bin = int(np.ceil(data_to_plot['total_risk'].max()))
-    #         # interval = max_bin // 200 + 1
-    #         # bins = [i for i in range(min_bin, max_bin, interval)]
-    #         sns.histplot(data=data_to_plot, x='total_risk',
-    #                      stat='count', hue='vehicles per hour',
-    #                      palette='tab10',)  # bins=bins)
-    #         fig = plt.gcf()
-    #         fig.set_size_inches(12, 6)
-    #         plt.title(control_percentage)
-    #         plt.tight_layout()
-    #
-    #         if self.should_save_fig:
-    #             ctr_percent_string = str(control_percentage).replace(
-    #                 '% ', '_').lower()
-    #             fig_name = self.create_figure_name(
-    #                 'histogram', 'risky_intervals', vehicles_per_lane,
-    #                 control_percentage=ctr_percent_string)
-    #             self.save_fig(plt.gcf(), fig_name=fig_name)
-    #         plt.show()
-    #
-    #     # Direct output:
-    #     n_simulations = len(data['simulation_number'].unique())
-    #     group_by_cols = ['vehicles_per_lane', 'control percentages']
-    #     print('Risky Maneuvers')
-    #     mixed_traffic = False
-    #     for vp in vehicle_percentages:
-    #         mixed_traffic = mixed_traffic or any(
-    #             [0 < p < 100 for p in vp.values()])
-    #     if mixed_traffic:
-    #         group_by_cols += ['veh_type']
-    #     print(data.groupby(group_by_cols)
-    #           ['total_risk'].agg([np.size, np.sum]) / n_simulations)
-
     def plot_risk_histograms(
             self, risk_type: str, scenarios: List[file_handling.ScenarioInfo],
             warmup_time: int = 10, min_risk: float = 0.1
@@ -386,50 +346,43 @@ class ResultAnalyzer:
         :return:
         """
         data = self._load_data(risk_type, scenarios)
-        ResultAnalyzer._check_if_data_is_uniform(data)
+        # ResultAnalyzer._check_if_data_is_uniform(data)
         self._prepare_risk_data(data, risk_type, warmup_time, min_risk)
-        plt.rc('font', size=20)
-        if data['accepted_risk'].nunique() <= 1:
+        plt.rc('font', size=28)
+        sns.set_style('whitegrid')
+        if ('accepted_risk' not in data.columns
+                or data['accepted_risk'].nunique() <= 1):
             grouped_data = data.groupby('control percentages')
         else:
             grouped_data = data.groupby(['control percentages',
                                          'accepted_risk'])
+
+        scenarios_per_vp = file_handling.split_scenario_by(
+            scenarios, 'vehicle_percentages')
         for group_name, data_to_plot in grouped_data:
             if data_to_plot.empty:
                 continue
-            # min_bin = int(np.floor(min_total_risk))
-            # max_bin = int(np.ceil(data_to_plot['total_risk'].max()))
-            # interval = max_bin // 200 + 1
-            # bins = [i for i in range(min_bin, max_bin, interval)]
-            sns.histplot(data=data_to_plot, x=risk_type,
-                         stat='count', hue='vehicles per hour',
-                         palette='tab10')
+            ax = sns.histplot(data=data_to_plot, x=risk_type,
+                              stat='count', hue='vehicles per hour',
+                              palette='tab10')
+            ax.set_xlabel(risk_type.replace('_', ' '))
+            ax.set_title(group_name)
             fig = plt.gcf()
-            # fig.set_size_inches(12, 6)
-            # plt.title(name)
-            plt.tight_layout()
-            if self.should_save_fig:
-                scenarios_subset = []
-                control_percentage = data_to_plot['control percentage'].iloc[0]
-                accepted_risk = data_to_plot['accepted_risk'].iloc[0]
-                for sc in scenarios:
-                    # TODO: must test
-                    vp_str = vehicle_percentage_dict_to_string(
-                        sc.vehicle_percentages)
-                    if (vp_str == control_percentage
-                            and sc.accepted_risk == accepted_risk):
-                        scenarios_subset.append(sc)
-                fig_name = self.create_figure_name(
-                    'histogram', risk_type, scenarios)
-                self.save_fig(fig, fig_name=fig_name + '_presentation')
+            fig.set_size_inches(12, 6)
+            fig.tight_layout()
             plt.show()
+            if self.should_save_fig:
+                fig_name = self.create_figure_name(
+                    'histogram', risk_type, scenarios_per_vp[group_name])
+                self.save_fig(fig, fig_name=fig_name)
 
         normalizer = data.loc[
-            (data['control percentages'] == 'human driven')
+            (data['control percentages'] == '100% HDV')
             & (data['vehicles per hour'] == data[
                 'vehicles per hour'].min()),
             risk_type].sum()
         _produce_console_output(data, risk_type, scenarios, [np.size, np.sum],
+                                show_variation=True,
                                 normalizer=normalizer)
 
     def plot_lane_change_risk_histograms_risk_as_hue(
@@ -451,14 +404,14 @@ class ResultAnalyzer:
         self._prepare_risk_data(data, risk_type, warmup_time, min_risk)
         data['risk'] = data['accepted_risk'].map({0: 'safe', 10: 'low',
                                                   20: 'medium', 30: 'high'})
-        ResultAnalyzer._check_if_data_is_uniform(data)
+        # ResultAnalyzer._check_if_data_is_uniform(data)
 
         plt.rc('font', size=30)
         # sns.set(font_scale=2)
         # for cp in control_percentages:
         for sc in scenarios:
             cp = vehicle_percentage_dict_to_string(sc.vehicle_percentages)
-            if cp == 'human driven':
+            if cp == '100% HDV':
                 continue
             data_to_plot = data[
                 (data['control percentages'] == cp)
@@ -497,7 +450,7 @@ class ResultAnalyzer:
         data = self._load_data(risk_type, scenarios)
         ResultAnalyzer._prepare_risk_data(data, risk_type, warmup_time,
                                           min_risk)
-        ResultAnalyzer._check_if_data_is_uniform(data)
+        # ResultAnalyzer._check_if_data_is_uniform(data)
 
         all_accepted_risks = [sc.accepted_risk for sc in scenarios]
 
@@ -535,7 +488,7 @@ class ResultAnalyzer:
         data = self._load_data(risk_type, scenarios)
         ResultAnalyzer._prepare_risk_data(data, risk_type, warmup_time,
                                           min_risk)
-        ResultAnalyzer._check_if_data_is_uniform(data)
+        # ResultAnalyzer._check_if_data_is_uniform(data)
 
         control_percentages = data['control percentages'].unique()
         accepted_risks = data['accepted_risk'].unique()
@@ -574,12 +527,13 @@ class ResultAnalyzer:
         :param warmup_time:
         :return:
         """
-        lane_change_reader = readers.LaneChangeReader(self.scenario_name)
-        if scenarios is None:
-            data = lane_change_reader.load_test_data()
-        else:
-            data = lane_change_reader.load_from_several_scenarios(
-                scenarios)
+        # lane_change_reader = readers.LaneChangeReader(self.scenario_name)
+        # if scenarios is None:
+        #     data = lane_change_reader.load_test_data()
+        # else:
+        #     data = lane_change_reader.load_data_from_several_scenarios(
+        #         scenarios)
+        data = self._load_data('initial_risk', scenarios)
         warmup_time *= 60  # minutes to seconds
         data.drop(index=data[data['start_time'] < warmup_time].index,
                   inplace=True)
@@ -643,7 +597,7 @@ class ResultAnalyzer:
         data = self._load_data(y, scenarios)
         self._prepare_data_for_plotting(y, data, warmup_time,
                                         sensor_name=['out'])
-        data.loc[data['control percentages'] == 'human driven',
+        data.loc[data['control percentages'] == '100% HDV',
                  'control percentages'] = '100% HD'
         # for vpl in vehicles_per_lane:
         for vpl, data_to_plot in data.groupby('vehicles_per_lane'):
@@ -707,7 +661,7 @@ class ResultAnalyzer:
         agg_function = np.sum
         if normalizer is None:
             normalizer = data.loc[
-                (data['control percentages'] == 'human driven')
+                (data['control percentages'] == '100% HDV')
                 & (data['vehicles per hour'] == data[
                     'vehicles per hour'].min()),
                 risk_type].sum()
@@ -730,7 +684,7 @@ class ResultAnalyzer:
         col_name = '_'.join([y, str(brake_threshold)])
         agg_function = np.mean
         normalizer = data.loc[
-            (data['control percentages'] == 'human driven')
+            (data['control percentages'] == '100% HDV')
             & (data['vehicles per hour'] == data[
                 'vehicles per hour'].min()),
             col_name].agg(agg_function)
@@ -741,8 +695,7 @@ class ResultAnalyzer:
                             agg_function=agg_function,
                             custom_colorbar_range=True)
         if self.should_save_fig:
-            fig_name = self.create_figure_name(
-                'heatmap', col_name, scenarios)
+            fig_name = self.create_figure_name('heatmap', col_name, scenarios)
             self.save_fig(fig, fig_name=fig_name)
 
         _produce_console_output(data, col_name, scenarios, agg_function,
@@ -755,7 +708,7 @@ class ResultAnalyzer:
         y = 'discomfort_' + str(max_brake)
         post_processing.drop_warmup_samples(data, 10)
         normalizer = data.loc[
-            (data['control percentages'] == 'human driven')
+            (data['control percentages'] == '100% HDV')
             & (data['vehicles_per_lane'] == data['vehicles_per_lane'].min()),
             y].sum()
         fig = _plot_heatmap(data, y, 'vehicles_per_lane',
@@ -772,7 +725,7 @@ class ResultAnalyzer:
         data = self._prepare_data_collection_data(data, sensor_identifier='out',
                                                   warmup_time=10)
         normalizer = data.loc[
-            (data['control percentages'] == 'human driven')
+            (data['control percentages'] == '100% HDV')
             & (data['vehicles_per_lane'] == data[
                 'vehicles_per_lane'].min()),
             y].sum()
@@ -792,7 +745,7 @@ class ResultAnalyzer:
         ResultAnalyzer._prepare_pollutant_data(data, pollutant_id)
         title = 'Normalized ' + self._pollutant_id_to_string[pollutant_id]
         normalizer = data.loc[
-            (data['control percentages'] == 'human driven')
+            (data['control percentages'] == '100% HDV')
             & (data['vehicles per hour']
                == data['vehicles per hour'].min()),
             y].sum()
@@ -810,9 +763,6 @@ class ResultAnalyzer:
     def plot_lane_change_count_heatmap(
             self, scenarios: List[file_handling.ScenarioInfo],
             warmup_time: int = 10):
-        for sc in scenarios:
-            if sc.accepted_risk is None:
-                sc.accepted_risk = [0]
         y = 'lane_change_count'
         agg_function = np.count_nonzero
         col_to_count = 'veh_id'
@@ -965,8 +915,7 @@ class ResultAnalyzer:
         if 'platoon' not in self.scenario_name:
             raise ValueError('Must be scenario with platoon lane changes')
 
-        reader = readers.PlatoonLaneChangeEfficiencyReader(self.scenario_name)
-        data = reader.load_from_several_scenarios(scenarios)
+        data = self._load_data(y, scenarios)
 
         # TODO: Drop samples that didn't finish simulation
         data.drop(index=data.loc[~data['traversed_network']].index,
@@ -1012,8 +961,7 @@ class ResultAnalyzer:
         if 'platoon' not in self.scenario_name:
             raise ValueError('Must be scenario with platoon lane changes')
 
-        reader = readers.PlatoonLaneChangeEfficiencyReader(self.scenario_name)
-        data = reader.load_from_several_scenarios(scenarios)
+        data = self._load_data(y, scenarios)
 
         # Presentation naming
         y_name_map = {
@@ -1057,7 +1005,7 @@ class ResultAnalyzer:
         relevant_data = self._prepare_data_collection_data(
             data, flow_sensors, warmup_time=warmup_time,
             aggregation_period=aggregation_period)
-        ResultAnalyzer._check_if_data_is_uniform(relevant_data)
+        # ResultAnalyzer._check_if_data_is_uniform(relevant_data)
         fig, ax = _my_boxplot(relevant_data, 'Strategy',
                               y, hue='vehicles_per_lane', will_show=False)
         ax.legend(loc='upper left', bbox_to_anchor=(1.01, 1),
@@ -1084,7 +1032,7 @@ class ResultAnalyzer:
         relevant_data = self._prepare_link_evaluation_data(
             data, main_link, segment, lanes, warmup_time=warmup_time,
             aggregation_period=aggregation_period)
-        ResultAnalyzer._check_if_data_is_uniform(relevant_data)
+        # ResultAnalyzer._check_if_data_is_uniform(relevant_data)
         sns.set_style('whitegrid')
         # ax = sns.pointplot(relevant_data, x='Strategy', y=y,
         #               hue='vehicles_per_lane', errorbar=('se', 2),
@@ -1108,7 +1056,8 @@ class ResultAnalyzer:
 
     def plot_flows_vs_time_per_strategy(
             self, scenarios: List[file_handling.ScenarioInfo],
-            before_or_after_lc_point: str, lanes: List[int]):
+            before_or_after_lc_point: str, lanes: List[int],
+            warmup_time: int = 5):
         data = self._load_data('vehicle_count', scenarios)
         data['Strategy'] = data[
             'lane_change_strategy'].map(self._strategy_name_map)
@@ -1126,17 +1075,23 @@ class ResultAnalyzer:
 
         aggregation_period = 30
         data_in = self._prepare_data_collection_data(
-            data, in_flow_sensors, warmup_time=5, aggregate_sensors=False,
-            aggregation_period=aggregation_period)
-        # data_in['sensor position'] = 'in'
+            data, in_flow_sensors, warmup_time=warmup_time,
+            aggregate_sensors=True, aggregation_period=aggregation_period)
+        data_in['sensor position'] = 'in'
         data_out = self._prepare_data_collection_data(
-            data, out_flow_sensors, warmup_time=5, aggregate_sensors=False,
-            aggregation_period=aggregation_period)
-        # data_out['sensor position'] = 'out'
+            data, out_flow_sensors, warmup_time=warmup_time,
+            aggregate_sensors=True, aggregation_period=aggregation_period)
+        data_out['sensor position'] = 'out'
 
-        aggregated_data = pd.concat([data_out])
-        aggregated_data['sensor position'] = aggregated_data[
-            'sensor_number'].map(lambda x: 'origin' if x % 2 == 1 else 'dest')
+        aggregated_data = pd.concat([data_in, data_out])
+        # aggregated_data['sensor position'] = aggregated_data[
+        #     'sensor_number'].map(lambda x: 'origin' if x % 2 == 1 else 'dest')
+
+        # if True:
+        #     lc_data = self._load_data('platoon_maneuver_time', scenarios)
+        #     aggregated_data = self.normalize_lane_change_times(
+        #         aggregated_data, lc_data)
+
         plt.rc('font', size=17)
         sns.relplot(aggregated_data, x='time', y='vehicle_count',
                     kind='line', hue='sensor position', row='Strategy',
@@ -1145,7 +1100,7 @@ class ResultAnalyzer:
         plt.show()
 
     def plot_link_data_vs_time_per_strategy(
-            self, y, scenarios: List[file_handling.ScenarioInfo],
+            self, y: str, scenarios: List[file_handling.ScenarioInfo],
             use_upstream_link: bool, lanes: str,
             link_segment_number: int = None,
             aggregation_period: int = 30, warmup_time: int = 10):
@@ -1173,6 +1128,36 @@ class ResultAnalyzer:
         plt.tight_layout()
         plt.show()
 
+    def normalize_lane_change_times(self, output_data: pd.DataFrame,
+                                    lane_change_data: pd.DataFrame):
+        """
+        :param output_data: Link evaluation or data collection measurements
+        :param lane_change_data: Detailed lane change data for the scenarios
+        """
+        max_duration = lane_change_data['platoon_maneuver_time'].max()
+        grouped_lc_data = lane_change_data.groupby(
+                ['lane_change_strategy', 'simulation_number',
+                 'initial_platoon_id'])
+        grouped_data = output_data.groupby(
+            ['lane_change_strategy', 'simulation_number'])
+
+        t1, t2 = output_data['time_interval'].iloc[0].split('-')
+        interval = int(t2) - int(t1)
+        normalized_data_list = []
+        margin = 2
+        for group_id, single_lc_data in grouped_lc_data:
+            lc_t0 = single_lc_data['maneuver_start_time'].iloc[0]
+            lc_tf = lc_t0 + max_duration
+            t0 = (lc_t0 // interval - margin) * interval
+            tf = (lc_tf // interval + margin) * interval
+            single_simulation_data = grouped_data.get_group(group_id[0:2])
+            data_during_lc = single_simulation_data[
+                (single_simulation_data['time'] >= t0)
+                & (single_simulation_data['time'] < tf)].copy()
+            data_during_lc['time'] = data_during_lc['time'] - t0
+            normalized_data_list.append(data_during_lc)
+        return pd.concat(normalized_data_list)
+
     # Traffic Light Scenario Plots =========================================== #
 
     def plot_violations_per_control_percentage(
@@ -1190,8 +1175,8 @@ class ResultAnalyzer:
         #     vehicles_per_lane = [vehicles_per_lane]
 
         n_simulations = 10
-        violations_reader = readers.ViolationsReader(self.scenario_name)
-        data = violations_reader.load_from_several_scenarios(scenarios)
+        # violations_reader = readers.ViolationsReader(self.scenario_name)
+        data = self._load_data('violations', scenarios)
 
         # TODO: temporary
         data.drop(index=data[data['simulation_number'] == 11].index,
@@ -1222,7 +1207,8 @@ class ResultAnalyzer:
         plt.rc('font', size=17)
         data = self._load_data(y, scenarios)
         post_processing.drop_warmup_samples(data, warmup_time)
-        # for vpl in vehicles_per_lane:
+        subsets_by_vpl = file_handling.split_scenario_by(
+            scenarios, 'vehicles_per_lane')
         for vpl, data_to_plot in data.groupby('vehicles_per_lane'):
             table = pd.pivot_table(data_to_plot, values=y,
                                    index=['traffic_light_cacc_percentage'],
@@ -1245,9 +1231,7 @@ class ResultAnalyzer:
                       fontsize=22)
             if self.should_save_fig:
                 fig = plt.gcf()
-                scenarios_subset = [sc for sc in scenarios
-                                    if sc.vehicles_per_lane == vpl]
-                self.save_fig(fig, 'heatmap', y, scenarios_subset)
+                self.save_fig(fig, 'heatmap', y, subsets_by_vpl[vpl])
             plt.tight_layout()
             plt.show()
 
@@ -1258,7 +1242,8 @@ class ResultAnalyzer:
         plt.rc('font', size=17)
         data = self._load_data('violations', scenarios)
         post_processing.drop_warmup_samples(data, warmup_time)
-        # for vpl in vehicles_per_lane:
+        subsets_by_vpl = file_handling.split_scenario_by(
+            scenarios, 'vehicles_per_lane')
         for vpl, data_to_plot in data.groupby(['vehicles_per_lane']):
             table = pd.pivot_table(
                 data_to_plot[['veh_id', 'traffic_light_acc_percentage',
@@ -1284,9 +1269,7 @@ class ResultAnalyzer:
                       fontsize=22)
             if self.should_save_fig:
                 fig = plt.gcf()
-                scenarios_subset = [sc for sc in scenarios
-                                    if sc.vehicles_per_lane == vpl]
-                self.save_fig(fig, 'heatmap', 'violations', scenarios_subset)
+                self.save_fig(fig, 'heatmap', 'violations', subsets_by_vpl[vpl])
             plt.show()
 
     # Others ================================================================= #
@@ -1479,21 +1462,26 @@ class ResultAnalyzer:
 
         self.plot_flow_box_plot_vs_controlled_percentage(scenarios,
                                                          warmup_time=10)
-        # self.box_plot_y_vs_controlled_percentage(
-        #     'risk', veh_inputs, percentages_per_vehicle_types, warmup_time=10
-        # )
         self.plot_risk_histograms('total_risk', scenarios, min_risk=1)
+        self.plot_risk_histograms('total_lane_change_risk', scenarios,
+                                  min_risk=1)
 
     # Support methods ======================================================== #
     def _load_data(
-            self, y: str, scenarios: List[file_handling.ScenarioInfo]
-    ):
+            self, y: str,
+            scenarios: List[file_handling.ScenarioInfo]) -> pd.DataFrame:
         """
         :param y: Desired variable; it determines which reader will be used
         :param scenarios: List of simulation parameters for several scenarios
         """
         reader = self._data_reader_map[y](self.scenario_name)
-        data = reader.load_data_from_several_scenarios(scenarios)
+        if self.is_debugging:
+            if len(scenarios) > 1:
+                print("[Warning] Debugging several scenarios at once "
+                      "is not possible")
+            data = reader.load_test_data(scenarios[0])
+        else:
+            data = reader.load_data_from_several_scenarios(scenarios)
         data['vehicles per hour'] = (
                 self.file_handler.get_n_lanes()
                 * data['vehicles_per_lane'])
@@ -1531,14 +1519,14 @@ class ResultAnalyzer:
             aggregated_data['vehicle_count'] = selected_sensor_data[
                 'vehicle_count'].groupby(
                 selected_sensor_data.index // n_sensors).sum().to_numpy()
-            aggregated_data = _aggregate_data(aggregated_data, 'vehicle_count',
-                                              aggregation_period, np.sum)
+            aggregated_data = _aggregate_data_over_time(aggregated_data, 'vehicle_count',
+                                                        aggregation_period, np.sum)
         else:
             temp = []
             data_per_sensor = selected_sensor_data.groupby('sensor_number')
             for _, group in data_per_sensor:
-                temp.append(_aggregate_data(group, 'vehicle_count',
-                                            aggregation_period, np.mean))
+                temp.append(_aggregate_data_over_time(group, 'vehicle_count',
+                                                      aggregation_period, np.sum))
             aggregated_data = pd.concat(temp)
         # Aggregate time
         # aggregated_data.sort_values(['sensor_number', 'time'], kind='stable',
@@ -1581,15 +1569,15 @@ class ResultAnalyzer:
             aggregated_data[['density', 'volume']] = data[
                 ['density', 'volume']].groupby(
                 data.index // n_lanes).sum().to_numpy()
-            aggregated_data = _aggregate_data(aggregated_data,
-                                              ['density', 'volume'],
-                                              aggregation_period, np.mean)
+            aggregated_data = _aggregate_data_over_time(
+                aggregated_data, ['density', 'volume'],
+                aggregation_period, np.mean)
         else:
             temp = []
             data_per_lane = data.groupby('lane')
             for _, group in data_per_lane:
-                temp.append(_aggregate_data(group, ['density', 'volume'],
-                                            aggregation_period, np.mean))
+                temp.append(_aggregate_data_over_time(
+                    group, ['density', 'volume'], aggregation_period, np.mean))
             aggregated_data = pd.concat(temp)
 
         if 'lane_change_strategy' in aggregated_data.columns:
@@ -1651,7 +1639,7 @@ class ResultAnalyzer:
     @staticmethod
     def _check_if_data_is_uniform(data: pd.DataFrame):
         """
-        Checks whether all loaded scenarios have the same number of samples.
+        Checks whether all loaded scenarios were run with the same random seeds.
         :param data:
         :return:
         """
@@ -1756,6 +1744,12 @@ class ResultAnalyzer:
         fig.set_dpi(400)
         # axes = fig.axes
         plt.tight_layout()
+        print("Figure name:", fig_name)
+        # a = input('Save? [y/n]')
+        # if a != 'y':
+        #     print('not saving')
+        # else:
+        #     print('saving')
         fig.savefig(os.path.join(self._figure_folder, fig_name), dpi=400)
 
     def create_figure_name(
@@ -1769,7 +1763,10 @@ class ResultAnalyzer:
         accepted_risk_strings = set()
         for sc in scenarios:
             vehicles_per_lane_strings.add(str(sc.vehicles_per_lane))
-            for vt, p in sc.vehicle_percentages.items():
+            veh_percentages = sc.vehicle_percentages
+            if sum(veh_percentages.values()) == 0:
+                veh_percentages = {VehicleType.HDV: 100}
+            for vt, p in veh_percentages.items():
                 percentage_strings.add(str(p))
                 vehicle_type_strings.add(vt.name.lower())
             if sc.accepted_risk is not None:
@@ -1782,7 +1779,7 @@ class ResultAnalyzer:
             [plot_type, measurement_name, self.scenario_name,
              all_vehicles_per_lane, all_percentage_strings,
              all_vehicle_type_strings])
-        if len(accepted_risk_strings) > 0:
+        if len(accepted_risk_strings) > 1:
             all_risks = 'risks_' + '_'.join(sorted(accepted_risk_strings))
             fig_name = '_'.join([fig_name, all_risks])
         return fig_name
@@ -1905,9 +1902,7 @@ class ResultAnalyzer:
 
         :param scenarios: List of simulation parameters for several scenarios
         """
-        reader = readers.DataCollectionReader(self.scenario_name)
-        raw_data = reader.load_data_from_several_scenarios(
-            scenarios)
+        raw_data = self._load_data('flow', scenarios)
         data = self._prepare_data_collection_data(raw_data, 'in',
                                                   warmup_time=0,
                                                   aggregation_period=60)
@@ -1944,16 +1939,16 @@ def list_of_dicts_to_1d_list(dict_list: List[Dict]):
 
 def vehicle_percentage_dict_to_string(vp_dict: Dict[VehicleType, int]) -> str:
     if sum(vp_dict.values()) == 0:
-        return 'human driven'
+        return '100% HDV'
     ret_str = []
     for veh_type, p in vp_dict.items():
         ret_str.append(str(p) + '% ' + vehicle_type_to_str_map[veh_type])
     return ' '.join(sorted(ret_str))
 
 
-def _aggregate_data(data: pd.DataFrame,
-                    aggregated_variable: Union[str, List[str]],
-                    aggregation_period: int, aggregation_function):
+def _aggregate_data_over_time(data: pd.DataFrame,
+                              aggregated_variable: Union[str, List[str]],
+                              aggregation_period: int, aggregation_function):
     data.reset_index(drop=True, inplace=True)
     t1, t2 = data['time_interval'].iloc[0].split('-')
     interval = int(t2) - int(t1)
@@ -2050,11 +2045,11 @@ def _my_boxplot(relevant_data: pd.DataFrame, x: str, y: str,
                 hue: str = 'vehicles per hour', will_show: bool = True):
     # Plot
     fig = plt.figure()
-    plt.rc('font', size=15)
-    fig.set_size_inches(9, 6)
+    plt.rc('font', size=22)
+    fig.set_size_inches(12, 6)
     sns.set_style('whitegrid')
     ax = sns.boxplot(data=relevant_data, x=x, y=y, hue=hue)
-    ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.1),
+    ax.legend(loc='upper center',  # bbox_to_anchor=(0.5, 1.1),
               title=hue, ncols=2)
     if will_show:
         plt.tight_layout()
@@ -2120,11 +2115,12 @@ def _produce_console_output(
     mixed_traffic = False
     all_accepted_risks = set()
     for sc in scenarios:
-        all_accepted_risks.add(sc.accepted_risk)
+        if sc.accepted_risk is not None:
+            all_accepted_risks.add(sc.accepted_risk)
         if any(0 < p < 100 for p in sc.vehicle_percentages.values()):
             mixed_traffic = True
 
-    if len(all_accepted_risks) > 0:
+    if len(all_accepted_risks) > 1:
         group_by_cols += ['accepted_risk']
 
     print(y)
