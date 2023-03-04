@@ -8,9 +8,8 @@ import pandas as pd
 import xml.etree.ElementTree as ET
 
 import file_handling
-from file_handling import FileHandler
 from vehicle import PlatoonLaneChangeStrategy, VehicleType, \
-    vehicle_type_to_str_map
+    vehicle_type_to_print_name_map, strategy_to_print_name_map
 
 
 def match_sim_number_to_random_seed(data):
@@ -53,7 +52,7 @@ def _add_vehicle_type_columns(data: pd.DataFrame,
         for vt, p in vehicle_percentages.items():
             data[vt.name.lower() + '_percentage'] = p
             if p > 0:
-                s += str(p) + '% ' + vehicle_type_to_str_map[vt]
+                s += str(p) + '% ' + vehicle_type_to_print_name_map[vt]
         data['control percentages'] = s
 
 
@@ -72,7 +71,7 @@ def _add_risk_column(data: pd.DataFrame,
 def _add_platoon_lane_change_strategy_column(
         data: pd.DataFrame, strategy: PlatoonLaneChangeStrategy):
     if strategy is not None:
-        data['lane_change_strategy'] = strategy.value
+        data['lane_change_strategy'] = strategy_to_print_name_map[strategy]
 
 
 def _add_speeds_column(data: pd.DataFrame,
@@ -112,7 +111,7 @@ class VissimDataReader(DataReader):
                  data_identifier: str, header_identifier: str,
                  header_map: dict):
 
-        self.file_handler = FileHandler(scenario_name)
+        self.file_handler = file_handling.FileHandler(scenario_name)
         # network_data_dir = self.file_handler.get_results_base_folder()
         DataReader.__init__(self, scenario_name)
         # self.vehicle_type = vehicle_type.name.lower()
@@ -354,6 +353,16 @@ class VehicleRecordReader(VissimDataReader):
                                   self._data_identifier,
                                   self._header_identifier, self._header_map)
 
+    def load_data_from_scenario(
+            self, scenario_info: file_handling.ScenarioInfo,
+            n_rows: int = None) -> pd.DataFrame:
+        print("[VehicleRecordReader] To load all data from this scenario, use "
+              "the generator methods.\n"
+              "Returning single file from the scenario")
+        file_number = 1
+        return self.load_single_file_from_scenario(
+                file_number, scenario_info, n_rows)
+
     def generate_all_data_from_scenario(
             self, scenario_info: file_handling.ScenarioInfo,
             n_rows: int = None) -> (pd.DataFrame, int):
@@ -494,6 +503,8 @@ class LinkEvaluationReader(AggregatedDataReader):
         cols_to_be_dropped = [name for name in data.columns
                               if name.startswith(self._data_to_ignore)]
         data.drop(columns=cols_to_be_dropped, inplace=True)
+        data['delay_relative'] = data['delay_relative'].str.rstrip(
+            ' %').astype(float)
         link_information = data['link_segment_number'].str.split(
             '-', expand=True).astype(int)
         data['link_number'] = link_information.iloc[:, 0]
@@ -650,7 +661,7 @@ class PostProcessedDataReader(DataReader):
     data_identifier = ''
 
     def __init__(self, scenario_name: str, data_identifier: str):
-        self.file_handler = FileHandler(scenario_name)
+        self.file_handler = file_handling.FileHandler(scenario_name)
         DataReader.__init__(self, scenario_name)
         self.data_identifier = data_identifier
 
@@ -747,8 +758,8 @@ class PostProcessedDataReader(DataReader):
                           'at {} found'.format(self.data_identifier,
                                                data_folder))
         if len(file_with_longer_name) == 0:
-            raise OSError('No {} file at {}'.format(self.data_identifier,
-                                                    data_folder))
+            raise FileNotFoundError('No {} file at {}'.format(
+                self.data_identifier, data_folder))
         return file_with_longer_name[0]
 
 
@@ -939,7 +950,7 @@ class TrafficLightSourceReader:
     _data_identifier = '_source_times'
 
     def __init__(self, scenario_name: str):
-        file_handler = FileHandler(scenario_name)
+        file_handler = file_handling.FileHandler(scenario_name)
         file_name = (file_handler.get_file_name()
                      + self._data_identifier + self._file_extension)
         self._file_address = os.path.join(
@@ -961,7 +972,7 @@ class SignalControllerFileReader:
 
     def __init__(self, scenario_name):
         self.scenario_name = scenario_name
-        self.file_handler = FileHandler(scenario_name)
+        self.file_handler = file_handling.FileHandler(scenario_name)
 
     def load_data(self, file_identifier: int) -> ET.ElementTree:
         """
@@ -1064,38 +1075,37 @@ class MovesLinkSourceReader(MovesDataReader):
                         'sourceTypeID'].iloc[0]
 
 
-class MOVESDatabaseReader:
+class MOVESDatabaseReader (DataReader):
     user = 'moves'
-    port = 3307
+    port = file_handling.get_moves_database_port()
     hostname = '127.0.0.1'
     _vehicle_type_str_map = {
         VehicleType.HDV: 'hdv',
         VehicleType.ACC: 'acc',
         VehicleType.AUTONOMOUS: 'av',
         VehicleType.CONNECTED: 'cav',
-        VehicleType.PLATOON: 'platoon'
+        VehicleType.PLATOON: 'platoon',
+        VehicleType.VIRDI: 'virdi'
     }
 
     def __init__(self, scenario_name: str):
+        DataReader.__init__(self, scenario_name)
         with open('db_password.txt', 'r') as f:
             self.password = f.readline()
-        self.scenario_name = scenario_name
         self.file_handler = file_handling.FileHandler(scenario_name)
 
     def load_data(
-            self, vehicle_percentages: Dict[VehicleType, int],
-            vehicles_per_lane: int,
-            accepted_risk: int = None,
-            platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None,
-            orig_and_dest_lane_speeds: Tuple[int, str] = None) -> pd.DataFrame:
+            self, scenario: file_handling.ScenarioInfo) -> pd.DataFrame:
 
-        if platoon_lane_change_strategy is not None:
+        if scenario.platoon_lane_change_strategy is not None:
             raise RuntimeError('[MOVESDatabaseReader] not yet ready for '
                                + 'platoon scenarios (sorry, buddy)')
 
+        vehicle_percentages = scenario.vehicle_percentages
+        vehicles_per_lane = scenario.vehicles_per_lane
         temp = []
-        for vt in vehicle_percentages:
-            p = vehicle_percentages[vt]
+
+        for vt, p in vehicle_percentages.items():
             p_str = (str(p) + '_') if p < 100 else ''
             if p > 0:
                 temp.append(p_str + self._vehicle_type_str_map[vt])
@@ -1110,37 +1120,16 @@ class MOVESDatabaseReader:
                                    vt_str, str(3 * vehicles_per_lane), 'in'])
         data = self._load_pollutants(output_database)
         self._add_volume_data(input_database, data)
-        _add_vehicle_type_columns(data, vehicle_percentages)
-        _add_vehicle_input_column(data, vehicles_per_lane)
-        _add_risk_column(data, accepted_risk)
+        _add_scenario_info_columns(data, scenario)
         data['emission_per_volume'] = data['emission'] / data['volume']
         return data
 
-    def load_data_with_controlled_percentage(
-            self, vehicle_percentages: List[Dict[VehicleType, int]],
-            vehicle_input_per_lane: Union[int, List[int]],
-            accepted_risks: List[int] = None
-    ) -> pd.DataFrame:
-        """
-        Loads data from all simulations with the given autonomous
-        percentages.
-
-        :param vehicle_percentages: List of dictionnaries describing the
-         types of controlled vehicles in each simulation.
-        :param vehicle_input_per_lane:
-        :param accepted_risks: accepted lane change risk
-        :return: pandas dataframe with the data
-        """
-        if not isinstance(vehicle_input_per_lane, list):
-            vehicle_input_per_lane = [vehicle_input_per_lane]
-        if accepted_risks is None:
-            accepted_risks = [None]
-
+    def load_data_from_several_scenarios(
+            self, scenarios: List[file_handling.ScenarioInfo]
+    ):
         data_per_folder = []
-        for i in vehicle_input_per_lane:
-            for vp in vehicle_percentages:
-                for ar in accepted_risks:
-                    data_per_folder.append(self.load_data(vp, i, ar))
+        for sc in scenarios:
+            data_per_folder.append(self.load_data(sc))
         data = pd.concat(data_per_folder, ignore_index=True)
         return data
 

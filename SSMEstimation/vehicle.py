@@ -83,7 +83,7 @@ class PlatoonLaneChangeStrategy(Enum):
     leader_first_and_reverse = 4
 
 
-vehicle_type_to_str_map = {
+vehicle_type_to_print_name_map = {
     VehicleType.HDV: 'HDV',
     VehicleType.ACC: 'ACC',
     VehicleType.AUTONOMOUS: 'AV',
@@ -96,6 +96,16 @@ vehicle_type_to_str_map = {
     VehicleType.TRUCK: 'truck',
     VehicleType.BUS: 'bus',
     VehicleType.MOTORCYCLE: 'motorcycle'
+}
+
+
+strategy_to_print_name_map = {
+    PlatoonLaneChangeStrategy.human_driven: 'HDV',
+    PlatoonLaneChangeStrategy.no_strategy: 'CAV',
+    PlatoonLaneChangeStrategy.single_body_platoon: 'SBP',
+    PlatoonLaneChangeStrategy.leader_first: 'Ld First',
+    PlatoonLaneChangeStrategy.last_vehicle_first: 'LV First',
+    PlatoonLaneChangeStrategy.leader_first_and_reverse: 'Ld First Rev'
 }
 
 

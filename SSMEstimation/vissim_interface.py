@@ -55,9 +55,9 @@ class VissimInterface:
             'in_and_merge': _ScenarioParameters(1800, 1,
                                                 self.run_in_and_merge_scenario),
             'platoon_mandatory_lane_change': _ScenarioParameters(
-                1200, 1, self.run_platoon_scenario),
+                1200, 1, self.run_platoon_lane_change_scenario),
             'platoon_discretionary_lane_change': _ScenarioParameters(
-                1200, 1, self.run_platoon_scenario),
+                1200, 1, self.run_platoon_lane_change_scenario),
             'i710': _ScenarioParameters(3600, 10, self.run_i710_simulation),
             'us101': _ScenarioParameters(1800, 1, self.run_us_101_simulation),
             'traffic_lights': _ScenarioParameters(
@@ -360,12 +360,11 @@ class VissimInterface:
         self.vissim.Simulation.RunContinuous()
         print('[Client] Simulation done.')
 
-    def run_platoon_scenario(self,
-                             platoon_size: int,
-                             platoon_speed: int,
-                             first_platoon_time: int = 10,
-                             platoon_creation_period: int = 60,
-                             n_platoons: int = None):
+    def run_platoon_lane_change_scenario(
+            self, platoon_size: int, platoon_speed: int,
+            first_platoon_time: int, platoon_creation_period: int,
+            orig_lane_speed: int = None, dest_lane_speed: int = None,
+            n_platoons: int = None):
         """
 
         :param platoon_size: Number of vehicles in the platoon
@@ -381,17 +380,16 @@ class VissimInterface:
         if not self.is_correct_network_loaded():
             return
 
+        origin_lane_link = 2
+        dest_lane_link = 4
         simulation = self.vissim.Simulation
         run_counter = 0
         sim_time = simulation.AttValue('SimPeriod')
         n_runs = simulation.AttValue('NumRuns')
         if n_platoons is None:
             n_platoons = sim_time // platoon_creation_period + 1
-        # print('Sim period is ', sim_time)
-        # print('n platoons is', n_platoons)
-        # print('[Client] Setting first ever break point at ',
-        #       first_platoon_time)
-        simulation.SetAttValue("SimBreakAt", first_platoon_time)
+
+        simulation.SetAttValue("SimBreakAt", 5)
         simulation.RunContinuous()
         while run_counter < n_runs:
             run_counter += 1
@@ -400,6 +398,12 @@ class VissimInterface:
             continue_loop_condition = (platoon_creation_time < sim_time
                                        and platoon_counter < n_platoons)
             print('[Client] Simulation', run_counter, 'started')
+            self.set_desired_speed_for_vehicles_in_link(
+                origin_lane_link, orig_lane_speed)
+            self.set_desired_speed_for_vehicles_in_link(
+                dest_lane_link, dest_lane_speed)
+            simulation.SetAttValue("SimBreakAt", first_platoon_time)
+            simulation.RunContinuous()
             while continue_loop_condition:
                 platoon_counter += 1
                 platoon_creation_time += platoon_creation_period
@@ -407,18 +411,16 @@ class VissimInterface:
                                            and platoon_counter < n_platoons)
                 print('[Client] Creating platoon', platoon_counter,
                       'at time', simulation.SimulationSecond)
+                self.set_desired_speed_for_vehicles_in_link(
+                    origin_lane_link, orig_lane_speed)
+                self.set_desired_speed_for_vehicles_in_link(
+                    dest_lane_link, dest_lane_speed)
                 self.create_platoon(platoon_size, platoon_speed)
                 if continue_loop_condition:
-                    # print('[Client] Setting break point at ',
-                    #       platoon_creation_time)
                     simulation.SetAttValue("SimBreakAt", platoon_creation_time)
                 else:
-                    # print('[Client] Setting break point for next run at ',
-                    #       first_platoon_time)
                     simulation.SetAttValue("SimBreakAt", first_platoon_time)
-                # print('[Client] Running again')
                 simulation.RunContinuous()
-            # print('runs finished:', run_counter)
 
     def run_platoon_scenario_sample(
             self, platoon_size: int,
@@ -452,13 +454,19 @@ class VissimInterface:
                 "QuickMode", 1)
 
         platoon_speed = scenario_info.orig_and_dest_lane_speeds[0]
-
-        self.run_platoon_scenario(
+        results_folder = self.file_handler.get_vissim_test_folder()
+        is_folder_set = self.set_results_folder(results_folder)
+        self.run_platoon_lane_change_scenario(
             platoon_size, platoon_speed,
             first_platoon_time=first_platoon_time,
             platoon_creation_period=platoon_creation_period)
         self.vissim.Graphics.CurrentNetworkWindow.SetAttValue(
             "QuickMode", 0)
+        if not is_folder_set:
+            print("Copying result files to their proper "
+                  "location")
+            self.file_handler.copy_all_files_from_temp_folder(
+                results_folder)
 
         print('Simulation done')
 
@@ -566,25 +574,54 @@ class VissimInterface:
         """
         # Set-up simulation parameters
         if is_debugging:
-            warm_up_minutes = 0
             runs_per_scenario = 1
             simulation_period = 300
             first_platoon_time = 10
+            platoon_size = 4
+            creation_period = 60
         else:
-            warm_up_minutes = self.network_info.warm_up_minutes
-            simulation_period = self.network_info.evaluation_period
-            first_platoon_time = 180
+            platoon_size = 4
             self.set_verbose_simulation(False)
             self.set_logged_vehicle_id(0)
             self.vissim.Graphics.CurrentNetworkWindow.SetAttValue(
                 "QuickMode", 1)
             self.vissim.SuspendUpdateGUI()
+            simulation_period = self.network_info.evaluation_period
 
-        platoon_size = 4
-        orig_lane_speed_distribution = 'same'
+            special_cases = [sc.special_case for sc in scenarios]
+            if len(set(special_cases)) > 1:
+                print("Cannot deal with more than one special case at once\n"
+                      "Program will stop")
+                return
+            special_case = special_cases[0]
+            first_platoon_time = 240
+            if special_case is None:
+                first_platoon_time = 180
+                creation_period = 60
+            elif special_case == "no_lane_change":
+                platoon_size = 0
+                # The time we create platoons is also the time we set some
+                # vehicles' speeds
+                first_platoon_time = 240
+                creation_period = 240
+            elif special_case == "single_lane_change":
+                simulation_period = 720
+                creation_period = simulation_period + 1
+            elif special_case.endswith("lane_change_period"):
+                creation_period = special_case.split("_")[0]
+            else:
+                print("Unknown special case. Not running simulations")
+                return
+
+        # orig_lane_speed_distribution = 'same'
+        left_lane_composition_number = (
+            self.find_vehicle_composition_number_by_name("dest_lane"))
+        right_lane_composition_number = (
+            self.find_vehicle_composition_number_by_name("orig_lane"))
+
+        platoon_desired_speed = 90
         self.set_evaluation_options(True, True, True, True, True,
-                                    warm_up_minutes * 60,
-                                    data_frequency=5)
+                                    warm_up_time=0, data_frequency=5)
         self.set_random_seed(self._initial_random_seed)
         self.set_random_seed_increment(1)
         self.set_simulation_period(simulation_period)
@@ -593,24 +630,17 @@ class VissimInterface:
         print("Starting multiple-scenario run.")
         multiple_sim_start_time = time.perf_counter()
         for sc in scenarios:
-            print('Scenario ', sc)
+            print('Scenario:\n', file_handling.print_scenario(sc))
             self.reset_saved_simulations(warning_active=False)
             self.set_platoon_lane_change_strategy(
                 sc.platoon_lane_change_strategy)
-            vehicle_types = sc.vehicle_percentages.keys()
-            platoon_desired_speed = sc.orig_and_dest_lane_speeds[0]
-            dest_lane_speed_distribution = sc.orig_and_dest_lane_speeds[1]
-            orig_lane_comp_number = (
-                self.find_composition_matching_speed_distributions(
-                    {vt: orig_lane_speed_distribution for vt in vehicle_types}))
-            dest_lane_comp_number = (
-                self.find_composition_matching_speed_distributions(
-                    {vt: dest_lane_speed_distribution for vt in vehicle_types}))
-            input_to_comp_map = {
-                'right_lane': orig_lane_comp_number,
-                'left_lane': dest_lane_comp_number
-            }
-            self.set_vehicle_inputs_compositions(input_to_comp_map)
+            self.set_composition_vehicle_types_and_flows(
+                right_lane_composition_number, sc.vehicle_percentages)
+            self.set_composition_vehicle_types_and_flows(
+                left_lane_composition_number, sc.vehicle_percentages)
+            speed_map = {"orig_lane": sc.orig_and_dest_lane_speeds[0],
+                         "dest_lane": sc.orig_and_dest_lane_speeds[1]}
+            self.set_reduced_speed_area_limit(speed_map)
             self.set_uniform_vehicle_input_for_all_lanes(sc.vehicles_per_lane)
             if is_debugging:
                 results_folder = self.file_handler.get_vissim_test_folder()
@@ -620,10 +650,10 @@ class VissimInterface:
             print("Starting series of {} runs with duration {}".
                   format(runs_per_scenario, simulation_period))
             start_time = time.perf_counter()
-            self.run_platoon_scenario(
+            self.run_platoon_lane_change_scenario(
                 platoon_size, platoon_desired_speed,
                 first_platoon_time=first_platoon_time,
-                platoon_creation_period=60)
+                platoon_creation_period=creation_period)
             end_time = time.perf_counter()
             _print_run_time_with_unit(
                 start_time, end_time, runs_per_scenario)
@@ -778,37 +808,6 @@ class VissimInterface:
         self.vissim.Evaluation.SetAttValue('EvalOutDir', results_folder)
         return success
 
-    # def create_time_intervals(self, period):
-    #     """Programmatically creates time intervals in VISSIM so that
-    #     measurements can be taken periodically. This avoids having to stop
-    #     the simulation to save the results as they come.
-    #     It seems like VISSIM already provides an easy way to do this, so this
-    #     function is no longer necessary
-    #
-    #     :param period: time intervals will be created with equal 'period'
-    #      duration
-    #      """
-    #
-    #     print('WARNING: this function does''t do anything for now')
-    #
-    #     # n_intervals = self.vissim.Simulation.AttValue(
-    #     #     'SimPeriod') // period + 1
-    #     #
-    #     # # I still don't know how to find the TimeIntervalSet which contains
-    #     # # the TimeIntervalContainer relative to the measurements
-    #     # time_interval_set_container = self.vissim.Net.TimeIntervalSets
-    #     # for ti_set in time_interval_set_container:
-    #     #     ti_container = ti_set.TimeInts
-    #     #     if True:  # create condition to find the proper TimeIntervalSet
-    #     #         print('initial number of time intervals: ',
-    #     #             len(ti_container))
-    #     #         for i in range(len(ti_container), n_intervals):
-    #     #             ti_container.AddTimeInterval(i)
-    #     #         print('final number of time intervals: ', len(ti_container))
-    #     #
-    #     # # Save
-    #     # self.vissim.SaveNet()
-
     def set_vehicle_inputs(self, new_veh_inputs: dict):
         """
         Sets the several vehicle inputs in the simulation by name.
@@ -949,9 +948,21 @@ class VissimInterface:
         """
         :returns: Nothing. Modifies the open simulation.
         """
-        composition_number = self.find_vehicle_composition_by_name(
+        composition_number = self.find_vehicle_composition_number_by_name(
             composition_name)
         self.set_all_vehicle_inputs_composition(composition_number)
+
+    def set_desired_speed_for_vehicles_in_link(self, link_number: int,
+                                               desired_speed: float):
+        """
+        Sets the desired speed of all vehicles in the link
+        """
+        link = self.vissim.Net.Links.ItemByKey(link_number)
+        all_vehicles_in_link = link.Vehs
+        first_vehicle = all_vehicles_in_link[len(all_vehicles_in_link)-1]
+        print("[Client] Setting desired speed of vehicle ",
+              first_vehicle.AttValue("No"), "to", desired_speed)
+        first_vehicle.SetAttValue('DesSpeed', desired_speed)
 
     def set_accepted_lane_change_risk_to_leaders(self, accepted_risk: float):
         if accepted_risk is None:
@@ -977,11 +988,13 @@ class VissimInterface:
 
     def set_platoon_lane_change_strategy(
             self, platoon_lc_strategy: PlatoonLaneChangeStrategy):
-        print("[Client] Setting platoon lane change strategy to",
-              platoon_lc_strategy.value, "(" + platoon_lc_strategy.name + ")")
-        self.set_uda_default_value(
-            _UDANumber.platoon_lane_change_strategy,
-            platoon_lc_strategy.value)
+        if platoon_lc_strategy is not None:
+            print("[Client] Setting platoon lane change strategy to",
+                  platoon_lc_strategy.value,
+                  "(" + platoon_lc_strategy.name + ")")
+            self.set_uda_default_value(
+                _UDANumber.platoon_lane_change_strategy,
+                platoon_lc_strategy.value)
 
     def set_verbose_simulation(self, is_simulation_verbose: bool):
         self.set_uda_default_value(_UDANumber.verbose_simulation,
@@ -1153,6 +1166,9 @@ class VissimInterface:
         vehicles
         """
 
+        if platoon_size == 0:
+            return
+
         platoon_type = vehicle.VehicleType.PLATOON
         platoon_vehicle = vehicle.Vehicle(platoon_type)
         vissim_vehicle_type = vehicle.Vehicle.ENUM_TO_VISSIM_ID[platoon_type]
@@ -1168,7 +1184,7 @@ class VissimInterface:
         first_platoon_position = 10
 
         # Remove any vehicles occupying the platoon space
-        vehicles_in_link = net.Links.ItemByKey(2).Vehs
+        vehicles_in_link = net.Links.ItemByKey(right_lane_link).Vehs
         veh_length = 6  # just an estimate
         extra_margin = 10  # to give the platoon time to react to some slower
         # moving vehicle ahead
@@ -1256,9 +1272,9 @@ class VissimInterface:
                             desired_speed_distribution,
                             self.file_handler.get_network_name()))
 
-    def find_vehicle_composition_by_name(self, name: str) -> int:
+    def find_vehicle_composition_number_by_name(self, name: str) -> int:
         """
-        Finds the vehicle composition name with the given name
+        Finds the vehicle composition with the given name
         :param name: Vehicle composition name
         :return: Vehicle composition number
         """
@@ -1269,6 +1285,24 @@ class VissimInterface:
         raise ValueError('[Client] Composition name not found in {} '
                          'network.'.format(
                              self.file_handler.get_network_name()))
+
+    def set_composition_vehicle_types_and_flows(
+            self, composition_number: int,
+            vehicle_percentages: Dict[VehicleType, int]):
+        veh_composition = self.vissim.Net.VehicleCompositions.ItemByKey(
+            composition_number)
+        relative_flows = veh_composition.VehCompRelFlows
+        if len(veh_composition.VehCompRelFlows) != len(vehicle_percentages):
+            raise ValueError("Number of items in vehicle percentage dict "
+                             "does not match number of relative flows in "
+                             "composition", composition_number)
+
+        veh_type = list(vehicle_percentages.keys())
+        for i in range(len(relative_flows)):
+            relative_flows[i].SetAttValue(
+                'VehType', Vehicle.ENUM_TO_VISSIM_ID[veh_type[i]])
+            relative_flows[i].SetAttValue(
+                'RelFlow', vehicle_percentages[veh_type[i]])
 
     def set_vehicle_composition_desired_speed(self, composition_number: int,
                                               speed_distribution_name: str):
@@ -1282,6 +1316,13 @@ class VissimInterface:
               '{} set to {}'.format(
                   veh_composition.AttValue('Name'),
                   speed_distribution.AttValue('Name')))
+
+    def set_reduced_speed_area_limit(self, speed_limits: Dict[str, str]):
+        reduced_speed_areas = self.vissim.Net.ReducedSpeedAreas
+        for rsa in reduced_speed_areas:
+            speed_distribution = self.get_speed_distribution_by_name(
+                speed_limits[rsa.AttValue("Name")])
+            rsa.SetAttValue("DesSpeedDistr(10)", speed_distribution)
 
     def get_speed_distribution_by_name(self, speed_distribution_name: str):
         speed_distribution_container = self.vissim.Net.DesSpeedDistributions

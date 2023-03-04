@@ -2554,6 +2554,15 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
                              how='inner')
         result_df['accel_cost'] = accel_cost
 
+        # TODO: not working
+        grouped_by_platoon = platoon_vehicles.groupby('platoon_id')
+        result_df['maneuver_start_position'] = grouped_by_platoon.apply(
+            lambda g: g.loc[g['time'] == g['maneuver_start_time'], 'x'].max()
+        )
+        result_df['maneuver_end_position'] = grouped_by_platoon.apply(
+            lambda g: g.loc[g['time'] == g['maneuver_end_time'], 'x'].max()
+        )
+
         result_df.reset_index(inplace=True, names='veh_id')
         return result_df
 
@@ -2702,8 +2711,8 @@ def compute_maneuver_time_per_platoon(vehicle_records: pd.DataFrame):
      which vehicles are not lane keeping
     :returns: dataframe with the initial, final, and total maneuver time
     """
-    times = vehicle_records.groupby('platoon_id').agg(
-        {'time': ['first', 'last']})
+    grouped_by_platoon = vehicle_records.groupby('platoon_id')
+    times = grouped_by_platoon.agg({'time': ['first', 'last']})
     return_df = pd.DataFrame()
     return_df['maneuver_start_time'] = times['time']['first']
     return_df['maneuver_end_time'] = times['time']['last']
@@ -2766,7 +2775,7 @@ def create_summary_for_single_scenario(
     data_generator = vehicle_record_reader.generate_all_data_from_scenario(
         scenario_info, n_rows)
     data = defaultdict(list)
-    print('Start of safety summary creation for network {}\nscenario'.format(
+    print('Start of summary creation for network {}\nscenario'.format(
         scenario_name, scenario_info))
     for (vehicle_records, file_number) in data_generator:
         # post_process_data(data_source_VISSIM, vehicle_records)

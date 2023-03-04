@@ -85,7 +85,6 @@ def get_individual_vehicle_trajectories_to_moves(
 
     moves_speed_data = pd.concat(speed_data_list)
 
-
     # Save all files
     link_writer = data_writer.MOVESLinksWriter(scenario_name)
     link_writer.save_data(moves_link_data, scenario_info)
@@ -391,6 +390,7 @@ class MovesLinkSourceProcessor(MovesProcessor):
         :param data: All link ids
         """
         # NOTE: for now we're only dealing with cars
+        on_road_links = data.loc[data['roadTypeID'] != 1, 'linkID']
         moves_link_source_reader = readers.MovesLinkSourceReader(
             self.scenario_name)
         car_id = moves_link_source_reader.get_passenger_vehicle_id()
@@ -400,7 +400,7 @@ class MovesLinkSourceProcessor(MovesProcessor):
         # moves_link_source_data['sourceTypeID'] = car_id
         # moves_link_source_data['sourceTypeHourFraction'] = 1
         moves_link_source_data = pd.DataFrame(data={
-            'linkID': data['linkID'], 'sourceTypeID': car_id,
+            'linkID': on_road_links, 'sourceTypeID': car_id,
             'sourceTypeHourFraction': 1
         })
         return moves_link_source_data

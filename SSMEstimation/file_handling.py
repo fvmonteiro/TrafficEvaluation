@@ -4,10 +4,10 @@ from dataclasses import dataclass
 from collections import defaultdict
 import os
 import shutil
-from typing import Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 from vehicle import VehicleType, PlatoonLaneChangeStrategy, \
-    vehicle_type_to_str_map
+    vehicle_type_to_print_name_map, strategy_to_print_name_map
 
 
 @dataclass
@@ -17,6 +17,7 @@ class _PCInfo:
     networks_folder: str
     shared_folder: str
     moves_folder: str
+    moves_database_port: int
 
 
 @dataclass
@@ -46,7 +47,9 @@ class ScenarioInfo:
     vehicles_per_lane: int
     accepted_risk: Union[int, None] = None
     platoon_lane_change_strategy: Union[PlatoonLaneChangeStrategy, None] = None
-    orig_and_dest_lane_speeds: Union[Tuple[int, str], None] = None
+    orig_and_dest_lane_speeds: Union[Tuple[Union[str, int], Union[str, int]],
+                                     None] = None
+    special_case: Union[str, None] = None  # identifies test simulation runs
 
 
 _folders_map = {
@@ -56,7 +59,8 @@ _folders_map = {
                                'G:\\My Drive\\Safety in Mixed Traffic'
                                '\\data_exchange',
                                'C:\\Users\\fvall\\Documents\\Research\\'
-                               'EnvironmentalEvaluations'
+                               'EnvironmentalEvaluations',
+                               3307
                                ),
     'DESKTOP-626HHGI': _PCInfo('usc-old',
                                'C:\\Users\\fvall\\Documents\\Research\\'
@@ -64,7 +68,8 @@ _folders_map = {
                                'C:\\Users\\fvall\\Google Drive\\'
                                'Safety in Mixed Traffic\\data_exchange',
                                'C:\\Users\\fvall\\Documents\\Research\\'
-                               'EnvironmentalEvaluations'
+                               'EnvironmentalEvaluations',
+                               3306
                                ),
     'DESKTOP-B1GECOE': _PCInfo('usc',
                                'C:\\Users\\fvall\\Documents\\Research\\'
@@ -72,7 +77,8 @@ _folders_map = {
                                'G:\\My Drive\\Safety in Mixed Traffic'
                                '\\data_exchange',
                                'C:\\Users\\fvall\\Documents\\Research\\'
-                               'EnvironmentalEvaluations'
+                               'EnvironmentalEvaluations',
+                               3306
                                ),
 }
 
@@ -116,7 +122,9 @@ def create_multiple_scenarios(
         vehicle_inputs: List[int],
         accepted_risks: List[int] = None,
         lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
-        orig_and_dest_lane_speeds: List[Tuple[int, str]] = None):
+        orig_and_dest_lane_speeds: List[Tuple[Union[str, int],
+                                              Union[str, int]]] = None,
+        special_case: str = None):
     if accepted_risks is None:
         accepted_risks = [None]
         if lane_change_strategies is None:  # not a platoon scenario
@@ -132,21 +140,46 @@ def create_multiple_scenarios(
             lane_change_strategies, orig_and_dest_lane_speeds):
         if sum(vp.values()) == 0 and ar is not None and ar > 0:
             continue
-        scenarios.append(ScenarioInfo(vp, vi, ar, st, sp))
+        scenarios.append(ScenarioInfo(vp, vi, ar, st, sp,
+                                      special_case))
     return scenarios
 
 
-def split_scenario_by(scenarios: List[ScenarioInfo], attribute: str):
+def print_scenario(scenario: ScenarioInfo):
+    str_list = []
+    veh_percent_list = [str(p) + "% " + vt.name.lower()
+                        for vt, p in scenario.vehicle_percentages.items()]
+    str_list.append("Vehicles: " + ", ".join(veh_percent_list))
+    str_list.append(str(scenario.vehicles_per_lane) + " vehs/lane/hour")
+    if scenario.accepted_risk is not None:
+        str_list.append("Accepted risk: " + str(scenario.accepted_risk))
+    if scenario.platoon_lane_change_strategy is not None:
+        str_list.append("Platoon LC strat.: "
+                        + scenario.platoon_lane_change_strategy.name.lower())
+    if scenario.orig_and_dest_lane_speeds is not None:
+        str_list.append("Platoon speed "
+                        + str(scenario.orig_and_dest_lane_speeds[0])
+                        + " and dest lane speed: "
+                        + str(scenario.orig_and_dest_lane_speeds[1]))
+    if scenario.special_case is not None:
+        str_list.append("Special case: " + scenario.special_case)
+    return "\n".join(str_list)
+
+
+def split_scenario_by(scenarios: List[ScenarioInfo], attribute: str) \
+        -> Dict[Any, List[ScenarioInfo]]:
     """
     Splits a list of scenarios in subsets based on the value of the attribute.
     :returns: Dictionary where keys are unique values of the attribute and
      values are lists of scenarios.
     """
     def attribute_value_to_str(value):
+        if value is None:
+            return 'None'
         if attribute == 'vehicle_percentages':
             return vehicle_percentage_dict_to_string(value)
         elif attribute == 'platoon_lane_change_strategy':
-            return value.name.lower()
+            return strategy_to_print_name_map[value]
         else:
             return value
 
@@ -161,7 +194,7 @@ def vehicle_percentage_dict_to_string(vp_dict: Dict[VehicleType, int]) -> str:
         return '100% HDV'
     ret_str = []
     for veh_type, p in vp_dict.items():
-        ret_str.append(str(p) + '% ' + vehicle_type_to_str_map[veh_type])
+        ret_str.append(str(p) + '% ' + vehicle_type_to_print_name_map[veh_type])
     return ' '.join(sorted(ret_str))
 
 
@@ -369,13 +402,6 @@ def create_percent_folder_name(
         if p > 0:
             all_strings += [str(int(p)), 'percent', vt.name.lower()]
     return '_'.join(all_strings)
-    # vehicle_type_names = [v.name.lower() for v in vehicle_type]
-    # percentage_folder = ''
-    # for v, p in sorted(zip(vehicle_type_names, percentage)):
-    #     if p > 0:
-    #         percentage_folder += str(int(p)) + '_percent_' + v + '_'
-    #
-    # return percentage_folder[:-1]  # remove last '_'
 
 
 def get_local_networks_folder() -> str:
@@ -390,12 +416,8 @@ def get_moves_folder() -> str:
     return _folders_map[os.environ['COMPUTERNAME']].moves_folder
 
 
-# def get_scenario_number_of_lanes(scenario_name: str) -> int:
-#     return _scenario_info_all[scenario_name].network_info.n_lanes
-# 
-# 
-# def get_scenario_main_links(scneario_name: str) -> List[int]:
-#     return _scenario_info_all[scneario_name].network_info.main_links
+def get_moves_database_port() -> int:
+    return _folders_map[os.environ['COMPUTERNAME']].moves_database_port
 
 
 def create_vehs_per_lane_folder_name(vehicles_per_lane: Union[int, str]) -> str:
@@ -467,5 +489,7 @@ def create_file_path(
     if scenario_info.accepted_risk is not None:
         folder_list.append(create_accepted_risk_folder_name(
             scenario_info.accepted_risk))
+    if scenario_info.special_case is not None:
+        folder_list.append(scenario_info.special_case)
 
     return os.path.join(*folder_list)
