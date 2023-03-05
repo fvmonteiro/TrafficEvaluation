@@ -348,35 +348,34 @@ def main():
     other_vehicles = {VehicleType.CONNECTED_NO_LANE_CHANGE: 100}
     lc_scenarios = file_handling.create_multiple_scenarios(
         [other_vehicles], [inputs_per_lane],
-        lane_change_strategies=strategies[:1],
-        orig_and_dest_lane_speeds=[('90', '90'), ('70', '110'),
-                                   ('same', 'faster')],
-        # special_case='single_lane_change'
+        lane_change_strategies=strategies,
+        orig_and_dest_lane_speeds=[('70', '50'), ('70', '70'), ('70', '90')],
+        special_case='single_lane_change'
     )
-    no_lc_scenario = file_handling.ScenarioInfo(
-        other_vehicles, inputs_per_lane,
-        orig_and_dest_lane_speeds=(90, 'same'),
-        special_case='no_lane_change')
+    # no_lc_scenario = file_handling.ScenarioInfo(
+    #     other_vehicles, inputs_per_lane,
+    #     orig_and_dest_lane_speeds=(90, 'same'),
+    #     special_case='no_lane_change')
 
-    all_scenarios = [no_lc_scenario]
-    all_scenarios.extend(lc_scenarios)
+    # all_scenarios = [no_lc_scenario]
+    # all_scenarios.extend(lc_scenarios)
 
     vi = VissimInterface()
     vi.load_simulation(scenario_name)
-    vi.run_platoon_lane_change_scenario(4, 110, 60, 300, 50, 50)
+    # vi.run_platoon_lane_change_scenario(4, 110, 60, 300, 50, 50)
     # vi.run_platoon_scenario_sample(4, scenarios[0], simulation_period=1200,
     #                                number_of_runs=1, first_platoon_time=300,
     #                                platoon_creation_period=120,
     #                                is_fast_mode=True)
     # vi.run_multiple_platoon_lane_change_scenarios(
     #     [no_lc_scenario], runs_per_scenario=3)
-    # vi.run_multiple_platoon_lane_change_scenarios(
-    #     lc_scenarios, runs_per_scenario=3, is_debugging=True)
-    # vi.close_vissim()
+    vi.run_multiple_platoon_lane_change_scenarios(
+        lc_scenarios, runs_per_scenario=2, is_debugging=True)
+    vi.close_vissim()
 
     # =============== Post processing =============== #
-    # post_processing.create_platoon_lane_change_summary(
-    #     scenario_name, lc_scenarios)
+    post_processing.create_platoon_lane_change_summary(
+        scenario_name, lc_scenarios)
 
     # file_handler = file_handling.FileHandler(scenario_name)
     # file_handler.export_multiple_platoon_results_to_cloud(
