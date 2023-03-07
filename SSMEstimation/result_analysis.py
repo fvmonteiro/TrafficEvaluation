@@ -47,8 +47,9 @@ class ResultAnalyzer:
                   'CPI': 'dimensionless', 'DTSG': 'm',
                   'risk': 'm/s', 'estimated_risk': 'm/s',
                   'flow': 'veh/h', 'density': 'veh/km',
-                  'time': 'min', 'time_interval': 's',
-                  'volume': 'veh/h', 'average_speed': 'km/h'}
+                  'time': 's', 'time_interval': 's',
+                  'volume': 'veh/h', 'average_speed': 'km/h',
+                  'delay_relative': '%'}
 
     _ssm_pretty_name_map = {'low_TTC': 'Low TTC',
                             'high_DRAC': 'High DRAC',
@@ -1065,21 +1066,38 @@ class ResultAnalyzer:
             data, link, link_segment_number, lane_numbers,
             aggregate_lanes=False, warmup_time=warmup_time,
             aggregation_period=aggregation_period)
-        aggregated_data['lane'] = aggregated_data['lane'].astype(int)
 
         in_common_data = self._make_data_uniform(aggregated_data,
                                                  use_all_simulations)
+
+        lane_map = {1: "Origin", 2: "Destination"}
+        in_common_data['lane'] = in_common_data['lane'].map(lane_map)
+        in_common_data.rename(columns={"lane_change_strategy": "Strategy",
+                                       "lane": "Lane"},
+                              inplace=True)
+        x_label = 'time (s)'
+        y_label = ' '.join(y.split('_')) + ' (' + self._units_map[y] + ')'
         sns.set_style("whitegrid")
         plt.rc('font', size=17)
         g = sns.relplot(in_common_data, x='time', y=y,
-                        kind='line', hue='lane', row='lane_change_strategy',
-                        aspect=4, palette='tab10')
+                        kind='line', hue='Strategy', row='Lane',
+                        aspect=2)
+        g.set_axis_labels(x_label, y_label)
         g.tight_layout()
         for i in range(len(g.axes)):
             max_y = in_common_data[y].max()
-            self._show_lane_change_start_times(scenarios[i], max_y,
+            self._show_lane_change_start_times(scenarios[0], max_y,
                                                g.axes[i][0])
         fig = g.figure
+        sns.move_legend(g, "upper left", bbox_to_anchor=(0.8, 0.7),
+                        frameon=True, facecolor="white", edgecolor="black")
+        # fig = plt.figure()
+        # fig.set_size_inches(10, 5)
+        # ax = sns.lineplot(in_common_data, x='time', y=y,
+        #                   style='Lane', hue='Strategy')
+        # ax.legend(loc="upper left", bbox_to_anchor=(1.01, 0.9))
+        # ax.set_xlabel(x_label)
+        # ax.set_ylabel(y_label)
         fig.tight_layout()
         fig.show()
 

@@ -570,10 +570,10 @@ class VissimInterface:
         """
         # Set-up simulation parameters
         if is_debugging:
-            simulation_period = 100
-            first_platoon_time = 30
+            simulation_period = 500
+            first_platoon_time = 300
             platoon_size = 4
-            creation_period = 60
+            creation_period = simulation_period
         else:
             platoon_size = 4
             self.set_verbose_simulation(False)
@@ -614,7 +614,7 @@ class VissimInterface:
         platoon_desired_speed = 110
         self.set_evaluation_options(True, True, True, True, True,
                                     warm_up_time=0, data_frequency=5)
-        self.set_random_seed(self._initial_random_seed)
+        self.set_random_seed(7)
         self.set_random_seed_increment(1)
         self.set_simulation_period(simulation_period)
         self.set_number_of_runs(runs_per_scenario)
@@ -636,6 +636,7 @@ class VissimInterface:
             self.set_uniform_vehicle_input_for_all_lanes(sc.vehicles_per_lane)
             if is_debugging:
                 results_folder = self.file_handler.get_vissim_test_folder()
+                file_handling.delete_files_in_folder(results_folder)
             else:
                 results_folder = self.file_handler.get_vissim_data_folder(sc)
             is_folder_set = self.set_results_folder(results_folder)
@@ -796,9 +797,9 @@ class VissimInterface:
             os.makedirs(results_folder)
         if self._check_result_folder_length(results_folder):
             print("Result path it too long. Saving at a temporary location.")
-            # results_folder = '\\\\?\\' + results_folder
             success = False
             results_folder = self.file_handler.get_temp_results_folder()
+            file_handling.delete_files_in_folder(results_folder)
         self.vissim.Evaluation.SetAttValue('EvalOutDir', results_folder)
         return success
 
@@ -1168,7 +1169,7 @@ class VissimInterface:
         vissim_vehicle_type = vehicle.Vehicle.ENUM_TO_VISSIM_ID[platoon_type]
         platoon_vehicle.free_flow_velocity = desired_speed / 3.6
         h, d = platoon_vehicle.compute_vehicle_following_parameters(
-            leader_max_brake=platoon_vehicle.max_brake, rho=0.05)
+            leader_max_brake=platoon_vehicle.max_brake, rho=0.05)  # TODO: rho = 0.1
         platoon_safe_gap = h * desired_speed / 3.6 + d
 
         net = self.vissim.Net
