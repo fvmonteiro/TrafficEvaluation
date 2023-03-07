@@ -32,11 +32,11 @@ def find_collision_time_and_severity(initial_gaps,
     # _, axes = plt.subplots(2, 1)
     # axes[0].plot(time, delta_xf)
     # axes[0].plot(time, delta_xl)
-    # axes[0].set_title('x')
+    # axes[0].set_title("x")
     #
     # axes[1].plot(time, vf)
     # axes[1].plot(time, vl)
-    # axes[1].set_title('v')
+    # axes[1].set_title("v")
     # plt.show()
     tc = - np.ones(len(initial_gaps))
     severity = np.zeros(len(initial_gaps))
@@ -84,28 +84,28 @@ class PlatoonLaneChangeStrategy(Enum):
 
 
 vehicle_type_to_print_name_map = {
-    VehicleType.HDV: 'HDV',
-    VehicleType.ACC: 'ACC',
-    VehicleType.AUTONOMOUS: 'AV',
-    VehicleType.CONNECTED: 'CAV',
-    VehicleType.CONNECTED_NO_LANE_CHANGE: 'CAV',
-    VehicleType.PLATOON: 'Platoon',
-    VehicleType.TRAFFIC_LIGHT_ACC: 'TL-ACC',
-    VehicleType.TRAFFIC_LIGHT_CACC: 'TL-CACC',
-    VehicleType.VIRDI: 'Virdi',
-    VehicleType.TRUCK: 'truck',
-    VehicleType.BUS: 'bus',
-    VehicleType.MOTORCYCLE: 'motorcycle'
+    VehicleType.HDV: "HDV",
+    VehicleType.ACC: "ACC",
+    VehicleType.AUTONOMOUS: "AV",
+    VehicleType.CONNECTED: "CAV",
+    VehicleType.CONNECTED_NO_LANE_CHANGE: "CAV",
+    VehicleType.PLATOON: "Platoon",
+    VehicleType.TRAFFIC_LIGHT_ACC: "TL-ACC",
+    VehicleType.TRAFFIC_LIGHT_CACC: "TL-CACC",
+    VehicleType.VIRDI: "Virdi",
+    VehicleType.TRUCK: "truck",
+    VehicleType.BUS: "bus",
+    VehicleType.MOTORCYCLE: "motorcycle"
 }
 
 
 strategy_to_print_name_map = {
-    PlatoonLaneChangeStrategy.human_driven: 'HDV',
-    PlatoonLaneChangeStrategy.no_strategy: 'CAV',
-    PlatoonLaneChangeStrategy.single_body_platoon: 'SBP',
-    PlatoonLaneChangeStrategy.leader_first: 'Ld First',
-    PlatoonLaneChangeStrategy.last_vehicle_first: 'LV First',
-    PlatoonLaneChangeStrategy.leader_first_and_reverse: 'Ld First Rev'
+    PlatoonLaneChangeStrategy.human_driven: "HDV",
+    PlatoonLaneChangeStrategy.no_strategy: "CAV",
+    PlatoonLaneChangeStrategy.single_body_platoon: "SBP",
+    PlatoonLaneChangeStrategy.leader_first: "Ld First",
+    PlatoonLaneChangeStrategy.last_vehicle_first: "LV First",
+    PlatoonLaneChangeStrategy.leader_first_and_reverse: "Ld First Rev"
 }
 
 
@@ -126,12 +126,12 @@ class Vehicle:
     VISSIM_VIRDI_CAR_ID = 150
     VISSIM_TRUCK_ID = 200
     VISSIM_BUS_ID = 300
-    # TYPE_CAR = 'car'
-    # TYPE_AV = 'autonomous vehicle'
-    # TYPE_CAV = 'connected vehicle'
-    # TYPE_TRUCK = 'truck'
-    # TYPE_BUS = 'bus'
-    # TYPE_MOTORCYCLE = 'motorcycle'
+    # TYPE_CAR = "car"
+    # TYPE_AV = "autonomous vehicle"
+    # TYPE_CAV = "connected vehicle"
+    # TYPE_TRUCK = "truck"
+    # TYPE_BUS = "bus"
+    # TYPE_MOTORCYCLE = "motorcycle"
 
     RELEVANT_TYPES = {VehicleType.HDV, VehicleType.TRUCK,
                       VehicleType.ACC, VehicleType.PLATOON,
@@ -237,7 +237,7 @@ class Vehicle:
             try:
                 self.type = self._INT_TO_ENUM[i_type]
             except KeyError:
-                print('{}: KeyError: vehicle type {} not defined'.
+                print("{}: KeyError: vehicle type {} not defined".
                       format(self.__class__.__name__, i_type))
                 raise
         if self.type not in self.RELEVANT_TYPES:
@@ -399,10 +399,10 @@ def severity_in_2d_collision(vx0: Tuple[float, float],
      perfectly inelastic angular collision.
     :param mass:
     :param moment_of_inertia:
-    :param heading_angle: heading angle relative to the road's x axis
+    :param heading_angle: heading angle relative to the road"s x axis
     :param angle_to_impact_line: angle between the length axis of a vehicle
      and the impact line
-    :param impact_angle: relative to the road's y axis
+    :param impact_angle: relative to the road"s y axis
     :param distance_to_impact_center: distance from center of mass to the
      impact center
     :return:
@@ -420,13 +420,13 @@ def severity_in_2d_collision(vx0: Tuple[float, float],
     sin_beta = sin(impact_angle)
     d1, d2 = distance_to_impact_center
 
-    # Actually, we don't know the right value of mu_max for rigid-body
+    # Actually, we don"t know the right value of mu_max for rigid-body
     # collisions
     mu_max = abs((v1x - v2y) / (v1x - v2x)) / (1 + e)
-    mu = mu_max if friction_coefficient == 'max' else friction_coefficient
+    mu = mu_max if friction_coefficient == "max" else friction_coefficient
     # if friction_coefficient > mu_max:
-    #     print('Selected friction coefficient is too high.\n'
-    #           'Setting it to the max value:', mu_max)
+    #     print("Selected friction coefficient is too high.\n"
+    #           "Setting it to the max value:", mu_max)
     #     mu = mu_max
 
     da = d2 * sin(theta2 + phi2)

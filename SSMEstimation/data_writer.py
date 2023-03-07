@@ -14,7 +14,7 @@ class DataWriter:
     def __init__(self, data_type_identifier: str, file_extension: str,
                  scenario_name: str):
         self.file_handler = file_handling.FileHandler(scenario_name)
-        self.file_base_name = (self.file_handler.get_file_name() + '_'
+        self.file_base_name = (self.file_handler.get_file_name() + "_"
                                + data_type_identifier)
         self.file_extension = file_extension
         # self.vehicle_type = vehicle_type
@@ -28,8 +28,8 @@ class DataWriter:
         except OSError:
             self.file_handler.set_is_data_in_cloud(False)
             result_folder = self.file_handler.get_networks_folder()
-            print('Could not save at', full_address, '. Saving at: ',
-                  result_folder, 'instead.')
+            print("Could not save at", full_address, ". Saving at: ",
+                  result_folder, "instead.")
             data.to_csv(os.path.join(result_folder,
                                      file_name), index=False)
 
@@ -42,15 +42,15 @@ class DataWriter:
         try:
             data.to_excel(full_address, sheet_name, index=False)
         except OSError:
-            print('Could not save at', full_address, '. Saving at: ',
-                  file_handling.get_moves_folder(), 'instead.')
+            print("Could not save at", full_address, ". Saving at: ",
+                  file_handling.get_moves_folder(), "instead.")
             data.to_csv(os.path.join(file_handling.get_moves_folder(),
                                      file_name), index=False)
 
 
 class PostProcessedDataWriter(DataWriter):
     """Helps saving results obtained after processing VISSIM results to files"""
-    _file_extension = '.csv'
+    _file_extension = ".csv"
 
     def __init__(self, scenario_name: str,  # vehicle_type: List[VehicleType],
                  data_type_identifier: str):
@@ -75,7 +75,7 @@ class PostProcessedDataWriter(DataWriter):
 
 class SSMDataWriter(PostProcessedDataWriter):
     """Helps saving aggregated SSM results to files"""
-    _data_type_identifier = 'SSM Results'
+    _data_type_identifier = "SSM Results"
 
     def __init__(self, scenario_name: str):
         PostProcessedDataWriter.__init__(self, scenario_name,
@@ -83,7 +83,7 @@ class SSMDataWriter(PostProcessedDataWriter):
 
 
 class RiskyManeuverWriter(PostProcessedDataWriter):
-    _data_type_identifier = 'Risky Maneuvers'
+    _data_type_identifier = "Risky Maneuvers"
 
     def __init__(self, scenario_name: str):
         PostProcessedDataWriter.__init__(self, scenario_name,
@@ -91,7 +91,7 @@ class RiskyManeuverWriter(PostProcessedDataWriter):
 
 
 class TrafficLightViolationWriter(PostProcessedDataWriter):
-    _data_type_identifier = 'Traffic Light Violations'
+    _data_type_identifier = "Traffic Light Violations"
 
     def __init__(self, scenario_name: str):
         PostProcessedDataWriter.__init__(self, scenario_name,
@@ -99,7 +99,7 @@ class TrafficLightViolationWriter(PostProcessedDataWriter):
 
 
 class DiscomfortWriter(PostProcessedDataWriter):
-    _data_type_identifier = 'Discomfort'
+    _data_type_identifier = "Discomfort"
 
     def __init__(self, scenario_name: str):
         PostProcessedDataWriter.__init__(self, scenario_name,
@@ -107,7 +107,7 @@ class DiscomfortWriter(PostProcessedDataWriter):
 
 
 class LaneChangeWriter(PostProcessedDataWriter):
-    _data_type_identifier = 'Lane Changes'
+    _data_type_identifier = "Lane Changes"
 
     def __init__(self, scenario_name: str):
         PostProcessedDataWriter.__init__(self, scenario_name,
@@ -115,7 +115,7 @@ class LaneChangeWriter(PostProcessedDataWriter):
 
 
 class LaneChangeIssuesWriter(PostProcessedDataWriter):
-    _data_type_identifier = 'Lane Change Issues'
+    _data_type_identifier = "Lane Change Issues"
 
     def __init__(self, scenario_name: str):
         PostProcessedDataWriter.__init__(self, scenario_name,
@@ -123,7 +123,7 @@ class LaneChangeIssuesWriter(PostProcessedDataWriter):
 
 
 class PlatoonLaneChangeEfficiencyWriter(PostProcessedDataWriter):
-    _data_type_identifier = 'Platoon Lane Change Efficiency'
+    _data_type_identifier = "Platoon Lane Change Efficiency"
 
     def __init__(self, scenario_name: str):
         PostProcessedDataWriter.__init__(self, scenario_name,
@@ -131,7 +131,7 @@ class PlatoonLaneChangeEfficiencyWriter(PostProcessedDataWriter):
 
 
 class PlatoonLaneChangeEffectsImpacts(PostProcessedDataWriter):
-    _data_type_identifier = 'Platoon Lane Change Impacts'
+    _data_type_identifier = "Platoon Lane Change Impacts"
 
     def __init__(self, scenario_name: str):
         PostProcessedDataWriter.__init__(self, scenario_name,
@@ -139,11 +139,11 @@ class PlatoonLaneChangeEffectsImpacts(PostProcessedDataWriter):
 
 
 class MOVESDataWriter(DataWriter):
-    _file_extension = '.xlsx'
+    _file_extension = ".xlsx"
 
     def __init__(self, scenario_name: str, data_type_identifier: str,
                  sheet_name: str):
-        DataWriter.__init__(self, 'MOVES_' + data_type_identifier,
+        DataWriter.__init__(self, "MOVES_" + data_type_identifier,
                             self._file_extension, scenario_name)
         self.sheet_name = sheet_name
 
@@ -155,8 +155,8 @@ class MOVESDataWriter(DataWriter):
 
 
 class MOVESLinksWriter(MOVESDataWriter):
-    _data_type_identifier = 'links'
-    _sheet_name = 'link'
+    _data_type_identifier = "links"
+    _sheet_name = "link"
 
     def __init__(self, scenario_name: str):
         MOVESDataWriter.__init__(self, scenario_name,
@@ -164,8 +164,8 @@ class MOVESLinksWriter(MOVESDataWriter):
 
 
 class MOVESLinkSourceWriter(MOVESDataWriter):
-    _data_type_identifier = 'linksource'
-    _sheet_name = 'linkSourceTypeHour'
+    _data_type_identifier = "linksource"
+    _sheet_name = "linkSourceTypeHour"
 
     def __init__(self, scenario_name: str):
         MOVESDataWriter.__init__(self, scenario_name,
@@ -173,8 +173,8 @@ class MOVESLinkSourceWriter(MOVESDataWriter):
 
 
 class MOVESLinkDriveWriter(MOVESDataWriter):
-    _data_type_identifier = 'linkdrive'
-    _sheet_name = 'driveSchedule'
+    _data_type_identifier = "linkdrive"
+    _sheet_name = "driveSchedule"
 
     def __init__(self, scenario_name: str):
         MOVESDataWriter.__init__(self, scenario_name,
@@ -186,9 +186,9 @@ class SyntheticDataWriter:
     correct
     """
 
-    file_extension = '.csv'
-    data_dir = ('C:\\Users\\fvall\\Documents\\Research\\TrafficSimulation'
-                '\\synthetic_data\\')
+    file_extension = ".csv"
+    data_dir = ("C:\\Users\\fvall\\Documents\\Research\\TrafficSimulation"
+                "\\synthetic_data\\")
 
     def write_data(self, data):
         """
@@ -197,7 +197,7 @@ class SyntheticDataWriter:
         :return: None
         """
         data.to_csv(os.path.join(self.data_dir,
-                                 'synthetic_data' + self.file_extension),
+                                 "synthetic_data" + self.file_extension),
                     index=False)
 
     @staticmethod
@@ -230,18 +230,18 @@ class SyntheticDataWriter:
         time = np.round(np.linspace(0, max_time, n_points), 2)
         follower_id = 1
         leader_id = follower_id + 1
-        follower_df = pd.DataFrame({'time': time})
-        follower_df['veh_id'] = follower_id
-        follower_df['veh_type'] = follower_type * np.ones(n_points, dtype=int)
-        follower_df['lane'] = np.ones(n_points, dtype=int)
-        follower_df['x'] = np.zeros(n_points)
-        follower_df['vx'] = vf
-        follower_df['lane_change'] = 1 if is_lane_changing else 'None'
-        follower_df['leader_id'] = leader_id
-        follower_df['delta_x'] = np.round(np.linspace(gap_interval, max_gap,
+        follower_df = pd.DataFrame({"time": time})
+        follower_df["veh_id"] = follower_id
+        follower_df["veh_type"] = follower_type * np.ones(n_points, dtype=int)
+        follower_df["lane"] = np.ones(n_points, dtype=int)
+        follower_df["x"] = np.zeros(n_points)
+        follower_df["vx"] = vf
+        follower_df["lane_change"] = 1 if is_lane_changing else "None"
+        follower_df["leader_id"] = leader_id
+        follower_df["delta_x"] = np.round(np.linspace(gap_interval, max_gap,
                                                       n_points), 2)
-        follower_df['delta_v'] = vf - vl
-        follower_df['leader_type'] = leader_type * np.ones(n_points, dtype=int)
+        follower_df["delta_v"] = vf - vl
+        follower_df["leader_type"] = leader_type * np.ones(n_points, dtype=int)
 
         return follower_df
 
@@ -253,10 +253,10 @@ class SignalControllerTreeEditor:
     Currently, we assume the signal controllers have a single signal group,
     which is always set to the Red-Green-Amber sequence.
     """
-    _file_extension = '.sig'
-    traffic_light_red = '1'
-    traffic_light_green = '3'
-    traffic_light_amber = '4'
+    _file_extension = ".sig"
+    traffic_light_red = "1"
+    traffic_light_green = "3"
+    traffic_light_amber = "4"
 
     def set_times(self, signal_controller_tree: ET.ElementTree,
                   red_duration: int, green_duration: int,
@@ -280,38 +280,38 @@ class SignalControllerTreeEditor:
         green_duration *= 1000
         amber_duration *= 1000
 
-        program = signal_controller_tree.find('progs').find('prog')
+        program = signal_controller_tree.find("progs").find("prog")
         cycle_time = int(red_duration + green_duration + amber_duration)
-        program.set('cycletime', str(cycle_time))
+        program.set("cycletime", str(cycle_time))
 
         if starts_at_red:
-            red_start_time = '0'
+            red_start_time = "0"
             green_start_time = str(red_duration)
         else:
-            green_start_time = '0'
+            green_start_time = "0"
             red_start_time = str(green_duration)
-        signal_group_program = program.find('sgs').find('sg')
+        signal_group_program = program.find("sgs").find("sg")
 
-        for command in signal_group_program.iter('cmd'):
-            if command.get('display') == self.traffic_light_red:
-                command.set('begin', red_start_time)
-            elif command.get('display') == self.traffic_light_green:
-                command.set('begin', green_start_time)
+        for command in signal_group_program.iter("cmd"):
+            if command.get("display") == self.traffic_light_red:
+                command.set("begin", red_start_time)
+            elif command.get("display") == self.traffic_light_green:
+                command.set("begin", green_start_time)
             else:
-                print('Unexpected traffic light color. Value ',
-                      command.get('display'))
+                print("Unexpected traffic light color. Value ",
+                      command.get("display"))
 
-        signal_group_program.find('fixedstates').find('fixedstate').set(
-            'duration', str(amber_duration))
+        signal_group_program.find("fixedstates").find("fixedstate").set(
+            "duration", str(amber_duration))
 
     def save_file(self, signal_controller_tree: ET.ElementTree,
                   folder: str, file_name: str):
         signal_controller_tree.write(os.path.join(folder, file_name
                                                   + self._file_extension),
-                                     encoding='UTF-8',
+                                     encoding="UTF-8",
                                      xml_declaration=True)
 
     @staticmethod
     def set_signal_controller_id(signal_controller_tree: ET.ElementTree,
                                  new_id: int):
-        signal_controller_tree.getroot().set('id', str(new_id))
+        signal_controller_tree.getroot().set("id", str(new_id))

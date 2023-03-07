@@ -16,11 +16,11 @@ from vehicle import Vehicle
 # ============================== Constants =================================== #
 # TODO: determine highway or traffic light from network_info dictionary in
 #  file_handling file
-HIGHWAY_SCENARIOS = {'in_and_out', 'in_and_merge', 'i710', 'us101'}
-TRAFFIC_LIGHT_SCENARIOS = {'traffic_lights'}
-data_source_VISSIM = 'vissim'
-data_source_NGSIM = 'ngsim'
-data_source_SYNTHETIC = 'synthetic'
+HIGHWAY_SCENARIOS = {"in_and_out", "in_and_merge", "i710", "us101"}
+TRAFFIC_LIGHT_SCENARIOS = {"traffic_lights"}
+data_source_VISSIM = "vissim"
+data_source_NGSIM = "ngsim"
+data_source_SYNTHETIC = "synthetic"
 
 
 # =============================== Functions ================================== #
@@ -46,8 +46,8 @@ def post_process_data(data_source: str,
     elif data_source == data_source_SYNTHETIC:
         post_process_synthetic_data(vehicle_records)
     else:
-        print('[DataPostProcessor] Trying to process data from unknown '
-              'data source.')
+        print("[DataPostProcessor] Trying to process data from unknown "
+              "data source.")
         return
 
 
@@ -59,23 +59,23 @@ def post_process_vissim_vehicle_record(vehicle_records):
     # veh_data = self.veh_records
 
     kph_to_mps = 1 / 3.6
-    vehicle_records['vx'] = vehicle_records['vx'] * kph_to_mps
+    vehicle_records["vx"] = vehicle_records["vx"] * kph_to_mps
 
     # warm_up_time = 60
     # DataPostProcessor.remove_early_samples(vehicle_records, warm_up_time)
 
     # When the vehicle is stopping due to a traffic light, we consider it
     # has no leader
-    if 'target_type' in vehicle_records.columns:
-        signal_ahead_idx = vehicle_records['target_type'] == 'Signal head'
-        vehicle_records.loc[signal_ahead_idx, 'leader_id'] = np.nan
+    if "target_type" in vehicle_records.columns:
+        signal_ahead_idx = vehicle_records["target_type"] == "Signal head"
+        vehicle_records.loc[signal_ahead_idx, "leader_id"] = np.nan
     # By convention, if vehicle has no leader, we set it as its own leader
-    vehicle_records['leader_id'].fillna(vehicle_records['veh_id'],
-                                        inplace=True, downcast='infer')
-    # Compute relative velocity to the vehicle's leader (own vel minus
+    vehicle_records["leader_id"].fillna(vehicle_records["veh_id"],
+                                        inplace=True, downcast="infer")
+    # Compute relative velocity to the vehicle"s leader (own vel minus
     # leader vel) Note: we need this function because VISSIM output
-    # 'SpeedDiff' is not always correct. It has been observed to equal
-    # the vehicle's own speed at the previous time step.
+    # "SpeedDiff" is not always correct. It has been observed to equal
+    # the vehicle"s own speed at the previous time step.
     compute_values_relative_to_leader(data_source_VISSIM, vehicle_records)
 
 
@@ -85,29 +85,29 @@ def post_process_ngsim_data(vehicle_records):
     :return: None
     """
     # vehicle_record = self.veh_records
-    integer_columns = {'veh_id': int, 'leader_id': int,
-                       'veh_type': int, 'lane': int}
+    integer_columns = {"veh_id": int, "leader_id": int,
+                       "veh_type": int, "lane": int}
     vehicle_records.astype(integer_columns, copy=False)
 
-    columns_in_feet = ['x', 'y', 'vx', 'length', 'delta_x']
+    columns_in_feet = ["x", "y", "vx", "length", "delta_x"]
     foot_to_meter = 0.3048
     vehicle_records[columns_in_feet] *= foot_to_meter
 
-    base_time = min(vehicle_records['time'])
+    base_time = min(vehicle_records["time"])
     # From milliseconds to deciseconds
-    vehicle_records['time'] = (vehicle_records['time'] - base_time) // 100
-    vehicle_records.sort_values(by=['time', 'veh_id'], inplace=True)
+    vehicle_records["time"] = (vehicle_records["time"] - base_time) // 100
+    vehicle_records.sort_values(by=["time", "veh_id"], inplace=True)
     # Define warm up time as the first moment some vehicle has a leader
-    warm_up_time = min(vehicle_records.loc[vehicle_records['leader_id'] > 0,
-                                           'time'])
+    warm_up_time = min(vehicle_records.loc[vehicle_records["leader_id"] > 0,
+                                           "time"])
     drop_warmup_samples(warm_up_time, vehicle_records)
     # By convention, if vehicle has no leader, we set it as its own leader
-    no_leader_idx = vehicle_records['leader_id'] == 0
+    no_leader_idx = vehicle_records["leader_id"] == 0
     vehicle_records.loc[no_leader_idx,
-                        'leader_id'] = vehicle_records['veh_id']
+                        "leader_id"] = vehicle_records["veh_id"]
 
-    vehicle_records['delta_x_old'] = vehicle_records[
-        'delta_x']  # for checks
+    vehicle_records["delta_x_old"] = vehicle_records[
+        "delta_x"]  # for checks
 
     compute_values_relative_to_leader(
         data_source_NGSIM, vehicle_records)
@@ -118,7 +118,7 @@ def post_process_synthetic_data(vehicle_records):
     Process csv file synthetically generated
     :return: None
     """
-    vehicle_records.sort_values(by='time', inplace=True)
+    vehicle_records.sort_values(by="time", inplace=True)
     # compute_values_relative_to_leader(
     #     data_source_SYNTHETIC, vehicle_records)
 
@@ -132,19 +132,19 @@ def compute_values_relative_to_leader(data_source: str,
 
     # vehicle_records = self.veh_records
     total_samples = vehicle_records.shape[0]
-    print('Adding distance, relative speed and leader type for {} '
-          'samples'.format(total_samples))
+    print("Adding distance, relative speed and leader type for {} "
+          "samples".format(total_samples))
 
     percent = 0.1
     out_of_bounds_idx = []
-    grouped_by_time = vehicle_records.groupby('time')
+    grouped_by_time = vehicle_records.groupby("time")
     delta_v = np.zeros(total_samples)
     leader_type = np.zeros(total_samples)
     distance = np.zeros(total_samples)
     counter = 0
     for _, current_data in grouped_by_time:
-        veh_idx = current_data['veh_id'].to_numpy()
-        leader_idx = current_data['leader_id'].to_numpy()
+        veh_idx = current_data["veh_id"].to_numpy()
+        leader_idx = current_data["leader_id"].to_numpy()
         min_idx = min(veh_idx)
         max_idx = max(veh_idx)
         n_vehicles = max_idx - min_idx + 1
@@ -153,7 +153,7 @@ def compute_values_relative_to_leader(data_source: str,
 
         # If leader is not in the current time, we proceed as if there
         # was no leader (happens more often with NGSIM data)
-        out_of_bounds_check = current_data['leader_id'] > max_idx
+        out_of_bounds_check = current_data["leader_id"] > max_idx
         if np.any(out_of_bounds_check):
             # Save the indices with issues to correct the original
             # dataframe after the loop
@@ -164,11 +164,11 @@ def compute_values_relative_to_leader(data_source: str,
 
         adjusted_idx = veh_idx - min_idx
         adjusted_leader_idx = leader_idx - min_idx
-        vel_vector[adjusted_idx] = current_data['vx']
+        vel_vector[adjusted_idx] = current_data["vx"]
         delta_v[counter:counter + current_data.shape[0]] = (
                 vel_vector[adjusted_idx] - vel_vector[adjusted_leader_idx])
 
-        type_vector[adjusted_idx] = current_data['veh_type']
+        type_vector[adjusted_idx] = current_data["veh_type"]
         leader_type[counter:counter + current_data.shape[0]] = (
             type_vector[adjusted_leader_idx])
 
@@ -178,17 +178,17 @@ def compute_values_relative_to_leader(data_source: str,
         counter += current_data.shape[0]
 
         if counter >= percent * total_samples:
-            print('{:.0f}%'.format(counter / total_samples * 100), end=',')
+            print("{:.0f}%".format(counter / total_samples * 100), end=",")
             percent += 0.1
     print()  # skip a line
-    vehicle_records['delta_v'] = delta_v
-    vehicle_records['leader_type'] = leader_type
-    vehicle_records['delta_x'] = distance
+    vehicle_records["delta_v"] = delta_v
+    vehicle_records["leader_type"] = leader_type
+    vehicle_records["delta_x"] = distance
 
     if len(out_of_bounds_idx) > 0:
-        vehicle_records.loc[out_of_bounds_idx, 'leader_id'] = (
-            vehicle_records.loc[out_of_bounds_idx, 'veh_id'])
-        print('Found {} instances of leaders outside the simulation'.
+        vehicle_records.loc[out_of_bounds_idx, "leader_id"] = (
+            vehicle_records.loc[out_of_bounds_idx, "veh_id"])
+        print("Found {} instances of leaders outside the simulation".
               format(len(out_of_bounds_idx)))
 
 
@@ -205,7 +205,7 @@ def create_summary_traffic_light_simulations(
      records and do not save results.
     :return: Nothing. SSM results are saved to as csv files"""
 
-    network_name = 'traffic_lights'
+    network_name = "traffic_lights"
 
     pp = [SSMProcessor(network_name),
           RiskyManeuverProcessor(network_name),
@@ -323,20 +323,20 @@ def find_lane_change_issues(
     #         for (vehicle_records, _) in data_generator:
     #             data[pp.data_name].append(pp.post_process(vehicle_records))
     #         all_simulations_data = pd.concat(data[pp.data_name])
-    #         all_simulations_data['vehicles_per_lane'] = vi
+    #         all_simulations_data["vehicles_per_lane"] = vi
     #         pp.writer.save_as_csv(all_simulations_data, vehicle_percentages,
     #                               vi, ar)
 
 
 def create_time_in_minutes_from_intervals(data: pd.DataFrame):
-    """ Creates a 'time' column in minutes
+    """ Creates a "time" column in minutes
 
     :param data: data aggregated over time intervals
     """
     # Create time in minutes for better display
     seconds_in_minute = 60
-    data['time'] = data['time_interval'].apply(
-        lambda x: int(x.split('-')[0]) / seconds_in_minute)
+    data["time"] = data["time_interval"].apply(
+        lambda x: int(x.split("-")[0]) / seconds_in_minute)
 
 
 def check_human_take_over(network_name: str,
@@ -360,17 +360,17 @@ def check_human_take_over(network_name: str,
         # we assume each vehicle only gives control to VISSIM at
         # most once
         blocked_vehs = vehicle_records.loc[
-            (vehicle_records['vissim_control'] == 1)
-            & (vehicle_records['veh_type'] != Vehicle.VISSIM_CAR_ID),
-            'veh_id'].unique()
+            (vehicle_records["vissim_control"] == 1)
+            & (vehicle_records["veh_type"] != Vehicle.VISSIM_CAR_ID),
+            "veh_id"].unique()
         n_blocked_vehs.append(blocked_vehs.shape[0])
-    print('  Mean # of blocked vehicles: {}'.format(np.mean(
+    print("  Mean # of blocked vehicles: {}".format(np.mean(
         n_blocked_vehs)))
 
     # for vi in vehicle_inputs:
-    #     print('Input:', vi)
+    #     print("Input:", vi)
     #     for ar in accepted_risk:
-    #         print(' Accepted risk: ', ar)
+    #         print(" Accepted risk: ", ar)
     #         n_blocked_vehs = []
     #         data_generator = (
     #             vehicle_record_reader.generate_all_data_from_scenario(
@@ -381,12 +381,12 @@ def check_human_take_over(network_name: str,
     #             # we assume each vehicle only gives control to VISSIM at
     #             # most once
     #             blocked_vehs = vehicle_records.loc[
-    #                 (vehicle_records['vissim_control'] == 1)
-    #                 & (vehicle_records['veh_type'] != Vehicle.VISSIM_CAR_ID),
-    #                 'veh_id'].unique()
+    #                 (vehicle_records["vissim_control"] == 1)
+    #                 & (vehicle_records["veh_type"] != Vehicle.VISSIM_CAR_ID),
+    #                 "veh_id"].unique()
     #             n_blocked_vehs.append(blocked_vehs.shape[0])
-    #             # print('Total blocked vehicles: ', blocked_vehs.shape[0])
-    #         print('  Mean # of blocked vehicles: {}'.format(np.mean(
+    #             # print("Total blocked vehicles: ", blocked_vehs.shape[0])
+    #         print("  Mean # of blocked vehicles: {}".format(np.mean(
     #             n_blocked_vehs)))
 
 
@@ -409,33 +409,33 @@ def find_removed_vehicles(network_name: str,
     )
     n_removed_vehicles = []
     for (vehicle_records, _) in data_generator:
-        max_time = vehicle_records.iloc[-1]['time']
-        last_entry_per_veh = vehicle_records.groupby('veh_id').last()
+        max_time = vehicle_records.iloc[-1]["time"]
+        last_entry_per_veh = vehicle_records.groupby("veh_id").last()
         removed_vehs = last_entry_per_veh.loc[
-            ~(last_entry_per_veh['link'].isin(exit_links))
-            & (last_entry_per_veh['time'] < max_time)].index
+            ~(last_entry_per_veh["link"].isin(exit_links))
+            & (last_entry_per_veh["time"] < max_time)].index
         n_removed_vehicles[-1].append(len(removed_vehs))
-        print('  {} removed vehs'.format(n_removed_vehicles[-1]))
-    print('Mean # of removed vehicles: {}'.format(np.mean(n_removed_vehicles)))
+        print("  {} removed vehs".format(n_removed_vehicles[-1]))
+    print("Mean # of removed vehicles: {}".format(np.mean(n_removed_vehicles)))
 
     # for vi in vehicles_per_lane:
-    #     print('Input:', vi)
+    #     print("Input:", vi)
     #     for ar in accepted_risk:
-    #         print(' Accepted risk: ', ar)
+    #         print(" Accepted risk: ", ar)
     #         n_removed_vehicles = []
     #         data_generator = (
     #             vehicle_record_reader.generate_all_data_from_scenario(
     #                 vehicle_percentages, vi, accepted_risk=ar
     #         ))
     #         for (vehicle_records, _) in data_generator:
-    #             max_time = vehicle_records.iloc[-1]['time']
-    #             last_entry_per_veh = vehicle_records.groupby('veh_id').last()
+    #             max_time = vehicle_records.iloc[-1]["time"]
+    #             last_entry_per_veh = vehicle_records.groupby("veh_id").last()
     #             removed_vehs = last_entry_per_veh.loc[
-    #                 ~(last_entry_per_veh['link'].isin(exit_links))
-    #                 & (last_entry_per_veh['time'] < max_time)].index
+    #                 ~(last_entry_per_veh["link"].isin(exit_links))
+    #                 & (last_entry_per_veh["time"] < max_time)].index
     #             n_removed_vehicles.append(len(removed_vehs))
-    #             print('  {} removed vehs'.format(n_removed_vehicles[-1]))
-    #         print(' Mean # of removed vehicles: {}'.format(np.mean(
+    #             print("  {} removed vehs".format(n_removed_vehicles[-1]))
+    #         print(" Mean # of removed vehicles: {}".format(np.mean(
     #             n_removed_vehicles)))
 
 
@@ -443,14 +443,14 @@ def add_main_ssms(vehicle_records: pd.DataFrame, ssm_names: List[str]):
     ssm_estimator = SSMEstimator(vehicle_records)
     for ssm in ssm_names:
         ssm_estimator.include_ssm_by_name(ssm)
-    # if network_name in ['in_and_out', 'i710', 'us101']:
+    # if network_name in ["in_and_out", "i710", "us101"]:
     #     ssm_estimator.include_ttc()
     #     ssm_estimator.include_drac()
     #     for choice in [False, True]:
     #         ssm_estimator.include_collision_free_gap(
     #             consider_lane_change=choice)
     #         ssm_estimator.include_risk(consider_lane_change=choice)
-    # elif network_name in ['traffic_lights']:
+    # elif network_name in ["traffic_lights"]:
     #     ssm_estimator.include_barrier_function_risk()
 
 
@@ -462,16 +462,16 @@ def create_time_bins_and_labels(period, vehicle_records):
     :param vehicle_records: vehicle records data loaded from VISSIM
     :param period: time interval length
     :return: None; alters the data in place"""
-    final_time = int(vehicle_records['time'].iloc[-1])
+    final_time = int(vehicle_records["time"].iloc[-1])
     interval_limits = []
     interval_labels = []
     for i in range(0, final_time + period,
                    period):
         interval_limits.append(i)
-        interval_labels.append(str(i) + '-'
+        interval_labels.append(str(i) + "-"
                                + str(i + period))
-    vehicle_records['time_interval'] = pd.cut(
-        x=vehicle_records['time'], bins=interval_limits,
+    vehicle_records["time_interval"] = pd.cut(
+        x=vehicle_records["time"], bins=interval_limits,
         labels=interval_labels[:-1])
 
 
@@ -490,15 +490,15 @@ def check_already_processed_scenarios(
         ssm_reader.load_data_from_scenario(scenario_info)
     except OSError:
         return
-    print('FYI: SSM results for network {}, scenario {}, already exist. '
-          'They are being recomputed.'.format(network_name, scenario_info))
+    print("FYI: SSM results for network {}, scenario {}, already exist. "
+          "They are being recomputed.".format(network_name, scenario_info))
 
 
 def compute_distance_to_leader(data_source: str, veh_data: pd.DataFrame,
                                adjusted_idx: np.array,
                                adjusted_leader_idx: np.array):
     """
-    Computes the longitudinal distance between a vehicle's front
+    Computes the longitudinal distance between a vehicle"s front
     bumper to the rear bumper of the leading vehicle
     :param data_source: vissim, ngsim or synthetic
     :param veh_data: vehicle data during a single time step
@@ -513,10 +513,10 @@ def compute_distance_to_leader(data_source: str, veh_data: pd.DataFrame,
         rear_x_vector = np.zeros(n)
         rear_y_vector = np.zeros(n)
 
-        front_x_vector[adjusted_idx] = veh_data['front_x']
-        rear_x_vector[adjusted_idx] = veh_data['rear_x']
-        front_y_vector[adjusted_idx] = veh_data['front_y']
-        rear_y_vector[adjusted_idx] = veh_data['rear_y']
+        front_x_vector[adjusted_idx] = veh_data["front_x"]
+        rear_x_vector[adjusted_idx] = veh_data["rear_x"]
+        front_y_vector[adjusted_idx] = veh_data["front_y"]
+        rear_y_vector[adjusted_idx] = veh_data["rear_y"]
         distance = compute_gap_between_vehicles(
             rear_x_vector[adjusted_leader_idx],
             rear_y_vector[adjusted_leader_idx],
@@ -526,16 +526,16 @@ def compute_distance_to_leader(data_source: str, veh_data: pd.DataFrame,
         #                     - front_x_vector[adjusted_idx]) ** 2
         #                    + (rear_y_vector[adjusted_leader_idx]
         #                       - front_y_vector[adjusted_idx]) ** 2)
-        # Set gap to zero when there's no leader
+        # Set gap to zero when there"s no leader
         distance[adjusted_idx == adjusted_leader_idx] = 0
 
     elif data_source == data_source_NGSIM:
         length = np.zeros(n)
-        length[adjusted_idx] = veh_data['length']
+        length[adjusted_idx] = veh_data["length"]
         leader_length = length[adjusted_leader_idx]
-        distance = veh_data['delta_x'] - leader_length
+        distance = veh_data["delta_x"] - leader_length
     else:
-        distance = veh_data['delta_x']
+        distance = veh_data["delta_x"]
 
     return distance
 
@@ -553,10 +553,10 @@ def drop_warmup_samples(data: pd.DataFrame, warmup_time: int):
     :param warmup_time: Time *in minutes*
     """
     warmup_time *= 60
-    if 'time' not in data.columns:
+    if "time" not in data.columns:
         create_time_in_minutes_from_intervals(data)
-        data['time'] *= 60
-    data.drop(index=data[data['time'] < warmup_time].index, inplace=True)
+        data["time"] *= 60
+    data.drop(index=data[data["time"] < warmup_time].index, inplace=True)
 
 
 # ========================= Lane change methods ============================== #
@@ -578,36 +578,36 @@ def complement_lane_change_data(network_name: str,
 
     # Steps that can be done on the entire dataframe:
     vissim_lc_data.drop(index=(
-        vissim_lc_data[vissim_lc_data['time'] + 5
-                       > vehicle_record['time'].iloc[-1]]).index,
+        vissim_lc_data[vissim_lc_data["time"] + 5
+                       > vehicle_record["time"].iloc[-1]]).index,
                         inplace=True)
     remove_false_lane_change_starts(vehicle_record, vissim_lc_data)
     lc_data = add_overlooked_lane_changes(vehicle_record, vissim_lc_data)
-    print('Getting lane change attributes. {} from LC file, {} total'.format(
+    print("Getting lane change attributes. {} from LC file, {} total".format(
         vissim_lc_data.shape[0], lc_data.shape[0]))
-    lc_data['lc_direction'] = lc_data['dest_lane'] - lc_data['origin_lane']
-    if np.any(lc_data['lc_direction'].abs() > 1):
-        warnings.warn('Vehicle changing two lanes at a time?',
+    lc_data["lc_direction"] = lc_data["dest_lane"] - lc_data["origin_lane"]
+    if np.any(lc_data["lc_direction"].abs() > 1):
+        warnings.warn("Vehicle changing two lanes at a time?",
                       RuntimeWarning)
-        lc_data['lc_direction'] /= lc_data['lc_direction'].abs()
-    vehicle_record['relative_vy'] = vehicle_record['y'].diff()
+        lc_data["lc_direction"] /= lc_data["lc_direction"].abs()
+    vehicle_record["relative_vy"] = vehicle_record["y"].diff()
     add_vehicle_types_to_lc_data(vehicle_record, lc_data)
     label_lane_changes(network_name, vehicle_record, lc_data)
 
     # Steps that require checking the data of each lane change in detail
-    data_by_veh = vehicle_record.groupby('veh_id')
+    data_by_veh = vehicle_record.groupby("veh_id")
     new_data = []
     notes = []
     max_comf_brake = [-i for i in range(4, 9)]
-    # fd_discomfort = {'fd_discomfort_' + str(-i): [] for i in max_comf_brake}
+    # fd_discomfort = {"fd_discomfort_" + str(-i): [] for i in max_comf_brake}
     # times = np.zeros(4)
     # TODO: slow loop. Not sure we can avoid iterating over rows, but some
     #  functions can probably be optimized.
     for i, single_lc_data in lc_data.iterrows():
         # print(i)
-        lc_veh_data = data_by_veh.get_group(single_lc_data['veh_id'])
-        fd_data = (data_by_veh.get_group(single_lc_data['fd_id']) if
-                   single_lc_data['fd_id'] > 0 else pd.DataFrame())
+        lc_veh_data = data_by_veh.get_group(single_lc_data["veh_id"])
+        fd_data = (data_by_veh.get_group(single_lc_data["fd_id"]) if
+                   single_lc_data["fd_id"] > 0 else pd.DataFrame())
         # start_time = time.perf_counter()
         tc, tf = get_lane_change_crossing_and_end_times(lc_veh_data,
                                                         single_lc_data)
@@ -623,7 +623,7 @@ def complement_lane_change_data(network_name: str,
         # start_time = time.perf_counter()
 
         # if risk_lo > 0 or risk_ld > 0 or risk_fd > 0:
-        #     print('some risk')
+        #     print("some risk")
 
         total_risk_lo, total_risk_ld, total_risk_fd = (
             get_risks_during_lane_change(lc_veh_data, fd_data,
@@ -633,11 +633,11 @@ def complement_lane_change_data(network_name: str,
         # times[3] += time.perf_counter() - start_time
 
         vissim_in_control = lc_veh_data.loc[
-            lc_veh_data['time'] == single_lc_data['time'],
-            'vissim_control'].iloc[0]
+            lc_veh_data["time"] == single_lc_data["time"],
+            "vissim_control"].iloc[0]
         fd_discomfort = compute_fd_discomfort(fd_data, single_lc_data,
                                               max_comf_brake)
-        # [fd_discomfort['fd_discomfort_' + str(-max_comf_brake[i])].append(
+        # [fd_discomfort["fd_discomfort_" + str(-max_comf_brake[i])].append(
         #     temp[i]) for i in range(len(max_comf_brake))]
 
         new_data.append([tc, tf, risk_lo, risk_ld, risk_fd,
@@ -646,13 +646,13 @@ def complement_lane_change_data(network_name: str,
         new_data[-1].extend(fd_discomfort)
         notes.append(note)
     # print(times)
-    columns = ['crossing_time', 'end_time', 'initial_risk_to_lo',
-               'initial_risk_to_ld', 'initial_risk_to_fd',
-               'total_risk_lo', 'total_risk_ld', 'total_risk_fd',
-               'vissim_in_control']
-    [columns.append('fd_discomfort_' + str(-i)) for i in max_comf_brake]
+    columns = ["crossing_time", "end_time", "initial_risk_to_lo",
+               "initial_risk_to_ld", "initial_risk_to_fd",
+               "total_risk_lo", "total_risk_ld", "total_risk_fd",
+               "vissim_in_control"]
+    [columns.append("fd_discomfort_" + str(-i)) for i in max_comf_brake]
     lc_data[columns] = new_data
-    lc_data['note'] = notes
+    lc_data["note"] = notes
     return lc_data.dropna()
 
 
@@ -666,29 +666,29 @@ def add_vehicle_types_to_lc_data(veh_data: pd.DataFrame,
     :param lc_data: data for all lane changes during the simulation
     :return:
     """
-    veh_types = veh_data.groupby('veh_id')['veh_type'].first()
+    veh_types = veh_data.groupby("veh_id")["veh_type"].first()
     veh_types[0] = 0
-    lc_data['veh_type'] = veh_types[lc_data['veh_id']].to_numpy()
-    lc_data['lo_type'] = veh_types[lc_data['lo_id']].to_numpy()
-    lc_data['ld_type'] = veh_types[lc_data['ld_id']].to_numpy()
+    lc_data["veh_type"] = veh_types[lc_data["veh_id"]].to_numpy()
+    lc_data["lo_type"] = veh_types[lc_data["lo_id"]].to_numpy()
+    lc_data["ld_type"] = veh_types[lc_data["ld_id"]].to_numpy()
     try:
-        lc_data['fd_type'] = veh_types[lc_data['fd_id']].to_numpy()
+        lc_data["fd_type"] = veh_types[lc_data["fd_id"]].to_numpy()
     except KeyError:
-        all_ids = veh_data['veh_id'].unique()
+        all_ids = veh_data["veh_id"].unique()
         missing_ids = set([i for i in range(1, np.max(all_ids))]).difference(
             all_ids)
         print("Can't find fd in veh data. Missing ids: ", missing_ids)
         print("While issue is not addressed, let's remove these lane changes.")
         for m_id in missing_ids:
-            lc_data.drop(index=lc_data[lc_data['fd_id'] == m_id].index,
+            lc_data.drop(index=lc_data[lc_data["fd_id"] == m_id].index,
                          inplace=True)
-        lc_data['fd_type'] = veh_types[lc_data['fd_id']].to_numpy()
+        lc_data["fd_type"] = veh_types[lc_data["fd_id"]].to_numpy()
 
 
 def remove_false_lane_change_starts(veh_data: pd.DataFrame,
                                     lane_change_data: pd.DataFrame):
     """
-    With the controlled vehicles, VISSIM's lane change record has some false
+    With the controlled vehicles, VISSIM"s lane change record has some false
     positives. We double check in the vehicle record if the lane change is
     actually taking place.
 
@@ -696,9 +696,9 @@ def remove_false_lane_change_starts(veh_data: pd.DataFrame,
     :param lane_change_data:
     :return: (intended) Nothing. The lane change dataframe is altered in place
     """
-    merged_data = lane_change_data[['time', 'veh_id']].merge(
-        veh_data[['time', 'veh_id', 'lane_change']], on=['time', 'veh_id'])
-    remove_idx = merged_data[merged_data['lane_change'] == 'None'].index
+    merged_data = lane_change_data[["time", "veh_id"]].merge(
+        veh_data[["time", "veh_id", "lane_change"]], on=["time", "veh_id"])
+    remove_idx = merged_data[merged_data["lane_change"] == "None"].index
     lane_change_data.drop(index=remove_idx, inplace=True)
 
 
@@ -709,62 +709,62 @@ def add_overlooked_lane_changes(veh_data: pd.DataFrame,
     happens often with autonomous lane changes.
     """
     # Note: we could do this using only the vehicle record and ignoring the
-    # lane change data from VISSIM. However, using VISSIM's lane change
+    # lane change data from VISSIM. However, using VISSIM"s lane change
     # record saves some time.
 
     # Check if the vehicle data has already been processed. If not, convert
-    # from km/h to m/s and 'mark' as processed.
-    if veh_data['leader_id'].isna().any():
-        veh_data['leader_id'].fillna(veh_data['veh_id'],
-                                     inplace=True, downcast='infer')
-        veh_data['vx'] /= 3.6  # km/h->m/s
+    # from km/h to m/s and "mark" as processed.
+    if veh_data["leader_id"].isna().any():
+        veh_data["leader_id"].fillna(veh_data["veh_id"],
+                                     inplace=True, downcast="infer")
+        veh_data["vx"] /= 3.6  # km/h->m/s
 
     # Find all the lane changes in the vehicle records data
-    veh_data_sorted = veh_data.sort_values('veh_id', kind='stable')
-    veh_data_sorted['absolute_lane'] = get_absolute_lane(
-        veh_data_sorted['lane'], veh_data_sorted['link'])
-    veh_data_sorted['is_lane_changing'] = (veh_data_sorted['lane_change']
-                                           != 'None')
-    veh_data_sorted['lc_transition'] = (veh_data_sorted['is_lane_changing'].
+    veh_data_sorted = veh_data.sort_values("veh_id", kind="stable")
+    veh_data_sorted["absolute_lane"] = get_absolute_lane(
+        veh_data_sorted["lane"], veh_data_sorted["link"])
+    veh_data_sorted["is_lane_changing"] = (veh_data_sorted["lane_change"]
+                                           != "None")
+    veh_data_sorted["lc_transition"] = (veh_data_sorted["is_lane_changing"].
                                         diff().fillna(False))
     lc_data = (veh_data_sorted.loc[veh_data_sorted[
-        'lc_transition']].iloc[::2])
+        "lc_transition"]].iloc[::2])
 
     # Look for lane changes in lc_data but not in the lane_change_data
     intermediary_df = lc_data.merge(vissim_lane_change_data,
-                                    on=['time', 'veh_id'], how='left',
+                                    on=["time", "veh_id"], how="left",
                                     indicator=True)
     missing_lane_changes = lc_data.reset_index()[
-        intermediary_df['_merge'] == 'left_only']
+        intermediary_df["_merge"] == "left_only"]
     # Look for the details of each lane change. No idea of how to do this
     # without a loop
     new_data = []
     filler_series = pd.Series(data=[0, 0, 0, 0, 0, 0, 0, 0],
-                              index=['veh_id', 'vx', 'rear_x', 'front_x',
-                                     'rear_y', 'front_y', 'delta_v', 'delta_x']
-                              ).astype('int')
+                              index=["veh_id", "vx", "rear_x", "front_x",
+                                     "rear_y", "front_y", "delta_v", "delta_x"]
+                              ).astype("int")
     for i, lc in missing_lane_changes.iterrows():
-        data_now = veh_data_sorted[veh_data_sorted['time'] == lc['time']]
+        data_now = veh_data_sorted[veh_data_sorted["time"] == lc["time"]]
 
         try:
-            lo_data = data_now[(data_now['veh_id'] == lc['leader_id'])
-                               & (data_now['leader_id'] != lc['veh_id'])
+            lo_data = data_now[(data_now["veh_id"] == lc["leader_id"])
+                               & (data_now["leader_id"] != lc["veh_id"])
                                ].iloc[0]
         except IndexError:
             lo_data = filler_series
         try:
-            fo_data = data_now[(data_now['leader_id'] == lc['veh_id'])
-                               & (data_now['veh_id'] != lc['leader_id'])
+            fo_data = data_now[(data_now["leader_id"] == lc["veh_id"])
+                               & (data_now["veh_id"] != lc["leader_id"])
                                ].iloc[0]
         except IndexError:
             fo_data = filler_series
         # Note: this will not work in networks with several multi lane links
-        dest_lane = lc['lane'] + (1 if lc['lane_change'] == 'Left' else -1)
-        absolute_dest_lane = lc['absolute_lane'] + (
-            1 if lc['lane_change'] == 'Left' else -1)
-        dest_lane_data = data_now[data_now['absolute_lane']
+        dest_lane = lc["lane"] + (1 if lc["lane_change"] == "Left" else -1)
+        absolute_dest_lane = lc["absolute_lane"] + (
+            1 if lc["lane_change"] == "Left" else -1)
+        dest_lane_data = data_now[data_now["absolute_lane"]
                                   == absolute_dest_lane]
-        gaps = dest_lane_data['front_x'] - lc['front_x']
+        gaps = dest_lane_data["front_x"] - lc["front_x"]
         try:
             ld_data = dest_lane_data.loc[gaps[gaps > 0].idxmin()]
         except ValueError:  # there are no gaps > 0
@@ -774,35 +774,35 @@ def add_overlooked_lane_changes(veh_data: pd.DataFrame,
         except ValueError:  # there are no gaps < 0
             fd_data = filler_series
 
-        new_row = [lc['time'], lc['veh_id'], lc['vx'], lc['link'],
-                   lc['lane'], dest_lane]
+        new_row = [lc["time"], lc["veh_id"], lc["vx"], lc["link"],
+                   lc["lane"], dest_lane]
         for nearby_vehicle in [lo_data, fo_data, ld_data, fd_data]:
-            if nearby_vehicle['front_x'] > lc['front_x']:
+            if nearby_vehicle["front_x"] > lc["front_x"]:
                 leader, follower = nearby_vehicle, lc
             else:
                 leader, follower = lc, nearby_vehicle
             inter_vehicle_gap = compute_gap_between_vehicles(
-                leader['rear_x'], leader['rear_y'],
-                follower['front_x'], follower['front_y'])
+                leader["rear_x"], leader["rear_y"],
+                follower["front_x"], follower["front_y"])
             new_row.extend(
-                [nearby_vehicle['veh_id'], nearby_vehicle['vx'],
-                 lc['vx'] - nearby_vehicle['vx'], inter_vehicle_gap])
+                [nearby_vehicle["veh_id"], nearby_vehicle["vx"],
+                 lc["vx"] - nearby_vehicle["vx"], inter_vehicle_gap])
         new_data.append(new_row)
     new_df = pd.DataFrame(data=new_data,
                           columns=vissim_lane_change_data.columns[:len(
                               new_data[0])])
-    links = vissim_lane_change_data['link'].unique()
-    new_df.drop(index=new_df[~new_df['link'].isin(links)].index, inplace=True)
+    links = vissim_lane_change_data["link"].unique()
+    new_df.drop(index=new_df[~new_df["link"].isin(links)].index, inplace=True)
 
     ret_df = pd.concat([vissim_lane_change_data, new_df],
-                       ignore_index=True).fillna(method='ffill')
-    return ret_df.sort_values('time')
+                       ignore_index=True).fillna(method="ffill")
+    return ret_df.sort_values("time")
 
 
 def get_absolute_lane(lane: pd.Series, link: pd.Series):
     """
     Makes the lane number independent of the link. The links with only two
-    lanes have 'absolute lanes' equal to 2 and 3. The method only works with
+    lanes have "absolute lanes" equal to 2 and 3. The method only works with
     the basic in and out lanes scenario.
     """
     absolute_lane = lane.copy()
@@ -819,33 +819,33 @@ def get_lane_change_crossing_and_end_times(single_veh_data,
     :param lc_data: data for a single lane change
     :return: lane change crossing time and end time
     """
-    # veh_filter = veh_data['veh_id'] == lc_data['veh_id']
+    # veh_filter = veh_data["veh_id"] == lc_data["veh_id"]
     # single_veh_data = veh_data.loc[veh_filter]
-    # single_veh_data = veh_data.get_group(lc_data['veh_id'])
-    if (lc_data['time'] + 5) > single_veh_data['time'].iloc[-1]:
-        return float('nan'), float('nan')
+    # single_veh_data = veh_data.get_group(lc_data["veh_id"])
+    if (lc_data["time"] + 5) > single_veh_data["time"].iloc[-1]:
+        return float("nan"), float("nan")
 
-    time_filter = single_veh_data['time'] >= lc_data['time']
-    # We cannot simply check veh_data['lane'] == dest_lane because the
+    time_filter = single_veh_data["time"] >= lc_data["time"]
+    # We cannot simply check veh_data["lane"] == dest_lane because the
     # crossing and end times might happen at a transition between links
     crossing_time = single_veh_data.loc[
         time_filter
-        & (lc_data['lc_direction'] * (single_veh_data['y'] - 0.5) < 0),
-        'time'].iloc[0]
-    # We can't just check veh_data['lane_change'] because values in this
+        & (lc_data["lc_direction"] * (single_veh_data["y"] - 0.5) < 0),
+        "time"].iloc[0]
+    # We can"t just check veh_data["lane_change"] because values in this
     # column become None while the vehicle still has lateral speed.
-    # Sometimes AVs don't go all the way to the middle of the dest lane. In
+    # Sometimes AVs don"t go all the way to the middle of the dest lane. In
     # these cases we check when it stopped changing its lateral position
     end_time_candidate_1 = single_veh_data.loc[
-        time_filter & (single_veh_data['time'] > crossing_time)
-        & (lc_data['lc_direction'] * (single_veh_data['y'] - 0.5) >= 0),
-        'time']
+        time_filter & (single_veh_data["time"] > crossing_time)
+        & (lc_data["lc_direction"] * (single_veh_data["y"] - 0.5) >= 0),
+        "time"]
     end_time_candidate_2 = single_veh_data.loc[
-        time_filter & (single_veh_data['time'] > crossing_time)
-        & (single_veh_data['relative_vy'] == 0),
-        'time']
+        time_filter & (single_veh_data["time"] > crossing_time)
+        & (single_veh_data["relative_vy"] == 0),
+        "time"]
     if end_time_candidate_1.empty and end_time_candidate_2.empty:
-        return float('nan'), float('nan')
+        return float("nan"), float("nan")
     elif end_time_candidate_1.empty and not end_time_candidate_2.empty:
         end_time = end_time_candidate_2.iloc[0]
     elif not end_time_candidate_1.empty and end_time_candidate_2.empty:
@@ -854,13 +854,13 @@ def get_lane_change_crossing_and_end_times(single_veh_data,
         end_time = np.min([end_time_candidate_1.iloc[0],
                            end_time_candidate_2.iloc[0]])
 
-    if lc_data['time'] == end_time:
-        raise RuntimeError('Lane change end time equals the start time.\n'
-                           'Details: id={}, start time={}, '
-                           'end_time={}'.format(lc_data['veh_id'],
-                                                lc_data['time'],
+    if lc_data["time"] == end_time:
+        raise RuntimeError("Lane change end time equals the start time.\n"
+                           "Details: id={}, start time={}, "
+                           "end_time={}".format(lc_data["veh_id"],
+                                                lc_data["time"],
                                                 end_time))
-    # lc_data[['crossing_time', 'end_time']] = [crossing_time, end_time]
+    # lc_data[["crossing_time", "end_time"]] = [crossing_time, end_time]
     return crossing_time, end_time
 
 
@@ -878,27 +878,27 @@ def check_surrounding_vehicle_changes(veh_data: pd.DataFrame,
     :return: String describing whether there was any change
     """
     if np.isnan(end_time):
-        return ''
+        return ""
 
-    time_filter = ((veh_data['time'] >= lc_data['time'])
-                   & (veh_data['time'] <= end_time))
-    veh_filter = veh_data['veh_id'] == lc_data['veh_id']
+    time_filter = ((veh_data["time"] >= lc_data["time"])
+                   & (veh_data["time"] <= end_time))
+    veh_filter = veh_data["veh_id"] == lc_data["veh_id"]
     veh_data_lc = veh_data[veh_filter & time_filter]
-    leaders_ids = veh_data_lc['leader_id'].fillna(0)
+    leaders_ids = veh_data_lc["leader_id"].fillna(0)
     dest_lane_follower_id = veh_data.loc[
-        (veh_data['leader_id'] == lc_data['veh_id']) & time_filter
-        & (veh_data['time'] > crossing_time), 'veh_id']
+        (veh_data["leader_id"] == lc_data["veh_id"]) & time_filter
+        & (veh_data["time"] > crossing_time), "veh_id"]
 
     note = []
-    if np.any(leaders_ids[veh_data_lc['time'] < crossing_time]
-              != lc_data['lo_id']):
-        note.append('lo changed during LC')
-    if np.any(leaders_ids[veh_data_lc['time'] > crossing_time]
-              != lc_data['ld_id']):
-        note.append('ld changed during LC')
-    if np.any(dest_lane_follower_id != lc_data['fd_id']):
-        note.append('fd changed during LC')
-    return '; '.join(note)
+    if np.any(leaders_ids[veh_data_lc["time"] < crossing_time]
+              != lc_data["lo_id"]):
+        note.append("lo changed during LC")
+    if np.any(leaders_ids[veh_data_lc["time"] > crossing_time]
+              != lc_data["ld_id"]):
+        note.append("ld changed during LC")
+    if np.any(dest_lane_follower_id != lc_data["fd_id"]):
+        note.append("fd changed during LC")
+    return "; ".join(note)
 
 
 def compute_initial_lane_change_risks(lc_data: pd.Series) -> (float, float,
@@ -913,42 +913,42 @@ def compute_initial_lane_change_risks(lc_data: pd.Series) -> (float, float,
     :return: initial risks to leader at the origin lane, leader at the
      destination lane, and follower at the destination lane
     """
-    # veh_type = veh_data.loc[veh_data['veh_id'] == lc_data['veh_id'],
-    #                         'veh_type'].iloc[0]
-    # veh_type = veh_data.get_group(lc_data['veh_id'])['veh_type'].iloc[0]
-    veh_type = lc_data['veh_type']
+    # veh_type = veh_data.loc[veh_data["veh_id"] == lc_data["veh_id"],
+    #                         "veh_type"].iloc[0]
+    # veh_type = veh_data.get_group(lc_data["veh_id"])["veh_type"].iloc[0]
+    veh_type = lc_data["veh_type"]
     lane_changing_veh = Vehicle(veh_type)
     risk_lo, risk_ld, risk_fd = 0, 0, 0
-    if lc_data['lo_id'] > 0:
-        # veh_type = veh_data.loc[veh_data['veh_id'] == lc_data['lo_id'],
-        #                         'veh_type'].iloc[0]
-        # veh_type = veh_data.get_group(lc_data['lo_id'])['veh_type'].iloc[0]
-        veh_type = lc_data['lo_type']
+    if lc_data["lo_id"] > 0:
+        # veh_type = veh_data.loc[veh_data["veh_id"] == lc_data["lo_id"],
+        #                         "veh_type"].iloc[0]
+        # veh_type = veh_data.get_group(lc_data["lo_id"])["veh_type"].iloc[0]
+        veh_type = lc_data["lo_type"]
         orig_lane_leader = Vehicle(veh_type)
         risk_lo = compute_risk(lane_changing_veh, orig_lane_leader,
-                               True, lc_data['vx'], lc_data['lo_vx'],
-                               lc_data['lo_gap'])
-    if lc_data['ld_id'] > 0:
-        # veh_type = veh_data.loc[veh_data['veh_id'] == lc_data['ld_id'],
-        #                         'veh_type'].iloc[0]
-        # veh_type = veh_data.get_group(lc_data['ld_id'])['veh_type'].iloc[0]
-        veh_type = lc_data['ld_type']
+                               True, lc_data["vx"], lc_data["lo_vx"],
+                               lc_data["lo_gap"])
+    if lc_data["ld_id"] > 0:
+        # veh_type = veh_data.loc[veh_data["veh_id"] == lc_data["ld_id"],
+        #                         "veh_type"].iloc[0]
+        # veh_type = veh_data.get_group(lc_data["ld_id"])["veh_type"].iloc[0]
+        veh_type = lc_data["ld_type"]
         dest_lane_leader = Vehicle(veh_type)
         risk_ld = compute_risk(lane_changing_veh, dest_lane_leader,
-                               True, lc_data['vx'], lc_data['ld_vx'],
-                               lc_data['ld_gap'])
-    if lc_data['fd_id'] > 0 and lc_data['fd_vx'] > 0.5:
-        # veh_type = veh_data.loc[veh_data['veh_id'] == lc_data['fd_id'],
-        #                         'veh_type'].iloc[0]
-        # veh_type = veh_data.get_group(lc_data['fd_id'])['veh_type'].iloc[0]
+                               True, lc_data["vx"], lc_data["ld_vx"],
+                               lc_data["ld_gap"])
+    if lc_data["fd_id"] > 0 and lc_data["fd_vx"] > 0.5:
+        # veh_type = veh_data.loc[veh_data["veh_id"] == lc_data["fd_id"],
+        #                         "veh_type"].iloc[0]
+        # veh_type = veh_data.get_group(lc_data["fd_id"])["veh_type"].iloc[0]
         try:
-            veh_type = lc_data['fd_type']
+            veh_type = lc_data["fd_type"]
         except KeyError:
-            print('no fd type')
+            print("no fd type")
         dest_lane_follower = Vehicle(veh_type)
         risk_fd = compute_risk(dest_lane_follower, lane_changing_veh,
-                               False, lc_data['fd_vx'],
-                               lc_data['vx'], lc_data['fd_gap'])
+                               False, lc_data["fd_vx"],
+                               lc_data["vx"], lc_data["fd_gap"])
     return risk_lo, risk_ld, risk_fd
 
 
@@ -958,7 +958,7 @@ def get_risks_during_lane_change(
     """
     Returns the risks relative to each surrounding vehicle exclusively over
     the duration of the lane change. Note: this yields different results from
-    'get_total_lane_change_risk', which returns the risks from the start of
+    "get_total_lane_change_risk", which returns the risks from the start of
     the lane change till the end of longitudinal adjustments.
 
     :param lc_veh_data: Data of the vehicle performing the lane change
@@ -968,29 +968,29 @@ def get_risks_during_lane_change(
     :return: total risks to leader at the origin lane, leader at the
      destination lane, and follower at the destination lane
     """
-    # lc_veh_data = veh_data.get_group(lc_data['veh_id'])
-    delta_t = round(lc_veh_data['time'].iloc[1]
-                    - lc_veh_data['time'].iloc[0], 2)
-    time_filter = ((lc_veh_data['time'] >= lc_data['time'])
-                   & (lc_veh_data['time'] <= end_time))
-    # lc_veh_data = veh_data.loc[(veh_data['veh_id'] == lc_data['veh_id'])
+    # lc_veh_data = veh_data.get_group(lc_data["veh_id"])
+    delta_t = round(lc_veh_data["time"].iloc[1]
+                    - lc_veh_data["time"].iloc[0], 2)
+    time_filter = ((lc_veh_data["time"] >= lc_data["time"])
+                   & (lc_veh_data["time"] <= end_time))
+    # lc_veh_data = veh_data.loc[(veh_data["veh_id"] == lc_data["veh_id"])
     #                            & time_filter]
     risk_lo, risk_ld, risk_fd = 0, 0, 0
-    if lc_data['lo_id'] != 0:
-        risk_lo = lc_veh_data.loc[(lc_veh_data['leader_id'] == lc_data['lo_id'])
+    if lc_data["lo_id"] != 0:
+        risk_lo = lc_veh_data.loc[(lc_veh_data["leader_id"] == lc_data["lo_id"])
                                   & time_filter,
-                                  'risk'].sum() * delta_t
-    if lc_data['ld_id'] != 0:
-        risk_ld = lc_veh_data.loc[(lc_veh_data['leader_id'] == lc_data['ld_id'])
+                                  "risk"].sum() * delta_t
+    if lc_data["ld_id"] != 0:
+        risk_ld = lc_veh_data.loc[(lc_veh_data["leader_id"] == lc_data["ld_id"])
                                   & time_filter,
-                                  'risk'].sum() * delta_t
-    if lc_data['fd_id'] != 0:
-        time_filter = ((fd_data['time'] >= lc_data['time'])
-                       & (fd_data['time'] <= end_time))
-        fd_data = fd_data.loc[(fd_data['leader_id'] == lc_data['veh_id'])
-                              # & (veh_data['veh_id'] == lc_data['fd_id'])
+                                  "risk"].sum() * delta_t
+    if lc_data["fd_id"] != 0:
+        time_filter = ((fd_data["time"] >= lc_data["time"])
+                       & (fd_data["time"] <= end_time))
+        fd_data = fd_data.loc[(fd_data["leader_id"] == lc_data["veh_id"])
+                              # & (veh_data["veh_id"] == lc_data["fd_id"])
                               & time_filter]
-        risk_fd = fd_data['risk'].sum() * delta_t
+        risk_fd = fd_data["risk"].sum() * delta_t
 
     return risk_lo, risk_ld, risk_fd
 
@@ -1001,7 +1001,7 @@ def get_total_lane_change_risk(
     """
     Gets the risks from the start of the lane change till the end of
     longitudinal adjustments. this yields different results from
-    'get_risks_during_lane_change', which returns the risks only during the
+    "get_risks_during_lane_change", which returns the risks only during the
      lane change maneuver.
 
     :param risky_maneuvers: Data frame where each row details one risky
@@ -1013,32 +1013,32 @@ def get_total_lane_change_risk(
     """
 
     # We check which "risky" maneuvers start during a lane change, and we
-    # assume that total risk of that risky maneuver is the lane change's risk.
+    # assume that total risk of that risky maneuver is the lane change"s risk.
     # NOTE: not sure this is the best (most fair?) evaluation criteria
 
-    simulation_risk_data = risky_maneuvers[risky_maneuvers['simulation_number']
-                                           == lc_data['simulation_number']]
-    time_filter = ((simulation_risk_data['time'] >= lc_data['time'])
-                   & (simulation_risk_data['time'] <= end_time))
+    simulation_risk_data = risky_maneuvers[risky_maneuvers["simulation_number"]
+                                           == lc_data["simulation_number"]]
+    time_filter = ((simulation_risk_data["time"] >= lc_data["time"])
+                   & (simulation_risk_data["time"] <= end_time))
     risks = dict()
-    risks['lo'] = simulation_risk_data.loc[
-        (simulation_risk_data['veh_id'] == lc_data['veh_id'])
-        & (simulation_risk_data['leader_id'] == lc_data['lo_id'])
+    risks["lo"] = simulation_risk_data.loc[
+        (simulation_risk_data["veh_id"] == lc_data["veh_id"])
+        & (simulation_risk_data["leader_id"] == lc_data["lo_id"])
         & time_filter,
-        'total_risk']
-    risks['ld'] = simulation_risk_data.loc[
-        (simulation_risk_data['veh_id'] == lc_data['veh_id'])
-        & (simulation_risk_data['leader_id'] == lc_data['ld_id'])
+        "total_risk"]
+    risks["ld"] = simulation_risk_data.loc[
+        (simulation_risk_data["veh_id"] == lc_data["veh_id"])
+        & (simulation_risk_data["leader_id"] == lc_data["ld_id"])
         & time_filter,
-        'total_risk']
-    risks['fd'] = simulation_risk_data.loc[
-        (simulation_risk_data['veh_id'] == lc_data['fd_id'])
-        & (simulation_risk_data['leader_id'] == lc_data['veh_id']) &
+        "total_risk"]
+    risks["fd"] = simulation_risk_data.loc[
+        (simulation_risk_data["veh_id"] == lc_data["fd_id"])
+        & (simulation_risk_data["leader_id"] == lc_data["veh_id"]) &
         time_filter,
-        'total_risk']
+        "total_risk"]
     for key in risks:
         risks[key] = 0 if risks[key].empty else risks[key].sum()
-    return risks['lo'], risks['ld'], risks['fd']
+    return risks["lo"], risks["ld"], risks["fd"]
 
 
 def label_lane_changes(scenario_name: str, veh_data: pd.DataFrame,
@@ -1051,49 +1051,49 @@ def label_lane_changes(scenario_name: str, veh_data: pd.DataFrame,
     :param lc_data: lane change data for the entire simulation
     :return:
     """
-    if scenario_name.startswith('in_and_out'):
+    if scenario_name.startswith("in_and_out"):
         off_ramp_links = [10003, 5],
         merging_links = [3]
     else:
-        print('[Warning] Cannot label lane changes as mandatory or '
-              'discretionary for scenario', scenario_name)
+        print("[Warning] Cannot label lane changes as mandatory or "
+              "discretionary for scenario", scenario_name)
         return
 
-    lc_direction = lc_data['dest_lane'] - lc_data['origin_lane']
+    lc_direction = lc_data["dest_lane"] - lc_data["origin_lane"]
     if np.any(np.abs(lc_direction) > 1):
-        warnings.warn('Vehicle changing two lanes at a time?',
+        warnings.warn("Vehicle changing two lanes at a time?",
                       RuntimeWarning)
-    data_by_veh = veh_data.groupby('veh_id')
-    exit_link = data_by_veh['link'].last()
+    data_by_veh = veh_data.groupby("veh_id")
+    exit_link = data_by_veh["link"].last()
 
-    exit_per_lc = exit_link.loc[lc_data['veh_id'].to_numpy()]
+    exit_per_lc = exit_link.loc[lc_data["veh_id"].to_numpy()]
     took_off_ramp_mask = exit_per_lc.isin(off_ramp_links).to_numpy()
-    lc_data['mandatory'] = False
+    lc_data["mandatory"] = False
 
-    left_mandatory_mask = ((lc_data['origin_lane'] == 1)
-                           & lc_data['link'].isin(merging_links)
+    left_mandatory_mask = ((lc_data["origin_lane"] == 1)
+                           & lc_data["link"].isin(merging_links)
                            & ~took_off_ramp_mask)
     right_mandatory_mask = ((lc_direction < 0)
                             & took_off_ramp_mask)
     lc_data.loc[left_mandatory_mask | right_mandatory_mask,
-                'mandatory'] = True
+                "mandatory"] = True
 
 
 def compute_fd_discomfort(fd_data: pd.DataFrame,
                           lc_data: pd.Series,
                           max_braking: List[int]) -> List[float]:
-    if lc_data['fd_id'] == 0:
+    if lc_data["fd_id"] == 0:
         return [0] * len(max_braking)
 
-    # fd_data = data_by_veh.get_group(lc_data['fd_id'])
-    sampling_interval = fd_data['time'].iloc[1] - fd_data['time'].iloc[0]
+    # fd_data = data_by_veh.get_group(lc_data["fd_id"])
+    sampling_interval = fd_data["time"].iloc[1] - fd_data["time"].iloc[0]
 
     fd_discomfort = []
     fd_accel = fd_data.loc[
-        (fd_data['time'] > lc_data['time'])
-        & (fd_data['time'] < lc_data['time'] + 10)
-        & (fd_data['leader_id'] == lc_data['veh_id']),
-        'ax']
+        (fd_data["time"] > lc_data["time"])
+        & (fd_data["time"] < lc_data["time"] + 10)
+        & (fd_data["leader_id"] == lc_data["veh_id"]),
+        "ax"]
     for b in max_braking:
         strong_braking = fd_accel[fd_accel < b]
         if strong_braking.empty:
@@ -1241,7 +1241,7 @@ def compute_gap_thresholds_for_collision(follower: Vehicle, leader: Vehicle,
     :param follower_tau_j:
     :return:
     """
-    # TODO: we don't need to compute all thresholds. We can eliminate some
+    # TODO: we don"t need to compute all thresholds. We can eliminate some
     #     based on the leader stopping time
 
     leader_stopping_time = leader_vel / leader.max_brake
@@ -1344,8 +1344,8 @@ def compute_risk_given_phase(follower: Vehicle, leader: Vehicle,
 
 
 def extract_lane_change_data_from_ngim(data: pd.DataFrame):
-    # idx_of_quick_lc = lc_data[(lc_data['veh_id'].diff()==0)
-    # & (lc_data['time'].diff() <= 5)]
+    # idx_of_quick_lc = lc_data[(lc_data["veh_id"].diff()==0)
+    # & (lc_data["time"].diff() <= 5)]
     pass
 
 
@@ -1355,47 +1355,47 @@ def identify_ngsim_lane_changes(data: pd.DataFrame):
     :param data: vehicle trajectory dataframe
     :return: (indices indicating one time sample before the lane id changes)
     """
-    if data['time'].loc[0] > 0:  # during tests, we don't want to repeat this
+    if data["time"].loc[0] > 0:  # during tests, we don"t want to repeat this
         # at every call of the function
-        data['time'] -= data['time'].loc[0]  # make it start at zero
-        data['time'] /= 1000  # to seconds
+        data["time"] -= data["time"].loc[0]  # make it start at zero
+        data["time"] /= 1000  # to seconds
 
-    data['future_lane'] = data['lane'].shift(-1, fill_value=0).astype(int)
-    veh_change_indicator = data['veh_id'].diff(-1) != 0
-    data.loc[veh_change_indicator, 'future_lane'] = data.loc[
-        veh_change_indicator, 'lane']
+    data["future_lane"] = data["lane"].shift(-1, fill_value=0).astype(int)
+    veh_change_indicator = data["veh_id"].diff(-1) != 0
+    data.loc[veh_change_indicator, "future_lane"] = data.loc[
+        veh_change_indicator, "lane"]
     # Remove cases when vehicle goes from on-ramp to auxiliary lane or from
-    # auxiliary lane to off-ramp (they're all the same lane)
-    data.loc[(data['lane'] == 7) & (data['future_lane'] == 6),
-             'future_lane'] = 7
-    data.loc[(data['lane'] == 6) & (data['future_lane'] == 8),
-             'future_lane'] = 6
-    data['lane_change'] = data['future_lane'] - data['lane']
+    # auxiliary lane to off-ramp (they"re all the same lane)
+    data.loc[(data["lane"] == 7) & (data["future_lane"] == 6),
+             "future_lane"] = 7
+    data.loc[(data["lane"] == 6) & (data["future_lane"] == 8),
+             "future_lane"] = 6
+    data["lane_change"] = data["future_lane"] - data["lane"]
 
-    # All instances when a vehicle's lane id changes.
+    # All instances when a vehicle"s lane id changes.
     # lane_change > 0: left
     # lane_change < 0: right
-    # lane_change = -data['lane'].diff(-1)  # following row - current row
-    # lane_change[data['veh_id'].diff(-1) != 0] = 0
+    # lane_change = -data["lane"].diff(-1)  # following row - current row
+    # lane_change[data["veh_id"].diff(-1) != 0] = 0
     # lane_change_idx = data[(lane_diff != 0)
-    #                        & (data['veh_id'].diff(-1) == 0)].index
+    #                        & (data["veh_id"].diff(-1) == 0)].index
 
     # Remove cases when vehicle goes from on-ramp to auxiliary lane or from
-    # auxiliary lane to off-ramp (they're all the same lane)
+    # auxiliary lane to off-ramp (they"re all the same lane)
     # lane_change[find_lane_change_from_to(data, lane_change, 7, 6)] = 0
     # lane_change[find_lane_change_from_to(data, lane_change, 6, 8)] = 0
 
     # Remove consecutive lane changes in short time intervals
     time_threshold = 5
-    lane_change_data = data.loc[data['lane_change'] != 0].copy()
+    lane_change_data = data.loc[data["lane_change"] != 0].copy()
     # Indices of lane changes that happen right after another
     drop_idx_1 = lane_change_data.loc[
-        (lane_change_data['time'].diff() < time_threshold)
-        & (lane_change_data['veh_id'].diff() == 0)].index
+        (lane_change_data["time"].diff() < time_threshold)
+        & (lane_change_data["veh_id"].diff() == 0)].index
     # Indices of lane changes that happen right before another
     drop_idx_2 = lane_change_data.loc[
-        (-lane_change_data['time'].diff(-1) < time_threshold)
-        & (lane_change_data['veh_id'].diff(-1) == 0)].index
+        (-lane_change_data["time"].diff(-1) < time_threshold)
+        & (lane_change_data["veh_id"].diff(-1) == 0)].index
     # drop_idx_2 = drop_idx_1 - 1  # only works if we reset the index
     lane_change_data.drop(drop_idx_1.union(drop_idx_2), inplace=True)
     find_ngsim_lane_change_start(data, lane_change_data.index)
@@ -1415,9 +1415,9 @@ def find_ngsim_lane_change_start(data: pd.DataFrame,
     sampling_time = 0.1
     window_seconds = 1
     window_samples = int(window_seconds / sampling_time)
-    data['vy'] = data['y'].diff() / sampling_time
-    data.loc[data['veh_id'].diff() != 0, 'vy'] = 0
-    data['vy_ma'] = data['vy'].rolling(window_samples, center=True).mean()
+    data["vy"] = data["y"].diff() / sampling_time
+    data.loc[data["veh_id"].diff() != 0, "vy"] = 0
+    data["vy_ma"] = data["vy"].rolling(window_samples, center=True).mean()
     speed_threshold = 0.2
 
     # We expect no more than 1000 lane changes per NGSIM file so we can
@@ -1425,25 +1425,25 @@ def find_ngsim_lane_change_start(data: pd.DataFrame,
     n_seconds = 5
     n_samples = n_seconds / sampling_time
     df_list = []
-    veh_ids = data['veh_id']
+    veh_ids = data["veh_id"]
     counter = 0
     for i in lane_change_idx:
         if (veh_ids[i] != veh_ids[i - n_samples - window_samples // 2]
                 or veh_ids[i] != veh_ids[i + n_samples + window_samples // 2]):
             continue
-        lc_direction = 2 * (data.loc[i, 'lane_change'] > 0) - 1
-        t_center = data.loc[i, 'time']
-        times = data.loc[i - n_samples: i + n_samples, 'time'] - t_center
-        vy = lc_direction * data.loc[i - n_samples:i + n_samples, 'vy']
-        vy_ma = lc_direction * data.loc[i - n_samples:i + n_samples, 'vy_ma']
-        df_list.append(pd.DataFrame({'time': times, 'vy': vy, 'vy_ma': vy_ma}))
-        df_list[-1]['veh_id'] = data.loc[i, 'veh_id']
-        df_list[-1]['lc_number'] = counter
-        df_list[-1]['lc_direction'] = 'right' if lc_direction > 0 else 'left'
+        lc_direction = 2 * (data.loc[i, "lane_change"] > 0) - 1
+        t_center = data.loc[i, "time"]
+        times = data.loc[i - n_samples: i + n_samples, "time"] - t_center
+        vy = lc_direction * data.loc[i - n_samples:i + n_samples, "vy"]
+        vy_ma = lc_direction * data.loc[i - n_samples:i + n_samples, "vy_ma"]
+        df_list.append(pd.DataFrame({"time": times, "vy": vy, "vy_ma": vy_ma}))
+        df_list[-1]["veh_id"] = data.loc[i, "veh_id"]
+        df_list[-1]["lc_number"] = counter
+        df_list[-1]["lc_direction"] = "right" if lc_direction > 0 else "left"
         counter += 1
-        # data_before_lc = (lc_direction * data.loc[i - n_samples:i - 1, 'vy_ma']
+        # data_before_lc = (lc_direction * data.loc[i - n_samples:i - 1, "vy_ma"]
         #                   > speed_threshold).argmax()
-        # data_after_lc = (lc_direction * data.loc[i + 1: i + n_samples, 'vy_ma']
+        # data_after_lc = (lc_direction * data.loc[i + 1: i + n_samples, "vy_ma"]
         #                  < speed_threshold).argmax()
     vy_df = pd.concat(df_list)
     return vy_df
@@ -1462,18 +1462,18 @@ def find_ngsim_lane_change_start(data: pd.DataFrame,
 #     :param destination_lane: index of the destination lane
 #     """
 #     lane_change_idx = lane_changes[lane_changes != 0].index
-#     lc_from_origin_lane = data.loc[lane_change_idx].loc[data['lane']
+#     lc_from_origin_lane = data.loc[lane_change_idx].loc[data["lane"]
 #                                                         == origin_lane]
 #     # Among lane changes that start at the origin lane, get the ones which
 #     # end at the destination lane.
 #     return data.loc[lc_from_origin_lane.index + 1].loc[
-#                data['lane'] == destination_lane].index - 1
+#                data["lane"] == destination_lane].index - 1
 
 
 # ================================ Classes =================================== #
 class SSMEstimator:
-    coded_ssms = {'TTC', 'DRAC', 'CPI', 'collision_free_gap', 'DTSG', 'vf_gap',
-                  'risk', 'estimated_risk', 'barrier_function_safe_gap'}
+    coded_ssms = {"TTC", "DRAC", "CPI", "collision_free_gap", "DTSG", "vf_gap",
+                  "risk", "estimated_risk", "barrier_function_safe_gap"}
     ttc_threshold = 1.5  # [s]
     drac_threshold = 3.5  # [m/s2]
 
@@ -1486,21 +1486,21 @@ class SSMEstimator:
 
     def include_ssm_by_name(self, ssm_name: str):
         ssm_name = ssm_name.lower()
-        if 'ttc' in ssm_name:
+        if "ttc" in ssm_name:
             self.include_ttc()
-        elif 'drac' in ssm_name:
+        elif "drac" in ssm_name:
             self.include_drac()
-        elif ssm_name == 'risk':
+        elif ssm_name == "risk":
             self.include_collision_free_gap()
             self.include_risk()
-        elif ssm_name == 'risk_no_lane_change':
+        elif ssm_name == "risk_no_lane_change":
             self.include_collision_free_gap(consider_lane_change=False)
             self.include_risk(consider_lane_change=False)
-        elif ssm_name == 'barrier_function_risk':
+        elif ssm_name == "barrier_function_risk":
             self.include_barrier_function_risk()
         else:
-            raise ValueError('ssm ', ssm_name, ' cannot be called by the '
-                                               'include_ssm_by_name method')
+            raise ValueError("ssm ", ssm_name, " cannot be called by the "
+                                               "include_ssm_by_name method")
 
     def include_ttc(self, safe_threshold: float = ttc_threshold):
         """
@@ -1513,12 +1513,12 @@ class SSMEstimator:
         :return: None
         """
         veh_data = self.veh_data
-        veh_data['TTC'] = float('nan')
-        valid_ttc_idx = veh_data['delta_v'] > 0
-        ttc = (veh_data['delta_x'].loc[valid_ttc_idx]
-               / veh_data['delta_v'].loc[valid_ttc_idx])
-        veh_data.loc[valid_ttc_idx, 'TTC'] = ttc
-        veh_data['low_TTC'] = veh_data['TTC'] < safe_threshold
+        veh_data["TTC"] = float("nan")
+        valid_ttc_idx = veh_data["delta_v"] > 0
+        ttc = (veh_data["delta_x"].loc[valid_ttc_idx]
+               / veh_data["delta_v"].loc[valid_ttc_idx])
+        veh_data.loc[valid_ttc_idx, "TTC"] = ttc
+        veh_data["low_TTC"] = veh_data["TTC"] < safe_threshold
 
     def include_drac(self, safe_threshold: float = drac_threshold):
         """
@@ -1531,12 +1531,12 @@ class SSMEstimator:
         :return: None
         """
         veh_data = self.veh_data
-        veh_data['DRAC'] = 0
-        valid_drac_idx = veh_data['delta_v'] > 0
-        drac = (veh_data['delta_v'].loc[valid_drac_idx] ** 2
-                / 2 / veh_data['delta_x'].loc[valid_drac_idx])
-        veh_data.loc[valid_drac_idx, 'DRAC'] = drac
-        veh_data['high_DRAC'] = veh_data['DRAC'] > safe_threshold
+        veh_data["DRAC"] = 0
+        valid_drac_idx = veh_data["delta_v"] > 0
+        drac = (veh_data["delta_v"].loc[valid_drac_idx] ** 2
+                / 2 / veh_data["delta_x"].loc[valid_drac_idx])
+        veh_data.loc[valid_drac_idx, "DRAC"] = drac
+        veh_data["high_DRAC"] = veh_data["DRAC"] > safe_threshold
 
     def include_cpi(self, max_decel_data, is_default_vissim=True):
         """
@@ -1557,40 +1557,40 @@ class SSMEstimator:
         """
 
         veh_types = np.unique(
-            max_decel_data.index.get_level_values('veh_type'))
+            max_decel_data.index.get_level_values("veh_type"))
         df = self.veh_data
-        if 'DRAC' not in df.columns:
+        if "DRAC" not in df.columns:
             self.include_drac()
-        df['CPI'] = 0
-        # veh_types = np.unique(df['veh type'])
+        df["CPI"] = 0
+        # veh_types = np.unique(df["veh type"])
         for veh_type in veh_types:
-            idx = (df['veh_type'] == veh_type) & (df['DRAC'] > 0)
+            idx = (df["veh_type"] == veh_type) & (df["DRAC"] > 0)
             if is_default_vissim:
                 first_row = max_decel_data.loc[veh_type, 0]
                 possible_vel = max_decel_data.loc[veh_type].index
                 min_vel = 0
                 max_vel = max(possible_vel)
-                decel_min_vel = max_decel_data.loc[veh_type, min_vel]['mean']
-                decel_max_vel = max_decel_data.loc[veh_type, max_vel]['mean']
+                decel_min_vel = max_decel_data.loc[veh_type, min_vel]["mean"]
+                decel_max_vel = max_decel_data.loc[veh_type, max_vel]["mean"]
                 madr_array = (decel_min_vel + (decel_max_vel - decel_min_vel)
-                              / max_vel * df.loc[idx, 'vx'])
-                df.loc[idx, 'CPI'] = truncnorm.cdf(df.loc[idx, 'DRAC'],
-                                                   a=first_row['norm_min'],
-                                                   b=first_row['norm_max'],
+                              / max_vel * df.loc[idx, "vx"])
+                df.loc[idx, "CPI"] = truncnorm.cdf(df.loc[idx, "DRAC"],
+                                                   a=first_row["norm_min"],
+                                                   b=first_row["norm_max"],
                                                    loc=(-1) * madr_array,
-                                                   scale=first_row['std'])
+                                                   scale=first_row["std"])
             else:
                 a_array = []
                 b_array = []
                 madr_array = []
                 std_array = []
-                for vel in df.loc[idx, 'vx']:
+                for vel in df.loc[idx, "vx"]:
                     row = max_decel_data.loc[veh_type, round(vel, -1)]
-                    a_array.append(row['norm_min'])
-                    b_array.append(row['norm_max'])
-                    madr_array.append(-1 * row['mean'])
-                    std_array.append(row['std'])
-                df.loc[idx, 'CPI'] = truncnorm.cdf(df.loc[idx, 'DRAC'],
+                    a_array.append(row["norm_min"])
+                    b_array.append(row["norm_max"])
+                    madr_array.append(-1 * row["mean"])
+                    std_array.append(row["std"])
+                df.loc[idx, "CPI"] = truncnorm.cdf(df.loc[idx, "DRAC"],
                                                    a=a_array, b=b_array,
                                                    loc=madr_array,
                                                    scale=std_array)
@@ -1605,21 +1605,21 @@ class SSMEstimator:
         :param same_type_gamma: factor multiplying standard value of maximum
          braking of the leader when both leader and follower are of the same
          type. Values greater than 1 indicate more conservative assumptions
-        :param consider_lane_change: if set to false, we don't consider the
+        :param consider_lane_change: if set to false, we don"t consider the
          effects of lane change, i.e., we treat all situations as simple
          vehicle following. If set to true, we overestimate the risk by
          assuming a reduced max brake during lane changes.
         """
 
-        ssm_1 = 'safe_gap'
-        ssm_2 = 'DTSG'
+        ssm_1 = "safe_gap"
+        ssm_2 = "DTSG"
         self.include_distance_based_ssm(
             ssm_1, same_type_gamma, consider_lane_change=consider_lane_change)
 
         if not consider_lane_change:
-            ssm_1 += '_no_lane_change'
-            ssm_2 += '_no_lane_change'
-        self.veh_data[ssm_2] = self.veh_data['delta_x'] - self.veh_data[ssm_1]
+            ssm_1 += "_no_lane_change"
+            ssm_2 += "_no_lane_change"
+        self.veh_data[ssm_2] = self.veh_data["delta_x"] - self.veh_data[ssm_1]
         self.veh_data.loc[self.veh_data[ssm_2] > 0, ssm_2] = 0
         self.veh_data[ssm_2] = np.abs(self.veh_data[ssm_2])
 
@@ -1641,7 +1641,7 @@ class SSMEstimator:
         :param free_flow_velocity: (optional) must be given in m/s
         :return:
         """
-        self.include_distance_based_ssm('vf_gap', same_type_gamma, rho,
+        self.include_distance_based_ssm("vf_gap", same_type_gamma, rho,
                                         free_flow_velocity)
 
     def include_risk(self, same_type_gamma: float = 1,
@@ -1650,7 +1650,7 @@ class SSMEstimator:
         Includes exact risk, computed as the relative velocity at
         collision time under the worst case scenario, to the dataframe
 
-        :param consider_lane_change: if set to false, we don't consider the
+        :param consider_lane_change: if set to false, we don"t consider the
          effects of lane change, i.e., we treat all situations as simple
          vehicle following. If set to true, we overestimate the risk by
          assuming a reduced max brake during lane changes.
@@ -1659,7 +1659,7 @@ class SSMEstimator:
          type. Values greater than 1 indicate more conservative assumptions
         """
         self.include_distance_based_ssm(
-            'risk', same_type_gamma,
+            "risk", same_type_gamma,
             consider_lane_change=consider_lane_change)
 
     def include_estimated_risk(self, same_type_gamma=1, rho=0.2,
@@ -1679,7 +1679,7 @@ class SSMEstimator:
         :param free_flow_velocity: (optional) must be given in m/s
         :return:
         """
-        self.include_distance_based_ssm('estimated_risk', same_type_gamma, rho,
+        self.include_distance_based_ssm("estimated_risk", same_type_gamma, rho,
                                         free_flow_velocity)
 
     def include_barrier_function_risk(self):
@@ -1693,19 +1693,19 @@ class SSMEstimator:
         standstill_distance = 3
         comfortable_braking = 4
 
-        gap = self.veh_data['delta_x'].to_numpy()
-        follower_vel = self.veh_data['vx'].to_numpy()
-        delta_vel = self.veh_data['delta_v'].to_numpy()
+        gap = self.veh_data["delta_x"].to_numpy()
+        follower_vel = self.veh_data["vx"].to_numpy()
+        delta_vel = self.veh_data["delta_v"].to_numpy()
         leader_vel = follower_vel - delta_vel
         safe_gap = (time_headway * follower_vel + standstill_distance
                     + (follower_vel ** 2 - leader_vel ** 2)
                     / 2 / comfortable_braking)
         diff_to_safe_gap = safe_gap - gap
-        self.veh_data['barrier_function_risk'] = diff_to_safe_gap
-        self.veh_data.loc[diff_to_safe_gap < 0, 'barrier_function_risk'] = 0
+        self.veh_data["barrier_function_risk"] = diff_to_safe_gap
+        self.veh_data.loc[diff_to_safe_gap < 0, "barrier_function_risk"] = 0
         # no leader cases
-        self.veh_data.loc[self.veh_data['veh_id'] == self.veh_data['leader_id'],
-                          'barrier_function_risk'] = 0
+        self.veh_data.loc[self.veh_data["veh_id"] == self.veh_data["leader_id"],
+                          "barrier_function_risk"] = 0
 
     def include_distance_based_ssm(self, ssm_name: str,
                                    same_type_gamma: float = 1,
@@ -1721,15 +1721,15 @@ class SSMEstimator:
          type. Values greater than 1 indicate more conservative assumptions
         :param rho: defines the lower bound on the leader velocity following
          (1-rho)vE(t) <= vL(t). Must be in the interval [0, 1]
-        :param consider_lane_change: if set to false, we don't consider the
+        :param consider_lane_change: if set to false, we don"t consider the
          effects of lane change, i.e., we treat all situations as simple
          vehicle following. If set to true, we overestimate the risk by
          assuming a reduced max brake during lane changes.
         :param free_flow_velocity: (optional) must be given in m/s
         """
-        veh_types = np.unique(self.veh_data[['veh_type', 'leader_type']])
+        veh_types = np.unique(self.veh_data[["veh_type", "leader_type"]])
         df = self.veh_data
-        has_leader = df['veh_id'] != df['leader_id']
+        has_leader = df["veh_id"] != df["leader_id"]
         if not consider_lane_change:
             ssm_name += "_no_lane_change"
         df[ssm_name] = 0
@@ -1738,16 +1738,16 @@ class SSMEstimator:
             try:
                 follower = Vehicle(follower_type, gamma=1)
             except KeyError:
-                print('Follower of type {} not found. Skipping it.'.
+                print("Follower of type {} not found. Skipping it.".
                       format(follower_type))
                 continue
             if not follower.is_relevant:
-                print('Skipping follower of type ', follower.type)
+                print("Skipping follower of type ", follower.type)
                 continue
 
             if free_flow_velocity is not None:
                 follower.free_flow_velocity = free_flow_velocity
-            follower_idx = (df['veh_type'] == follower_type) & has_leader
+            follower_idx = (df["veh_type"] == follower_type) & has_leader
 
             for leader_type in veh_types:
                 try:
@@ -1757,31 +1757,31 @@ class SSMEstimator:
                         gamma = 1
                     leader = Vehicle(leader_type, gamma=gamma)
                 except KeyError:
-                    print('Leader of type {} not found. Skipping it.'.
+                    print("Leader of type {} not found. Skipping it.".
                           format(leader_type))
                     continue
                 if not leader.is_relevant:
-                    print('Skipping leader of type ', leader.type)
+                    print("Skipping leader of type ", leader.type)
                     continue
 
-                veh_idx = follower_idx & (df['leader_type'] == leader_type)
-                if ssm_name.startswith('safe_gap'):
+                veh_idx = follower_idx & (df["leader_type"] == leader_type)
+                if ssm_name.startswith("safe_gap"):
                     df.loc[veh_idx, ssm_name] = (
                         self._compute_collision_free_gap(
                             veh_idx, follower, leader, consider_lane_change))
-                elif ssm_name.startswith('vf_gap'):
+                elif ssm_name.startswith("vf_gap"):
                     df.loc[veh_idx, ssm_name] = (
                         self._compute_vehicle_following_gap(
                             veh_idx, follower, leader, rho))
-                elif ssm_name.startswith('risk'):
+                elif ssm_name.startswith("risk"):
                     df.loc[veh_idx, ssm_name] = self._compute_risk(
                         veh_idx, follower, leader, consider_lane_change)
-                elif ssm_name.startswith('estimated_risk'):
+                elif ssm_name.startswith("estimated_risk"):
                     df.loc[veh_idx, ssm_name] = (
                         self._compute_estimated_risk(veh_idx, follower,
                                                      leader, rho))
                 else:
-                    print('Unknown distance based SSM requested. Skipping...')
+                    print("Unknown distance based SSM requested. Skipping...")
                     pass
 
     def _compute_collision_free_gap(self, veh_idx: pd.Series,
@@ -1795,16 +1795,16 @@ class SSMEstimator:
          dataset are being considered
         :param follower: following vehicle - object of the Vehicle class
         :param leader: leading vehicle - object of the Vehicle class
-        :param consider_lane_change: if set to false, we don't consider the
+        :param consider_lane_change: if set to false, we don"t consider the
          effects of lane change, i.e., we treat all situations as simple
          vehicle following. If set to true, we overestimate the risk by
          assuming a reduced max brake during lane changes.
         :return: safe gaps
         """
-        # TODO: can't we call the function compute_collision_free_gap from
+        # TODO: can"t we call the function compute_collision_free_gap from
         #  here instead of repeating most of the code?
-        follower_vel = self.veh_data.loc[veh_idx, 'vx'].to_numpy()
-        delta_vel = self.veh_data.loc[veh_idx, 'delta_v'].to_numpy()
+        follower_vel = self.veh_data.loc[veh_idx, "vx"].to_numpy()
+        delta_vel = self.veh_data.loc[veh_idx, "delta_v"].to_numpy()
         leader_vel = follower_vel - delta_vel
         safe_gap = np.zeros(len(follower_vel))
 
@@ -1865,7 +1865,7 @@ class SSMEstimator:
         """""
         h, d = follower.compute_vehicle_following_parameters(
             leader.max_brake, rho)
-        return h * self.veh_data.loc[veh_idx, 'vx'] + d
+        return h * self.veh_data.loc[veh_idx, "vx"] + d
 
     # TODO: deprecated. Delete once we run tests with VISSIM data
     def _compute_risk_old(self, veh_idx: pd.Series,
@@ -1879,20 +1879,20 @@ class SSMEstimator:
          dataset are being considered
         :param follower: following vehicle - object of the Vehicle class
         :param leader: leading vehicle - object of the Vehicle class
-        :param consider_lane_change: if set to false, we don't consider the
+        :param consider_lane_change: if set to false, we don"t consider the
          effects of lane change, i.e., we treat all situations as simple
          vehicle following. If set to true, we overestimate the risk by
          assuming a reduced max brake during lane changes.
         :return: exact risks
         """
-        gap = self.veh_data.loc[veh_idx, 'delta_x'].to_numpy()
-        follower_vel = self.veh_data.loc[veh_idx, 'vx'].to_numpy()
-        delta_vel = self.veh_data.loc[veh_idx, 'delta_v'].to_numpy()
+        gap = self.veh_data.loc[veh_idx, "delta_x"].to_numpy()
+        follower_vel = self.veh_data.loc[veh_idx, "vx"].to_numpy()
+        delta_vel = self.veh_data.loc[veh_idx, "delta_v"].to_numpy()
         leader_vel = follower_vel - delta_vel
         risk_squared = np.zeros(len(follower_vel))
-        safe_gap_col_name = 'safe_gap'
+        safe_gap_col_name = "safe_gap"
         if not consider_lane_change:
-            safe_gap_col_name += '_no_lane_change'
+            safe_gap_col_name += "_no_lane_change"
         safe_gap = self.veh_data.loc[veh_idx, safe_gap_col_name].to_numpy()
 
         (follower_effective_max_brake,
@@ -1956,7 +1956,7 @@ class SSMEstimator:
                                          + leader.max_brake)
         )
         risk_squared[idx_case_2] = 0
-        # In the code, delta_v = v_f - v_l (in the written documents it's
+        # In the code, delta_v = v_f - v_l (in the written documents it"s
         # usually v_l - v_f)
         risk_squared[idx_case_3] = (
                 (-delta_vel[idx_case_3]
@@ -1974,11 +1974,11 @@ class SSMEstimator:
         )
         # Couple of sanity checks
         if any(idx_case_2):
-            print('Collisions during jerk phase:', np.count_nonzero(idx_case_2))
-            print('I guess it''s time to code severity for this case...')
+            print("Collisions during jerk phase:", np.count_nonzero(idx_case_2))
+            print("I guess it""s time to code severity for this case...")
         idx_issue = risk_squared < 0
         if np.any(idx_issue):
-            print('{} negative risk samples'.format(np.count_nonzero(
+            print("{} negative risk samples".format(np.count_nonzero(
                 idx_issue)))
             risk_squared[idx_issue] = 0
 
@@ -1988,14 +1988,14 @@ class SSMEstimator:
                       follower: Vehicle, leader: Vehicle,
                       consider_lane_change: bool = True):
         # TODO: create smaller functions to make this one more readable.
-        gap = self.veh_data.loc[veh_idx, 'delta_x'].to_numpy()
-        follower_vel = self.veh_data.loc[veh_idx, 'vx'].to_numpy()
-        delta_vel = self.veh_data.loc[veh_idx, 'delta_v'].to_numpy()
+        gap = self.veh_data.loc[veh_idx, "delta_x"].to_numpy()
+        follower_vel = self.veh_data.loc[veh_idx, "vx"].to_numpy()
+        delta_vel = self.veh_data.loc[veh_idx, "delta_v"].to_numpy()
         leader_vel = follower_vel - delta_vel
         risk = np.zeros(len(follower_vel))
-        safe_gap_col_name = 'safe_gap'
+        safe_gap_col_name = "safe_gap"
         if not consider_lane_change:
-            safe_gap_col_name += '_no_lane_change'
+            safe_gap_col_name += "_no_lane_change"
         safe_gap = self.veh_data.loc[veh_idx, safe_gap_col_name].to_numpy()
 
         (follower_max_brake,
@@ -2051,13 +2051,13 @@ class SSMEstimator:
         # Sanity check
         # idx_issue = risk_squared < 0
         # if np.any(idx_issue):
-        #     print('{} negative risk samples'.format(np.count_nonzero(
+        #     print("{} negative risk samples".format(np.count_nonzero(
         #         idx_issue)))
         #     risk_squared[idx_issue] = 0
         # risk = np.sqrt(risk_squared)
 
         if any(idx_cases[2]) or any(idx_cases[3]):
-            print('Collisions during jerk phase:',
+            print("Collisions during jerk phase:",
                   np.count_nonzero(idx_cases[2])
                   + np.count_nonzero(idx_cases[3]))
 
@@ -2128,8 +2128,8 @@ class SSMEstimator:
         gamma = leader.max_brake / follower.max_brake
         gamma_threshold = ((1 - rho) * follower.free_flow_velocity
                            / (follower.free_flow_velocity + follower.lambda1))
-        gap = self.veh_data.loc[veh_idx, 'delta_x'].to_numpy()
-        follower_vel = self.veh_data.loc[veh_idx, 'vx'].to_numpy()
+        gap = self.veh_data.loc[veh_idx, "delta_x"].to_numpy()
+        follower_vel = self.veh_data.loc[veh_idx, "vx"].to_numpy()
 
         if gamma >= gamma_threshold:
             estimated_risk_squared = (
@@ -2160,29 +2160,29 @@ class SSMEstimator:
         arrays with values of maximum brake and lambda1 at each simulation
         step.
 
-        :param vehicle_data: Must contain either a column 'lane_change' or a
-         column 'y'. If only column 'y' exists, sends a warning.
-        :param vehicle: object containing the vehicle's parameters
-        :param consider_lane_change: if set to false, we don't consider the
+        :param vehicle_data: Must contain either a column "lane_change" or a
+         column "y". If only column "y" exists, sends a warning.
+        :param vehicle: object containing the vehicle"s parameters
+        :param consider_lane_change: if set to false, we don"t consider the
          effects of lane change, i.e., we treat all situations as simple
          vehicle following. If set to true, we overestimate the risk by
          assuming a reduced max brake during lane changes.
         :return: Tuple of numpy arrays"""
 
-        # In VISSIM's indication of lane change direction, elements are
-        # strings, where 'None' means no lane change.
+        # In VISSIM"s indication of lane change direction, elements are
+        # strings, where "None" means no lane change.
         # We mimic this by checking the lateral coordinates if the lane
         # change columns is not present.
-        if 'lane_change' in vehicle_data.columns:
-            lane_change_indicator = vehicle_data['lane_change']
+        if "lane_change" in vehicle_data.columns:
+            lane_change_indicator = vehicle_data["lane_change"]
         else:
-            warnings.warn('This vehicle record does not contain lane change '
-                          'data. It will be estimated by lateral position.\n'
-                          'Consider rerunning simulations.')
+            warnings.warn("This vehicle record does not contain lane change "
+                          "data. It will be estimated by lateral position.\n"
+                          "Consider rerunning simulations.")
             lane_change_indicator = (np.abs(
-                vehicle_data['y'] - 0.5) < 0.1)
+                vehicle_data["y"] - 0.5) < 0.1)
             lane_change_indicator[lane_change_indicator.index[
-                lane_change_indicator]] = 'None'
+                lane_change_indicator]] = "None"
 
         vehicle_effective_max_brake = (np.ones(len(lane_change_indicator))
                                        * vehicle.max_brake)
@@ -2191,7 +2191,7 @@ class SSMEstimator:
         vehicle_effective_tau_j = (np.ones(len(lane_change_indicator))
                                    * vehicle.tau_j)
         if consider_lane_change:
-            lane_change_idx = (lane_change_indicator != 'None').to_numpy()
+            lane_change_idx = (lane_change_indicator != "None").to_numpy()
             vehicle_effective_max_brake[lane_change_idx] = (
                 vehicle.max_brake_lane_change)
             vehicle_effective_lambda1[lane_change_idx] = (
@@ -2219,7 +2219,7 @@ class VISSIMDataPostProcessor(ABC):
         self.data_name = data_name
         self.writer = writer(scenario_name)
         self.file_handler = file_handling.FileHandler(scenario_name)
-        # self.post_processing_function = self._mapping[data_name]['function']
+        # self.post_processing_function = self._mapping[data_name]["function"]
         # self.secondary_parameter = secondary_parameter
 
     @abstractmethod
@@ -2231,34 +2231,34 @@ class SSMProcessor(VISSIMDataPostProcessor):
     _writer = data_writer.SSMDataWriter
 
     def __init__(self, scenario_name):
-        VISSIMDataPostProcessor.__init__(self, scenario_name, 'SSM',
+        VISSIMDataPostProcessor.__init__(self, scenario_name, "SSM",
                                          self._writer)
         network_name = self.file_handler.get_network_name()
         if network_name in HIGHWAY_SCENARIOS:
-            self.ssm_names = ['low_TTC', 'high_DRAC', 'risk',
-                              'risk_no_lane_change']
+            self.ssm_names = ["low_TTC", "high_DRAC", "risk",
+                              "risk_no_lane_change"]
         elif network_name in TRAFFIC_LIGHT_SCENARIOS:
-            self.ssm_names = ['barrier_function_risk']
+            self.ssm_names = ["barrier_function_risk"]
         else:
-            raise ValueError('Unknown network name.')
+            raise ValueError("Unknown network name.")
 
     def post_process(self, data) -> pd.DataFrame:
         vehicle_record = data
-        if 'leader_type' not in vehicle_record.columns:
+        if "leader_type" not in vehicle_record.columns:
             post_process_data(data_source_VISSIM, vehicle_record)
         # Compute
         ssm_estimator = SSMEstimator(vehicle_record)
         ssm_estimator.include_ssms(self.ssm_names)
         # Aggregate
         aggregation_period = 30  # [s]
-        new_index = ['time_interval', 'veh_type']
+        new_index = ["time_interval", "veh_type"]
         columns = new_index + self.ssm_names
         create_time_bins_and_labels(aggregation_period, vehicle_record)
         aggregated_ssm = vehicle_record[columns].groupby(
             new_index).sum()
         aggregated_ssm.reset_index(inplace=True)
-        aggregated_ssm.insert(0, 'simulation_number', vehicle_record[
-            'simulation_number'].iloc[0])
+        aggregated_ssm.insert(0, "simulation_number", vehicle_record[
+            "simulation_number"].iloc[0])
         return aggregated_ssm
 
     def set_measurements(self, ssm_names: List[str]):
@@ -2276,14 +2276,14 @@ class RiskyManeuverProcessor(VISSIMDataPostProcessor):
 
     def __init__(self, scenario_name):
         VISSIMDataPostProcessor.__init__(self, scenario_name,
-                                         'risky_maneuver', self._writer)
+                                         "risky_maneuver", self._writer)
         network_name = self.file_handler.get_network_name()
         if network_name in HIGHWAY_SCENARIOS:
-            self.risk_name = 'risk'
+            self.risk_name = "risk"
         elif network_name in TRAFFIC_LIGHT_SCENARIOS:
-            self.risk_name = 'barrier_function_risk'
+            self.risk_name = "barrier_function_risk"
         else:
-            raise ValueError('Unknown network name.')
+            raise ValueError("Unknown network name.")
 
     def post_process(self, data: pd.DataFrame) -> pd.DataFrame:
         """
@@ -2303,33 +2303,33 @@ class RiskyManeuverProcessor(VISSIMDataPostProcessor):
 
         # Pad the data frame with zero risk entries between vehicles whenever
         # a vehicle starts of ends the simulation with positive risk
-        grouped = vehicle_record.groupby('veh_id', as_index=False)
+        grouped = vehicle_record.groupby("veh_id", as_index=False)
         init_state = grouped.first()
         final_state = grouped.last()
-        padding_rows_1 = init_state[init_state['risk'] > 0].copy()
-        padding_rows_1['risk'] = 0
-        padding_rows_1['time'] -= 0.01
-        padding_rows_2 = final_state[final_state['risk'] > 0].copy()
-        padding_rows_2['risk'] = 0
-        padding_rows_2['time'] += 0.01
+        padding_rows_1 = init_state[init_state["risk"] > 0].copy()
+        padding_rows_1["risk"] = 0
+        padding_rows_1["time"] -= 0.01
+        padding_rows_2 = final_state[final_state["risk"] > 0].copy()
+        padding_rows_2["risk"] = 0
+        padding_rows_2["time"] += 0.01
         padded_vehicle_records = (pd.concat([vehicle_record, padding_rows_1,
                                              padding_rows_2]).
-                                  sort_values(['veh_id', 'time', 'risk']).
+                                  sort_values(["veh_id", "time", "risk"]).
                                   reset_index(drop=True))
 
         # Now we can look for "groups" of positive risk
-        delta_t = round(padded_vehicle_records['time'].iloc[0:2].diff()[1], 2)
-        padded_vehicle_records['is_risk_positive'] = (
+        delta_t = round(padded_vehicle_records["time"].iloc[0:2].diff()[1], 2)
+        padded_vehicle_records["is_risk_positive"] = (
                 padded_vehicle_records[risk_name] > 0)
         risk_transition_idx = padded_vehicle_records[
-            padded_vehicle_records['is_risk_positive'].diff().fillna(False)
+            padded_vehicle_records["is_risk_positive"].diff().fillna(False)
             != 0]
-        # To do a cumulative sum that resets every time there's a zero
-        # mask = padded_vehicle_records['risk'] != 0
+        # To do a cumulative sum that resets every time there"s a zero
+        # mask = padded_vehicle_records["risk"] != 0
         # total_risk = (mask.cumsum()
         #               - mask.cumsum().where(~mask).ffill().fillna(0).
         #               astype(int)) * delta_t
-        risk = padded_vehicle_records['risk']
+        risk = padded_vehicle_records["risk"]
         risk_grouped = risk.groupby((risk == 0).cumsum())
         cumulative_risk = risk_grouped.cumsum() * delta_t
         cumulative_max_risk = risk_grouped.cummax()
@@ -2339,21 +2339,21 @@ class RiskyManeuverProcessor(VISSIMDataPostProcessor):
         # And finally create the data frame which contains one risky maneuver
         # per row
         risky_data = padded_vehicle_records[
-            ['veh_id', 'veh_type', 'leader_id', 'time']].loc[start_indices]
-        risky_data['end_time'] = padded_vehicle_records['time'].loc[
+            ["veh_id", "veh_type", "leader_id", "time"]].loc[start_indices]
+        risky_data["end_time"] = padded_vehicle_records["time"].loc[
             end_indices].to_numpy()
-        risky_data['total_risk'] = cumulative_risk.shift().loc[
+        risky_data["total_risk"] = cumulative_risk.shift().loc[
             end_indices].to_numpy()
-        risky_data['max_risk'] = cumulative_max_risk.shift().loc[
+        risky_data["max_risk"] = cumulative_max_risk.shift().loc[
             end_indices].to_numpy()
         risky_data.drop(
-            index=risky_data[risky_data['total_risk'] < risk_margin].index,
+            index=risky_data[risky_data["total_risk"] < risk_margin].index,
             inplace=True)
 
         if risky_data.empty:
             risky_data.loc[0] = 0
-        risky_data['simulation_number'] = vehicle_record[
-            'simulation_number'].iloc[0]
+        risky_data["simulation_number"] = vehicle_record[
+            "simulation_number"].iloc[0]
         return risky_data
 
     def set_risk(self, risk_name: str):
@@ -2370,7 +2370,7 @@ class ViolationProcessor(VISSIMDataPostProcessor):
 
     def __init__(self, scenario_name):
         VISSIMDataPostProcessor.__init__(self, scenario_name,
-                                         'violation', self._writer)
+                                         "violation", self._writer)
         traffic_light_reader = readers.TrafficLightSourceReader(
             scenario_name)
         self.traffic_light_data = traffic_light_reader.load_data()
@@ -2385,31 +2385,31 @@ class ViolationProcessor(VISSIMDataPostProcessor):
         """
         vehicle_record = data
         violations_list = []
-        warmup_time = vehicle_record['time'].iloc[0]
+        warmup_time = vehicle_record["time"].iloc[0]
         for _, tf in self.traffic_light_data.iterrows():
-            vehicle_record['dist_to_tf'] = (vehicle_record['x']
-                                            - tf['position'])
-            after_tf = vehicle_record[vehicle_record['dist_to_tf'] > 0]
+            vehicle_record["dist_to_tf"] = (vehicle_record["x"]
+                                            - tf["position"])
+            after_tf = vehicle_record[vehicle_record["dist_to_tf"] > 0]
             crossing_time = after_tf.loc[
-                after_tf.groupby('veh_id').dist_to_tf.idxmin(), 'time']
+                after_tf.groupby("veh_id").dist_to_tf.idxmin(), "time"]
             crossing_time = crossing_time[crossing_time > warmup_time]
-            tf_cycle = tf['cycle_time']
+            tf_cycle = tf["cycle_time"]
             violation_idx = crossing_time[(crossing_time % tf_cycle) <
-                                          tf['red duration']].index
+                                          tf["red duration"]].index
             violations_per_tf = vehicle_record.loc[
-                violation_idx, ['simulation_number', 'veh_id', 'veh_type',
-                                'time', 'vehicles_per_lane']]
-            violations_per_tf['traffic_light'] = tf['id']
+                violation_idx, ["simulation_number", "veh_id", "veh_type",
+                                "time", "vehicles_per_lane"]]
+            violations_per_tf["traffic_light"] = tf["id"]
             violations_list.append(violations_per_tf)
         return pd.concat(violations_list)
 
     def _compute_cycle_times(self):
-        if 'starts_red' not in self.traffic_light_data.columns:
-            self.traffic_light_data['starts_red'] = True
-        self.traffic_light_data['cycle_time'] = (
-                self.traffic_light_data['red duration']
-                + self.traffic_light_data['green duration']
-                + self.traffic_light_data['amber duration'])
+        if "starts_red" not in self.traffic_light_data.columns:
+            self.traffic_light_data["starts_red"] = True
+        self.traffic_light_data["cycle_time"] = (
+                self.traffic_light_data["red duration"]
+                + self.traffic_light_data["green duration"]
+                + self.traffic_light_data["amber duration"])
 
 
 class DiscomfortProcessor(VISSIMDataPostProcessor):
@@ -2417,7 +2417,7 @@ class DiscomfortProcessor(VISSIMDataPostProcessor):
 
     def __init__(self, scenario_name):
         VISSIMDataPostProcessor.__init__(self, scenario_name,
-                                         'discomfort', self._writer)
+                                         "discomfort", self._writer)
         self.comfortable_brake = [-i for i in range(3, 10)]
 
     def post_process(self, data) -> pd.DataFrame:
@@ -2427,36 +2427,36 @@ class DiscomfortProcessor(VISSIMDataPostProcessor):
 
         :param data: vehicle records data loaded from VISSIM
         :return: Dataframe with values of discomfort for all vehicles every
-        'aggregation period' seconds
+        "aggregation period" seconds
         """
         vehicle_records = data
-        # print('[WARNING] are you sure the sampling interval is correct?')
+        # print("[WARNING] are you sure the sampling interval is correct?")
         sampling_interval = 0.1
-            # (vehicle_records['time'].iloc[1]
-            #                  - vehicle_records['time'].iloc[0])
+            # (vehicle_records["time"].iloc[1]
+            #                  - vehicle_records["time"].iloc[0])
         discomfort_columns = []
         for b in self.comfortable_brake:
-            discomfort_idx = vehicle_records['ax'] < b
-            col_name = 'discomfort_' + str(-b)
+            discomfort_idx = vehicle_records["ax"] < b
+            col_name = "discomfort_" + str(-b)
             vehicle_records[col_name] = 0
             vehicle_records.loc[discomfort_idx, col_name] = (
-                    b - vehicle_records.loc[discomfort_idx, 'ax']
+                    b - vehicle_records.loc[discomfort_idx, "ax"]
             )
             discomfort_columns.append(col_name)
 
         try:
             aggregated_acceleration = vehicle_records.groupby(
-                ['veh_type', 'time_interval'])[discomfort_columns].sum()
+                ["veh_type", "time_interval"])[discomfort_columns].sum()
         except KeyError:
             aggregation_period = 30
             create_time_bins_and_labels(aggregation_period, vehicle_records)
             aggregated_acceleration = vehicle_records.groupby(
-                ['veh_type', 'time_interval'])[discomfort_columns].sum()
+                ["veh_type", "time_interval"])[discomfort_columns].sum()
         aggregated_acceleration *= sampling_interval
         aggregated_acceleration.reset_index(inplace=True)
         aggregated_acceleration.insert(
-            0, 'simulation_number',
-            vehicle_records['simulation_number'].iloc[0])
+            0, "simulation_number",
+            vehicle_records["simulation_number"].iloc[0])
         return aggregated_acceleration
 
 
@@ -2465,7 +2465,7 @@ class LaneChangeIssuesProcessor(VISSIMDataPostProcessor):
 
     def __init__(self, scenario_name):
         VISSIMDataPostProcessor.__init__(self, scenario_name,
-                                         'lane_change_issues', self._writer)
+                                         "lane_change_issues", self._writer)
         self.exit_links = [5, 6]  # exit links for the in_and_out scenario
 
     def post_process(self, data) -> pd.DataFrame:
@@ -2473,24 +2473,24 @@ class LaneChangeIssuesProcessor(VISSIMDataPostProcessor):
         :param data: Vehicle record of a VISSIM simulation
         """
         # Find removed vehicles
-        max_time = data.iloc[-1]['time']
-        last_entry_per_veh = data.groupby('veh_id', as_index=False).last()
+        max_time = data.iloc[-1]["time"]
+        last_entry_per_veh = data.groupby("veh_id", as_index=False).last()
         removed_vehicles = last_entry_per_veh.loc[
-            ~(last_entry_per_veh['link'].isin(self.exit_links))
-            & (last_entry_per_veh['time'] < max_time), ['time', 'veh_id']]
-        removed_vehicles['issue'] = 'removed'
+            ~(last_entry_per_veh["link"].isin(self.exit_links))
+            & (last_entry_per_veh["time"] < max_time), ["time", "veh_id"]]
+        removed_vehicles["issue"] = "removed"
 
         # Find AVs which needed human intervention
         blocked_samples = data.loc[
-            (data['vissim_control'] == 1)
-            & (data['veh_type'] != Vehicle.VISSIM_CAR_ID),
-            ['time', 'veh_id']]
-        blocked_vehicles = blocked_samples.groupby('veh_id',
+            (data["vissim_control"] == 1)
+            & (data["veh_type"] != Vehicle.VISSIM_CAR_ID),
+            ["time", "veh_id"]]
+        blocked_vehicles = blocked_samples.groupby("veh_id",
                                                    as_index=False).first()
-        blocked_vehicles['issue'] = 'blocked AV'
+        blocked_vehicles["issue"] = "blocked AV"
 
         issues_df = pd.concat([removed_vehicles, blocked_vehicles])
-        issues_df['simulation_number'] = data['simulation_number'].iloc[0]
+        issues_df["simulation_number"] = data["simulation_number"].iloc[0]
         return issues_df
 
 
@@ -2499,7 +2499,7 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
 
     def __init__(self, scenario_name):
         VISSIMDataPostProcessor.__init__(self, scenario_name,
-                                         'platoon_lane_change_efficiency',
+                                         "platoon_lane_change_efficiency",
                                          self._writer)
 
     def post_process(self, data) -> pd.DataFrame:
@@ -2508,62 +2508,62 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
         """
         # TODO: split the function
 
-        sim_time = data.iloc[-1]['time']
+        sim_time = data.iloc[-1]["time"]
         sampling_time = 0.1  # TODO: read from data
 
-        platoon_vehicles = data[data['veh_type']
+        platoon_vehicles = data[data["veh_type"]
                                 == Vehicle.VISSIM_PLATOON_CAR_ID]
-        grouped_by_id = platoon_vehicles.groupby('veh_id')
+        grouped_by_id = platoon_vehicles.groupby("veh_id")
         platoon_veh_ids = grouped_by_id.groups.keys()
         result_df = pd.DataFrame(index=platoon_veh_ids)
-        result_df['simulation_number'] = data.iloc[0]['simulation_number']
+        result_df["simulation_number"] = data.iloc[0]["simulation_number"]
 
         # Per platoon vehicle results
-        result_df['traversed_network'] = (grouped_by_id['time'].last()
+        result_df["traversed_network"] = (grouped_by_id["time"].last()
                                           != sim_time)
-        result_df['was_lane_change_completed'] = grouped_by_id['state'].agg(
-            lambda x: np.any(x == 'lane changing')
+        result_df["was_lane_change_completed"] = grouped_by_id["state"].agg(
+            lambda x: np.any(x == "lane changing")
         )
-        result_df['travel_time'] = compute_time_interval_per_vehicle(
+        result_df["travel_time"] = compute_time_interval_per_vehicle(
             platoon_vehicles)
-        maneuvering_idx = platoon_vehicles['state'] != 'lane keeping'
-        result_df['vehicle_maneuver_time'] = compute_time_interval_per_vehicle(
+        maneuvering_idx = platoon_vehicles["state"] != "lane keeping"
+        result_df["vehicle_maneuver_time"] = compute_time_interval_per_vehicle(
             platoon_vehicles[maneuvering_idx]
         )
 
         # Per platoon results
-        platoon_ids = grouped_by_id.agg({'platoon_id': ['first', 'last']})
-        result_df['initial_platoon_id'] = platoon_ids['platoon_id']['first']
-        result_df['stayed_in_platoon'] = (platoon_ids['platoon_id']['first']
-                                          == platoon_ids['platoon_id']['last'])
+        platoon_ids = grouped_by_id.agg({"platoon_id": ["first", "last"]})
+        result_df["initial_platoon_id"] = platoon_ids["platoon_id"]["first"]
+        result_df["stayed_in_platoon"] = (platoon_ids["platoon_id"]["first"]
+                                          == platoon_ids["platoon_id"]["last"])
         platoon_maneuver_time = compute_maneuver_time_per_platoon(
             platoon_vehicles[maneuvering_idx]
         )
         platoon_vehicles = pd.merge(left=platoon_vehicles,
                                     right=platoon_maneuver_time,
-                                    left_on='platoon_id', right_index=True,
-                                    how='left')
-        grouped_by_id = platoon_vehicles.groupby('veh_id')
+                                    left_on="platoon_id", right_index=True,
+                                    how="left")
+        grouped_by_id = platoon_vehicles.groupby("veh_id")
         accel_cost = grouped_by_id.apply(lambda g: np.sum(np.power(
-            g.loc[(g['time'] > g['maneuver_start_time'].iloc[0])
-                  & (g['time'] < g['maneuver_end_time'].iloc[0]), 'ax'], 2))
+            g.loc[(g["time"] > g["maneuver_start_time"].iloc[0])
+                  & (g["time"] < g["maneuver_end_time"].iloc[0]), "ax"], 2))
                                          * sampling_time)
 
         result_df = pd.merge(left=result_df, right=platoon_maneuver_time,
-                             left_on='initial_platoon_id', right_index=True,
-                             how='inner')
-        result_df['accel_cost'] = accel_cost
+                             left_on="initial_platoon_id", right_index=True,
+                             how="inner")
+        result_df["accel_cost"] = accel_cost
 
         # TODO: not working
-        grouped_by_platoon = platoon_vehicles.groupby('platoon_id')
-        result_df['maneuver_start_position'] = grouped_by_platoon.apply(
-            lambda g: g.loc[g['time'] == g['maneuver_start_time'], 'x'].max()
+        grouped_by_platoon = platoon_vehicles.groupby("platoon_id")
+        result_df["maneuver_start_position"] = grouped_by_platoon.apply(
+            lambda g: g.loc[g["time"] == g["maneuver_start_time"], "x"].max()
         )
-        result_df['maneuver_end_position'] = grouped_by_platoon.apply(
-            lambda g: g.loc[g['time'] == g['maneuver_end_time'], 'x'].max()
+        result_df["maneuver_end_position"] = grouped_by_platoon.apply(
+            lambda g: g.loc[g["time"] == g["maneuver_end_time"], "x"].max()
         )
 
-        result_df.reset_index(inplace=True, names='veh_id')
+        result_df.reset_index(inplace=True, names="veh_id")
         return result_df
 
     def post_process_baseline_scenario(self, data):
@@ -2578,23 +2578,23 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
 
         sim_time = 0.1  # TODO compute from data
         # Vehicles that must perform lane change
-        first_link = data.groupby('veh_id')['link'].first()
+        first_link = data.groupby("veh_id")["link"].first()
         lane_changing_veh_ids = first_link[((first_link == in_ramp_connector)
                                             | (first_link == in_ramp_link)
                                             )].index.to_numpy()
-        platoon_vehicles = data[data['veh_id'].isin(lane_changing_veh_ids)]
-        grouped_by_id = platoon_vehicles.groupby('veh_id')
-        final_link_lane = grouped_by_id[['link', 'lane']].last()
+        platoon_vehicles = data[data["veh_id"].isin(lane_changing_veh_ids)]
+        grouped_by_id = platoon_vehicles.groupby("veh_id")
+        final_link_lane = grouped_by_id[["link", "lane"]].last()
         was_lane_change_completed = (
-                (final_link_lane['link'] == main_road_to_end_connector)
-                | (final_link_lane['link'] == exit_link)
-                | ((final_link_lane['link'] == main_road_link)
-                   & (final_link_lane['lane'] > 1)))
+                (final_link_lane["link"] == main_road_to_end_connector)
+                | (final_link_lane["link"] == exit_link)
+                | ((final_link_lane["link"] == main_road_link)
+                   & (final_link_lane["lane"] > 1)))
         result_df = pd.DataFrame(index=lane_changing_veh_ids)
-        result_df['simulation_number'] = data.iloc[0]['simulation_number']
-        result_df['traversed_network'] = (grouped_by_id['time'].last()
+        result_df["simulation_number"] = data.iloc[0]["simulation_number"]
+        result_df["traversed_network"] = (grouped_by_id["time"].last()
                                           != sim_time)
-        result_df['travel_time'] = compute_time_interval_per_vehicle(
+        result_df["travel_time"] = compute_time_interval_per_vehicle(
             platoon_vehicles)
 
 
@@ -2603,7 +2603,7 @@ class PlatoonLaneChangeImpactsProcessor(VISSIMDataPostProcessor):
 
     def __init__(self, scenario_name):
         VISSIMDataPostProcessor.__init__(self, scenario_name,
-                                         'platoon_lane_change_impacts',
+                                         "platoon_lane_change_impacts",
                                          self._writer)
         self.sampling_time = 0.0
 
@@ -2616,28 +2616,28 @@ class PlatoonLaneChangeImpactsProcessor(VISSIMDataPostProcessor):
 
         # Get origin and destination lanes (the same for all platoons)
         main_links = self.file_handler.get_main_links()
-        relevant_data = data[data['link'].isin(main_links)]
+        relevant_data = data[data["link"].isin(main_links)]
         first_and_last_lanes = relevant_data.groupby(
-            'platoon_id').agg({'lane': ['first', 'last']})
+            "platoon_id").agg({"lane": ["first", "last"]})
         first_and_last_lanes = first_and_last_lanes[
             first_and_last_lanes.index >= 0]
         # We assume the first platoon always finishes the maneuver
-        lanes = {'orig_lane': first_and_last_lanes['lane']['first'].iloc[0],
-                 'dest_lane': first_and_last_lanes['lane']['last'].iloc[0]}
+        lanes = {"orig_lane": first_and_last_lanes["lane"]["first"].iloc[0],
+                 "dest_lane": first_and_last_lanes["lane"]["last"].iloc[0]}
 
         # Aggregated for all vehicles
         results.update(self.support_1(relevant_data))
         # Per lane
         for lane_name, lane_number in lanes.items():
-            data_on_lane = relevant_data[relevant_data['lane'] == lane_number]
+            data_on_lane = relevant_data[relevant_data["lane"] == lane_number]
             results.update(self.support_1(data_on_lane,
                            suffix=lane_name))
             results.update(self.support_2(relevant_data, lane_number,
                                           lane_name))
 
-        results['simulation_number'] = relevant_data.iloc[0][
-            'simulation_number']
-        results['total_vehicles'] = relevant_data['veh_id'].nunique()
+        results["simulation_number"] = relevant_data.iloc[0][
+            "simulation_number"]
+        results["total_vehicles"] = relevant_data["veh_id"].nunique()
 
         return pd.DataFrame(data=results, index=[0])
 
@@ -2647,18 +2647,18 @@ class PlatoonLaneChangeImpactsProcessor(VISSIMDataPostProcessor):
          data
         """
         if suffix is None:
-            suffix = ''
+            suffix = ""
         else:
-            suffix = '_' + suffix
+            suffix = "_" + suffix
 
         travel_times = compute_time_interval_per_vehicle(data)
-        grouped_by_id = data.groupby('veh_id')
-        accel_costs = grouped_by_id.apply(lambda g: self.accel_cost(g['ax']))
+        grouped_by_id = data.groupby("veh_id")
+        accel_costs = grouped_by_id.apply(lambda g: self.accel_cost(g["ax"]))
         results = {
-            'travel_time_mean' + suffix: travel_times.mean(),
-            'travel_time_std' + suffix: travel_times.std(),
-            'accel_cost_mean' + suffix: accel_costs.mean(),
-            'accel_cost_std' + suffix: accel_costs.std()
+            "travel_time_mean" + suffix: travel_times.mean(),
+            "travel_time_std" + suffix: travel_times.std(),
+            "accel_cost_mean" + suffix: accel_costs.mean(),
+            "accel_cost_std" + suffix: accel_costs.std()
         }
 
         return results
@@ -2668,28 +2668,28 @@ class PlatoonLaneChangeImpactsProcessor(VISSIMDataPostProcessor):
         Computes accel costs for a vehicle that followed the platoon during the
          simulation
         """
-        grouped_by_id = data.groupby('veh_id')
-        veh_types = grouped_by_id['veh_type'].first()
-        veh_types.name = 'leader_type'
-        df = pd.merge(left=data, right=veh_types, left_on='leader_id',
+        grouped_by_id = data.groupby("veh_id")
+        veh_types = grouped_by_id["veh_type"].first()
+        veh_types.name = "leader_type"
+        df = pd.merge(left=data, right=veh_types, left_on="leader_id",
                       right_index=True)
-        followers = df[(df['leader_type'] == Vehicle.VISSIM_PLATOON_CAR_ID)
-                       & (df['veh_type'] != Vehicle.VISSIM_PLATOON_CAR_ID)]
-        followers_in_lane = followers[followers['lane'] == lane]
+        followers = df[(df["leader_type"] == Vehicle.VISSIM_PLATOON_CAR_ID)
+                       & (df["veh_type"] != Vehicle.VISSIM_PLATOON_CAR_ID)]
+        followers_in_lane = followers[followers["lane"] == lane]
 
         if followers_in_lane.empty:
-            results = {'fo_maneuver_accel_cost': 0, 'fo_total_accel_cost': 0}
+            results = {"fo_maneuver_accel_cost": 0, "fo_total_accel_cost": 0}
         else:
-            followers_ids = followers_in_lane['veh_id'].unique()
+            followers_ids = followers_in_lane["veh_id"].unique()
             results = {
-                # Accel while we're behind the platoon vehicle
-                # Doesn't make sense. Either only during maneuver, or whole time
-                '_'.join(['maneuver_accel_cost', lane_name, 'follower']):
-                    self.accel_cost(followers_in_lane['ax']),
+                # Accel while we"re behind the platoon vehicle
+                # Doesn"t make sense. Either only during maneuver, or whole time
+                "_".join(["maneuver_accel_cost", lane_name, "follower"]):
+                    self.accel_cost(followers_in_lane["ax"]),
                 # Accel during the entire simulation
-                '_'.join(['total_accel_cost', lane_name, 'follower']):
+                "_".join(["total_accel_cost", lane_name, "follower"]):
                     self.accel_cost(
-                        data.loc[data['veh_id'].isin(followers_ids), 'ax'])
+                        data.loc[data["veh_id"].isin(followers_ids), "ax"])
             }
 
         return results
@@ -2699,10 +2699,10 @@ class PlatoonLaneChangeImpactsProcessor(VISSIMDataPostProcessor):
 
 
 def compute_time_interval_per_vehicle(vehicle_records: pd.DataFrame):
-    times = vehicle_records.groupby('veh_id').agg(
-        {'time': ['first', 'last']})
-    times['duration'] = (times['time']['last'] - times['time']['first'])
-    return times['duration']
+    times = vehicle_records.groupby("veh_id").agg(
+        {"time": ["first", "last"]})
+    times["duration"] = (times["time"]["last"] - times["time"]["first"])
+    return times["duration"]
 
 
 def compute_maneuver_time_per_platoon(vehicle_records: pd.DataFrame):
@@ -2711,31 +2711,31 @@ def compute_maneuver_time_per_platoon(vehicle_records: pd.DataFrame):
      which vehicles are not lane keeping
     :returns: dataframe with the initial, final, and total maneuver time
     """
-    grouped_by_platoon = vehicle_records.groupby('platoon_id')
-    times = grouped_by_platoon.agg({'time': ['first', 'last']})
+    grouped_by_platoon = vehicle_records.groupby("platoon_id")
+    times = grouped_by_platoon.agg({"time": ["first", "last"]})
     return_df = pd.DataFrame()
-    return_df['maneuver_start_time'] = times['time']['first']
-    return_df['maneuver_end_time'] = times['time']['last']
-    return_df['platoon_maneuver_time'] = (return_df['maneuver_end_time']
-                                          - return_df['maneuver_start_time'])
+    return_df["maneuver_start_time"] = times["time"]["first"]
+    return_df["maneuver_end_time"] = times["time"]["last"]
+    return_df["platoon_maneuver_time"] = (return_df["maneuver_end_time"]
+                                          - return_df["maneuver_start_time"])
     return return_df
 
 
 def compute_accel_cost(platoon_vehicles: pd.DataFrame):
-    grouped_by_id = platoon_vehicles.groupby('platoon_id')
+    grouped_by_id = platoon_vehicles.groupby("platoon_id")
     df = pd.DataFrame()
     sampling_time = 0.1
-    df['accel_costs'] = grouped_by_id[[
-        'time', 'ax', 'maneuver_start_time', 'maneuver_end_time']].agg(
+    df["accel_costs"] = grouped_by_id[[
+        "time", "ax", "maneuver_start_time", "maneuver_end_time"]].agg(
         lambda x: np.sum(np.power(help_filter(x), 2)) * sampling_time
     )
 
-    a = grouped_by_id.aggregate(func='help_filter')
+    a = grouped_by_id.aggregate(func="help_filter")
 
     def help_filter(data):
-        return data.loc[(data['time'] >= data['maneuver_start_time'])
-                        & (data['time'] <= data['maneuver_end_time']),
-                        'ax']
+        return data.loc[(data["time"] >= data["maneuver_start_time"])
+                        & (data["time"] <= data["maneuver_end_time"]),
+                        "ax"]
 
 
 def create_summary_for_single_scenario(
@@ -2765,8 +2765,8 @@ def create_summary_for_single_scenario(
     if (sum(scenario_info.vehicle_percentages.values()) == 0
             and scenario_info.accepted_risk is not None
             and scenario_info.accepted_risk > 0):
-        print('[Warning]  Why are you trying to run simulations with all '
-              'human drivers and accepted risk > 0?')
+        print("[Warning]  Why are you trying to run simulations with all "
+              "human drivers and accepted risk > 0?")
         scenario_info.accepted_risk = [0]
 
     lane_change_reader = readers.VissimLaneChangeReader(scenario_name)
@@ -2775,12 +2775,12 @@ def create_summary_for_single_scenario(
     data_generator = vehicle_record_reader.generate_all_data_from_scenario(
         scenario_info, n_rows)
     data = defaultdict(list)
-    print('Start of summary creation for network {}\nscenario'.format(
+    print("Start of summary creation for network {}\nscenario".format(
         scenario_name, scenario_info))
     for (vehicle_records, file_number) in data_generator:
         # post_process_data(data_source_VISSIM, vehicle_records)
         for single_pp in post_processors:
-            print('Computing', single_pp.data_name)
+            print("Computing", single_pp.data_name)
             data[single_pp.data_name].append(single_pp.post_process(
                 vehicle_records))
         if analyze_lane_change:
@@ -2790,21 +2790,21 @@ def create_summary_for_single_scenario(
             lane_change_data = complement_lane_change_data(
                 scenario_name, vehicle_records,
                 vissim_lane_change_data)
-            data['lane_change'].append(lane_change_data)
-        print('-' * 79)
+            data["lane_change"].append(lane_change_data)
+        print("-" * 79)
 
     if not debugging:
         for single_pp in post_processors:
-            print('Saving ', single_pp.data_name)
+            print("Saving ", single_pp.data_name)
             all_simulations_data = pd.concat(data[single_pp.data_name])
-            all_simulations_data['vehicles_per_lane'] = (
+            all_simulations_data["vehicles_per_lane"] = (
                 scenario_info.vehicles_per_lane)
             single_pp.writer.save_as_csv(
                 all_simulations_data, scenario_info)
         if analyze_lane_change:
             lc_writer = data_writer.LaneChangeWriter(scenario_name)
-            all_simulations_data = pd.concat(data['lane_change'])
-            all_simulations_data['vehicles_per_lane'] = (
+            all_simulations_data = pd.concat(data["lane_change"])
+            all_simulations_data["vehicles_per_lane"] = (
                 scenario_info.vehicles_per_lane)
             lc_writer.save_as_csv(
                 all_simulations_data, scenario_info)

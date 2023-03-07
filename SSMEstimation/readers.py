@@ -18,15 +18,15 @@ def match_sim_number_to_random_seed(data):
     and the number of runs per vehicle input."""
     # TODO: where should this function and these constants be saved?
     # These variables are needed because we only save the simulation number,
-    # which doesn't mean much unless all percentages had the
+    # which doesn"t mean much unless all percentages had the
     # exact same number of simulations.
     _first_simulation_number = 1
     _runs_per_input = 10
     _initial_random_seed = 7
     _random_seed_increment = 1
     if not data.empty:
-        data['random_seed'] = _initial_random_seed + (
-                (data['simulation_number'] - _first_simulation_number)
+        data["random_seed"] = _initial_random_seed + (
+                (data["simulation_number"] - _first_simulation_number)
                 % _runs_per_input) * _random_seed_increment
 
 
@@ -46,39 +46,39 @@ def _add_scenario_info_columns(data: pd.DataFrame,
 def _add_vehicle_type_columns(data: pd.DataFrame,
                               vehicle_percentages: Dict[VehicleType, int]):
     if vehicle_percentages is not None:
-        s = ''
+        s = ""
         if sum(vehicle_percentages.values()) == 0:
-            s = '100% HDV'
+            s = "100% HDV"
         for vt, p in vehicle_percentages.items():
-            data[vt.name.lower() + '_percentage'] = p
+            data[vt.name.lower() + "_percentage"] = p
             if p > 0:
-                s += str(p) + '% ' + vehicle_type_to_print_name_map[vt]
-        data['control percentages'] = s
+                s += str(p) + "% " + vehicle_type_to_print_name_map[vt]
+        data["control percentages"] = s
 
 
 def _add_vehicle_input_column(data: pd.DataFrame,
                               vehicles_per_lane: int):
     if vehicles_per_lane is not None:
-        data['vehicles_per_lane'] = int(vehicles_per_lane)
+        data["vehicles_per_lane"] = int(vehicles_per_lane)
 
 
 def _add_risk_column(data: pd.DataFrame,
                      accepted_risk: Union[int, None]):
     if accepted_risk is not None:
-        data['accepted_risk'] = int(accepted_risk)
+        data["accepted_risk"] = int(accepted_risk)
 
 
 def _add_platoon_lane_change_strategy_column(
         data: pd.DataFrame, strategy: PlatoonLaneChangeStrategy):
     if strategy is not None:
-        data['lane_change_strategy'] = strategy_to_print_name_map[strategy]
+        data["lane_change_strategy"] = strategy_to_print_name_map[strategy]
 
 
 def _add_speeds_column(data: pd.DataFrame,
                        orig_and_dest_lane_speeds: Tuple[int, str]):
     if orig_and_dest_lane_speeds is not None:
-        data['orig_lane_speed'] = orig_and_dest_lane_speeds[0]
-        data['dest_lane_speed'] = orig_and_dest_lane_speeds[1]
+        data["orig_lane_speed"] = orig_and_dest_lane_speeds[0]
+        data["dest_lane_speed"] = orig_and_dest_lane_speeds[1]
 
 
 class DataReader(ABC):
@@ -130,11 +130,11 @@ class VissimDataReader(DataReader):
     #     :return: pandas dataframe with double index
     #     """
     #     max_deceleration_data = pd.read_csv(os.path.join(
-    #         vissim_networks_folder, 'max_decel_data.csv'))
+    #         vissim_networks_folder, "max_decel_data.csv"))
     #     kph_to_mps = 1 / 3.6
-    #     max_deceleration_data['vel'] = max_deceleration_data['vel']
+    #     max_deceleration_data["vel"] = max_deceleration_data["vel"]
     #     * kph_to_mps
-    #     max_deceleration_data.set_index(['veh_type', 'vel'], inplace=True)
+    #     max_deceleration_data.set_index(["veh_type", "vel"], inplace=True)
     #     return max_deceleration_data
 
     def load_data(self, file_identifier: str,
@@ -150,42 +150,42 @@ class VissimDataReader(DataReader):
 
         full_address = file_identifier
         try:
-            with open(full_address, 'r') as file:
+            with open(full_address, "r") as file:
                 # Skip header lines
                 for line in file:
                     # In all VISSIM files, the data starts after a line such as
-                    # '$VEHICLE:'. The variable names are listed after the ':'.
+                    # "$VEHICLE:". The variable names are listed after the ":".
                     if line.startswith(self.header_identifier):
                         header_no_split = line
-                        if ':' in header_no_split:
-                            header_no_split = line.partition(':')[-1]
-                        file_header = header_no_split.rstrip('\n').split(
+                        if ":" in header_no_split:
+                            header_no_split = line.partition(":")[-1]
+                        file_header = header_no_split.rstrip("\n").split(
                             self.separator)
                         break
 
                 column_names = []
                 for variable_name in file_header:
-                    extra_info = ''
-                    if '(' in variable_name:
-                        opening_idx = variable_name.find('(')
-                        closing_idx = variable_name.find(')')
+                    extra_info = ""
+                    if "(" in variable_name:
+                        opening_idx = variable_name.find("(")
+                        closing_idx = variable_name.find(")")
                         extra_info = (
                             variable_name[opening_idx:closing_idx + 1])
                         variable_name = variable_name[:opening_idx]
                     try:
                         column_names.append(self.header_map[
-                                                variable_name.lstrip(' ')]
+                                                variable_name.lstrip(" ")]
                                             + extra_info)
                     except KeyError:
                         column_names.append(variable_name.lower() + extra_info)
                 data = pd.read_csv(file, sep=self.separator,
-                                   dtype={'state': str},
+                                   dtype={"state": str},
                                    names=column_names, index_col=False,
                                    nrows=n_rows)
         except OSError:
-            raise ValueError('No VISSIM file at {}'.format(file_identifier))
+            raise ValueError("No VISSIM file at {}".format(file_identifier))
 
-        data.dropna(axis='columns', how='all', inplace=True)
+        data.dropna(axis="columns", how="all", inplace=True)
         return data
 
     def load_data_from_scenario(
@@ -209,8 +209,8 @@ class VissimDataReader(DataReader):
         data_folder = self.file_handler.get_vissim_test_folder()
         full_address = os.path.join(data_folder, file_name)
         data = self.load_data(full_address)
-        if 'simulation_number' not in data.columns:
-            data['simulation_number'] = file_number
+        if "simulation_number" not in data.columns:
+            data["simulation_number"] = file_number
         _add_scenario_info_columns(data, scenario_info)
         return data
 
@@ -246,8 +246,8 @@ class VissimDataReader(DataReader):
         full_address = self._create_full_file_address(
             file_identifier, scenario_info)
         data = self.load_data(full_address, n_rows=n_rows)
-        if 'simulation_number' not in data.columns:
-            data['simulation_number'] = file_identifier
+        if "simulation_number" not in data.columns:
+            data["simulation_number"] = file_identifier
         _add_scenario_info_columns(data, scenario_info)
         return data
 
@@ -273,9 +273,9 @@ class VissimDataReader(DataReader):
         if file_identifier is not None:
             # Create a three-character string with trailing zeros and then
             # sim_nums (e.g.: _004, _015, _326)
-            num_str = '_' + str(file_identifier).rjust(3, '0')
+            num_str = "_" + str(file_identifier).rjust(3, "0")
         else:
-            num_str = ''
+            num_str = ""
         file_name = (network_file + self.data_identifier
                      + num_str + self.file_format)
         return file_name
@@ -291,11 +291,11 @@ class VissimDataReader(DataReader):
         """
         cols_to_be_dropped = []
         for name in data.columns:
-            if '(' in name and name.split('(')[1][:-1] != 'ALL':
+            if "(" in name and name.split("(")[1][:-1] != "ALL":
                 cols_to_be_dropped.append(name)
         data.drop(columns=cols_to_be_dropped, inplace=True)
         # Remove (ALL) from the column names
-        column_names = [name.split('(')[0] for name in data.columns]
+        column_names = [name.split("(")[0] for name in data.columns]
         data.columns = column_names
 
 
@@ -327,25 +327,25 @@ class AggregatedDataReader(VissimDataReader):
 class VehicleRecordReader(VissimDataReader):
     """Reads vehicle records generated by VISSIM"""
 
-    _file_format = '.fzp'
-    _separator = ';'
-    _data_identifier = ''
-    _header_identifier = '$VEHICLE'
+    _file_format = ".fzp"
+    _separator = ";"
+    _data_identifier = ""
+    _header_identifier = "$VEHICLE"
     _header_map = {
-        'SIMRUN': 'simulation_number', 'SIMSEC': 'time', 'NO': 'veh_id',
-        'VEHTYPE': 'veh_type', 'LANE\\LINK\\NO': 'link',
-        'LANE\\INDEX': 'lane', 'POS': 'x', 'SPEED': 'vx',
-        'ACCELERATION': 'ax', 'POSLAT': 'y', 'LEADTARGNO': 'leader_id',
-        'FOLLOWDIST': 'vissim_delta_x',
-        'COORDFRONTX': 'front_x', 'COORDFRONTY': 'front_y',
-        'COORDREARX': 'rear_x', 'COORDREARY': 'rear_y',
-        'SPEEDDIFF': 'vissim_delta_v', 'LENGTH': 'length',
-        'LNCHG': 'lane_change', 'GIVECONTROLTOVISSIM': 'vissim_control',
-        'LEADTARGTYPE': 'target_type', 'CURRENTSTATE': 'state',
-        'PLATOONID': 'platoon_id', 'PLATOONLCSTRATEGY': 'lc_strategy'
+        "SIMRUN": "simulation_number", "SIMSEC": "time", "NO": "veh_id",
+        "VEHTYPE": "veh_type", "LANE\\LINK\\NO": "link",
+        "LANE\\INDEX": "lane", "POS": "x", "SPEED": "vx",
+        "ACCELERATION": "ax", "POSLAT": "y", "LEADTARGNO": "leader_id",
+        "FOLLOWDIST": "vissim_delta_x",
+        "COORDFRONTX": "front_x", "COORDFRONTY": "front_y",
+        "COORDREARX": "rear_x", "COORDREARY": "rear_y",
+        "SPEEDDIFF": "vissim_delta_v", "LENGTH": "length",
+        "LNCHG": "lane_change", "GIVECONTROLTOVISSIM": "vissim_control",
+        "LEADTARGTYPE": "target_type", "CURRENTSTATE": "state",
+        "PLATOONID": "platoon_id", "PLATOONLCSTRATEGY": "lc_strategy"
     }
 
-    # Note: we don't necessarily want all the variables listed in the map above
+    # Note: we don"t necessarily want all the variables listed in the map above
 
     def __init__(self, scenario_name):
         VissimDataReader.__init__(self, scenario_name,
@@ -379,7 +379,7 @@ class VehicleRecordReader(VissimDataReader):
             self.file_handler.find_min_max_file_number(
                 self.data_identifier, self.file_format, scenario_info))
         for file_number in range(min_file_number, max_file_number + 1):
-            print('Loading file number {} / {}'.format(
+            print("Loading file number {} / {}".format(
                 file_number - min_file_number + 1,
                 max_file_number - min_file_number + 1))
             yield (self.load_single_file_from_scenario(
@@ -412,18 +412,18 @@ class VehicleRecordReader(VissimDataReader):
 class DataCollectionReader(AggregatedDataReader):
     """Reads data generated from data collection measurements in VISSIM"""
 
-    _file_format = '.att'
-    _separator = ';'
-    _data_identifier = '_Data Collection Results'
-    _header_identifier = '$DATACOLLECTIONMEASUREMENTEVALUATION'
+    _file_format = ".att"
+    _separator = ";"
+    _data_identifier = "_Data Collection Results"
+    _header_identifier = "$DATACOLLECTIONMEASUREMENTEVALUATION"
     _header_map = {
-        'SIMRUN': 'simulation_number', 'TIMEINT': 'time_interval',
-        'DATACOLLECTIONMEASUREMENT': 'sensor_number',
-        'DIST': 'distance', 'VEHS': 'vehicle_count',
-        'QUEUEDELAY': 'queue_delay', 'OCCUPRATE': 'occupancy_rate',
-        'ACCELERATION': 'acceleration', 'LENGTH': 'length',
-        'PERS': 'people count', 'SPEEDAVGARITH': 'speed_avg',
-        'SPEEDAVGHARM': 'speed_harmonic_avg'
+        "SIMRUN": "simulation_number", "TIMEINT": "time_interval",
+        "DATACOLLECTIONMEASUREMENT": "sensor_number",
+        "DIST": "distance", "VEHS": "vehicle_count",
+        "QUEUEDELAY": "queue_delay", "OCCUPRATE": "occupancy_rate",
+        "ACCELERATION": "acceleration", "LENGTH": "length",
+        "PERS": "people count", "SPEEDAVGARITH": "speed_avg",
+        "SPEEDAVGHARM": "speed_harmonic_avg"
     }
 
     def __init__(self, scenario_name):
@@ -449,13 +449,13 @@ class DataCollectionReader(AggregatedDataReader):
         # type. We only want the (ALL) columns
         VissimDataReader._keep_only_aggregated_data(data)
         # Include flow
-        time_interval = data['time_interval'].iloc[0]
-        data['flow'] = self._compute_flow(data['vehicle_count'], time_interval)
+        time_interval = data["time_interval"].iloc[0]
+        data["flow"] = self._compute_flow(data["vehicle_count"], time_interval)
         return data
 
     @staticmethod
     def _compute_flow(vehicle_count: pd.Series, measurement_interval: str):
-        interval_start, _, interval_end = measurement_interval.partition('-')
+        interval_start, _, interval_end = measurement_interval.partition("-")
         measurement_period = int(interval_end) - int(interval_start)
         seconds_in_hour = 3600
         return seconds_in_hour / measurement_period * vehicle_count
@@ -464,17 +464,17 @@ class DataCollectionReader(AggregatedDataReader):
 class LinkEvaluationReader(AggregatedDataReader):
     """Reads data generated from link evaluation measurements in VISSIM"""
 
-    _file_format = '.att'
-    _separator = ';'
-    _data_identifier = '_Link Segment Results'
-    _header_identifier = '$LINKEVALSEGMENTEVALUATION'
+    _file_format = ".att"
+    _separator = ";"
+    _data_identifier = "_Link Segment Results"
+    _header_identifier = "$LINKEVALSEGMENTEVALUATION"
     _header_map = {
-        'SIMRUN': 'simulation_number', 'TIMEINT': 'time_interval',
-        'LINKEVALSEGMENT': 'link_segment_number', 'DENSITY': 'density',
-        'DELAYREL': 'delay_relative', 'SPEED': 'average_speed',
-        'VOLUME': 'volume'
+        "SIMRUN": "simulation_number", "TIMEINT": "time_interval",
+        "LINKEVALSEGMENT": "link_segment_number", "DENSITY": "density",
+        "DELAYREL": "delay_relative", "SPEED": "average_speed",
+        "VOLUME": "volume"
     }
-    _data_to_ignore = 'emissions'
+    _data_to_ignore = "emissions"
 
     def __init__(self, scenario_name):
         VissimDataReader.__init__(self, scenario_name,
@@ -503,17 +503,17 @@ class LinkEvaluationReader(AggregatedDataReader):
         cols_to_be_dropped = [name for name in data.columns
                               if name.startswith(self._data_to_ignore)]
         data.drop(columns=cols_to_be_dropped, inplace=True)
-        data['delay_relative'] = data['delay_relative'].str.rstrip(
-            ' %').astype(float)
-        link_information = data['link_segment_number'].str.split(
-            '-', expand=True).astype(int)
-        data['link_number'] = link_information.iloc[:, 0]
-        data['segment_length'] = (link_information.iloc[:, -1]
+        data["delay_relative"] = data["delay_relative"].str.rstrip(
+            " %").astype(float)
+        link_information = data["link_segment_number"].str.split(
+            "-", expand=True).astype(int)
+        data["link_number"] = link_information.iloc[:, 0]
+        data["segment_length"] = (link_information.iloc[:, -1]
                                   - link_information.iloc[:, -2])
-        data['link_segment'] = link_information.iloc[:, -2].rank(
-            method='dense').astype(int)
+        data["link_segment"] = link_information.iloc[:, -2].rank(
+            method="dense").astype(int)
         # If data was not exported per lane, we set all lanes to zero
-        data['lane'] = (0 if link_information.shape[1] == 3 else
+        data["lane"] = (0 if link_information.shape[1] == 3 else
                         link_information.iloc[:, 1])
 
         return data
@@ -522,21 +522,21 @@ class LinkEvaluationReader(AggregatedDataReader):
 class VissimLaneChangeReader(VissimDataReader):
     """Reads lane change data generated by VISSIM"""
 
-    _file_format = '.spw'
-    _separator = ';'
-    _data_identifier = ''
-    _header_identifier = 't; VehNo;'
+    _file_format = ".spw"
+    _separator = ";"
+    _data_identifier = ""
+    _header_identifier = "t; VehNo;"
     _header_map = {
-        't': 'time', 'VehNo': 'veh_id', 'v [m/s]': 'vx',
-        'Link No.': 'link', 'Lane': 'origin_lane', 'New Lane': 'dest_lane',
-        'VF': 'lo_id', 'v VF [m/s]': 'lo_vx',
-        'dv VF [m/s]': 'lo_delta_vx', 'dx VF [m]': 'lo_gap',
-        'VB': 'fo_id', 'v VB': 'fo_vx',
-        'dv VB [m/s]': 'fo_delta_vx', 'dx VB': 'fo_gap',
-        'new VF': 'ld_id', 'v new VF [m/s]': 'ld_vx',
-        'dv new VF [m/s]': 'ld_delta_vx', 'dx new VF [m]': 'ld_gap',
-        'new VB': 'fd_id', 'v new VB [m/s]': 'fd_vx',
-        'dv new VB [m/s]': 'fd_delta_vx', 'dx new VB [m]': 'fd_gap',
+        "t": "time", "VehNo": "veh_id", "v [m/s]": "vx",
+        "Link No.": "link", "Lane": "origin_lane", "New Lane": "dest_lane",
+        "VF": "lo_id", "v VF [m/s]": "lo_vx",
+        "dv VF [m/s]": "lo_delta_vx", "dx VF [m]": "lo_gap",
+        "VB": "fo_id", "v VB": "fo_vx",
+        "dv VB [m/s]": "fo_delta_vx", "dx VB": "fo_gap",
+        "new VF": "ld_id", "v new VF [m/s]": "ld_vx",
+        "dv new VF [m/s]": "ld_delta_vx", "dx new VF [m]": "ld_gap",
+        "new VB": "fd_id", "v new VB [m/s]": "fd_vx",
+        "dv new VB [m/s]": "fd_delta_vx", "dx new VB [m]": "fd_gap",
     }
 
     def __init__(self, scenario_name):
@@ -547,7 +547,7 @@ class VissimLaneChangeReader(VissimDataReader):
 
     # def load_data(self, file_identifier, n_rows: int = None) -> pd.DataFrame:
     #     data = super().load_data(file_identifier, n_rows)
-    #     data['simulation_number'] = file_identifier
+    #     data["simulation_number"] = file_identifier
     #     return data
 
     def load_data_from_scenario(
@@ -572,12 +572,12 @@ class VissimLaneChangeReader(VissimDataReader):
             try:
                 new_data = self.load_single_file_from_scenario(
                     i, scenario_info)
-                if 'simulation_number' not in new_data.columns:
-                    new_data['simulation_number'] = i
+                if "simulation_number" not in new_data.columns:
+                    new_data["simulation_number"] = i
                 sim_output.append(new_data)
             except FileNotFoundError:
-                warnings.warn('Tried to load simulations from {} to {}, '
-                              'but stopped at {}'.
+                warnings.warn("Tried to load simulations from {} to {}, "
+                              "but stopped at {}".
                               format(min_file_number, max_file_number, i))
                 break
 
@@ -585,14 +585,14 @@ class VissimLaneChangeReader(VissimDataReader):
 
 
 class LinkReader(VissimDataReader):
-    _file_format = '.att'
-    _separator = ';'
-    _data_identifier = '_Links'
-    _header_identifier = '$LINK'
+    _file_format = ".att"
+    _separator = ";"
+    _data_identifier = "_Links"
+    _header_identifier = "$LINK"
     _header_map = {
-        'NO': 'number', 'NAME': 'name', 'NUMLANES': 'number_of_lanes',
-        'LENGTH2D': 'length', 'ISCONN': 'is_connector',
-        'FROMLINK': 'from_link', 'TOLINK': 'to_link'
+        "NO": "number", "NAME": "name", "NUMLANES": "number_of_lanes",
+        "LENGTH2D": "length", "ISCONN": "is_connector",
+        "FROMLINK": "from_link", "TOLINK": "to_link"
     }
 
     def __init__(self, scenario_name):
@@ -618,13 +618,13 @@ class LinkReader(VissimDataReader):
 # class VehicleInputReader(VissimDataReader):
 #     """Reads files containing simulation vehicle input """
 #
-#     _file_format = '.att'
-#     _separator = ';'
-#     _data_identifier = '_Vehicle Inputs'
-#     _header_identifier = '$VEHICLEINPUT'
-#     _header_map = {'NO': 'number', 'NAME': 'name', 'LINK': 'link',
-#                    'VOLUME': 'vehicle_input',
-#                    'VEHCOMP': 'vehicle_composition'}
+#     _file_format = ".att"
+#     _separator = ";"
+#     _data_identifier = "_Vehicle Inputs"
+#     _header_identifier = "$VEHICLEINPUT"
+#     _header_map = {"NO": "number", "NAME": "name", "LINK": "link",
+#                    "VOLUME": "vehicle_input",
+#                    "VEHCOMP": "vehicle_composition"}
 #
 #     def __init__(self, scenario_name):
 #         VissimDataReader.__init__(self, scenario_name,
@@ -636,14 +636,14 @@ class LinkReader(VissimDataReader):
 # class ReducedSpeedAreaReader(VissimDataReader):
 #     """Reads data from reduced speed areas used in a VISSIM simulation"""
 #
-#     _file_format = '.att'
-#     _separator = ';'
-#     _data_identifier = '_Reduced Speed Areas'
-#     _header_identifier = '$REDUCEDSPEEDAREA'
+#     _file_format = ".att"
+#     _separator = ";"
+#     _data_identifier = "_Reduced Speed Areas"
+#     _header_identifier = "$REDUCEDSPEEDAREA"
 #     _header_map = {
-#         'NO': 'number', 'NAME': 'name', 'LANE': 'lane', 'POS': 'position',
-#         'LENGTH': 'length', 'TIMEFROM': 'time_from', 'TIMETO': 'time_to',
-#         'DESSPEEDDISTR': 'speed_limit', 'DECEL': 'max_approach_deceleration'
+#         "NO": "number", "NAME": "name", "LANE": "lane", "POS": "position",
+#         "LENGTH": "length", "TIMEFROM": "time_from", "TIMETO": "time_to",
+#         "DESSPEEDDISTR": "speed_limit", "DECEL": "max_approach_deceleration"
 #     }
 #
 #     def __init__(self, scenario_name):
@@ -657,8 +657,8 @@ class PostProcessedDataReader(DataReader):
     """
     Base class to read safety data extracted from vissim simulations
     """
-    file_format = '.csv'
-    data_identifier = ''
+    file_format = ".csv"
+    data_identifier = ""
 
     def __init__(self, scenario_name: str, data_identifier: str):
         self.file_handler = file_handling.FileHandler(scenario_name)
@@ -685,7 +685,7 @@ class PostProcessedDataReader(DataReader):
         try:
             data = pd.read_csv(full_address)
         except OSError:
-            # Old format files end with a three digit number. Let's try to
+            # Old format files end with a three digit number. Let"s try to
             # read that before giving up
             network_file_name = self.file_handler.get_file_name()
             data_folder = os.path.dirname(full_address)
@@ -754,11 +754,11 @@ class PostProcessedDataReader(DataReader):
             if file_str.startswith(base_name):
                 file_with_longer_name.append(file_str)
         if len(file_with_longer_name) > 1:
-            raise OSError('Too many possible files starting with {} '
-                          'at {} found'.format(self.data_identifier,
+            raise OSError("Too many possible files starting with {} "
+                          "at {} found".format(self.data_identifier,
                                                data_folder))
         if len(file_with_longer_name) == 0:
-            raise FileNotFoundError('No {} file at {}'.format(
+            raise FileNotFoundError("No {} file at {}".format(
                 self.data_identifier, data_folder))
         return file_with_longer_name[0]
 
@@ -767,7 +767,7 @@ class SSMDataReader(PostProcessedDataReader):
     """Reads aggregated SSM data obtained after processing vehicle record
     data"""
 
-    _data_identifier = '_SSM Results'
+    _data_identifier = "_SSM Results"
 
     def __init__(self, scenario_name):
         PostProcessedDataReader.__init__(self, scenario_name,
@@ -781,14 +781,14 @@ class SSMDataReader(PostProcessedDataReader):
         """
         data = super().load_data(file_identifier)
         # Ensure compatibility with previous naming convention
-        data.rename(columns={'exact_risk': 'risk'}, inplace=True)
+        data.rename(columns={"exact_risk": "risk"}, inplace=True)
         data.rename(columns={
-            'exact_risk_no_lane_change': 'risk_no_lane_change'}, inplace=True)
+            "exact_risk_no_lane_change": "risk_no_lane_change"}, inplace=True)
         return data
 
 
 class RiskyManeuverReader(PostProcessedDataReader):
-    _data_identifier = '_Risky Maneuvers'
+    _data_identifier = "_Risky Maneuvers"
 
     def __init__(self, scenario_name):
         PostProcessedDataReader.__init__(self, scenario_name,
@@ -796,7 +796,7 @@ class RiskyManeuverReader(PostProcessedDataReader):
 
 
 class LaneChangeReader(PostProcessedDataReader):
-    _data_identifier = '_Lane Changes'
+    _data_identifier = "_Lane Changes"
 
     def __init__(self, scenario_name):
         PostProcessedDataReader.__init__(self, scenario_name,
@@ -804,24 +804,24 @@ class LaneChangeReader(PostProcessedDataReader):
 
     def load_data(self, file_identifier: str) -> pd.DataFrame:
         data = super().load_data(file_identifier)
-        y = 'total_risk'
-        data['total_lane_change_risk'] = (data[y + '_lo'] + data[y + '_ld']
-                                          + data[y + '_fd'])
-        y = 'initial_risk'
-        data[y] = data[y + '_to_lo'] + data[y + '_to_ld'] + data[y + '_to_fd']
+        y = "total_risk"
+        data["total_lane_change_risk"] = (data[y + "_lo"] + data[y + "_ld"]
+                                          + data[y + "_fd"])
+        y = "initial_risk"
+        data[y] = data[y + "_to_lo"] + data[y + "_to_ld"] + data[y + "_to_fd"]
 
         # TODO: temporary [Oct 27, 22]. I saved the file path instead of the
         #  simulation number
-        if isinstance(data['simulation_number'].iloc[0], str):
-            data['simulation_number'] = (
-                data['simulation_number'].str.split('.').str[0].str[-3:].
+        if isinstance(data["simulation_number"].iloc[0], str):
+            data["simulation_number"] = (
+                data["simulation_number"].str.split(".").str[0].str[-3:].
                 astype(int))
 
         return data
 
 
 class LaneChangeIssuesReader(PostProcessedDataReader):
-    _data_identifier = '_Lane Change Issues'
+    _data_identifier = "_Lane Change Issues"
 
     def __init__(self, scenario_name):
         PostProcessedDataReader.__init__(self, scenario_name,
@@ -829,7 +829,7 @@ class LaneChangeIssuesReader(PostProcessedDataReader):
 
 
 class ViolationsReader(PostProcessedDataReader):
-    _data_identifier = '_Traffic Light Violations'
+    _data_identifier = "_Traffic Light Violations"
 
     def __init__(self, scenario_name):
         PostProcessedDataReader.__init__(self, scenario_name,
@@ -837,7 +837,7 @@ class ViolationsReader(PostProcessedDataReader):
 
 
 class DiscomfortReader(PostProcessedDataReader):
-    _data_identifier = '_Discomfort'
+    _data_identifier = "_Discomfort"
 
     def __init__(self, scenario_name):
         PostProcessedDataReader.__init__(self, scenario_name,
@@ -845,7 +845,7 @@ class DiscomfortReader(PostProcessedDataReader):
 
 
 class PlatoonLaneChangeEfficiencyReader(PostProcessedDataReader):
-    _data_identifier = '_Platoon Lane Change Efficiency'
+    _data_identifier = "_Platoon Lane Change Efficiency"
 
     def __init__(self, scenario_name):
         PostProcessedDataReader.__init__(self, scenario_name,
@@ -855,42 +855,42 @@ class PlatoonLaneChangeEfficiencyReader(PostProcessedDataReader):
 class NGSIMDataReader:
     """Reads raw vehicle trajectory data from NGSIM scenarios on the US-101"""
 
-    file_extension = '.csv'
-    ngsim_dir = ('C:\\Users\\fvall\\Documents\\Research\\TrafficSimulation'
-                 '\\NGSIM_original\\')
-    location_switch = {'us-101': 'US-101-LosAngeles-CA\\us-101-vehicle'
-                                 '-trajectory-data'}
-    interval_switch = {1: '0750am-0805am', 2: '0805am-0820am',
-                       3: '0820am-0835am'}
-    ngsim_to_reader_naming = {'Global_Time': 'time', 'Vehicle_ID': 'veh_id',
-                              'v_Class': 'veh_type', 'Local_Y': 'x',
-                              'v_Vel': 'vx', 'Local_X': 'y',
-                              'Preceding': 'leader_id', 'Lane_ID': 'lane',
-                              'Space_Hdwy': 'delta_x', 'v_Length': 'length'}
-    relevant_columns = {'time', 'veh_id', 'veh_type', 'link', 'lane',
-                        'x', 'vx', 'y', 'leader_id', 'delta_x', 'leader_type',
-                        'front_x', 'front_y', 'rear_x', 'rear_y', 'length',
-                        'delta_v', 'lane_change'}
+    file_extension = ".csv"
+    ngsim_dir = ("C:\\Users\\fvall\\Documents\\Research\\TrafficSimulation"
+                 "\\NGSIM_original\\")
+    location_switch = {"us-101": "US-101-LosAngeles-CA\\us-101-vehicle"
+                                 "-trajectory-data"}
+    interval_switch = {1: "0750am-0805am", 2: "0805am-0820am",
+                       3: "0820am-0835am"}
+    ngsim_to_reader_naming = {"Global_Time": "time", "Vehicle_ID": "veh_id",
+                              "v_Class": "veh_type", "Local_Y": "x",
+                              "v_Vel": "vx", "Local_X": "y",
+                              "Preceding": "leader_id", "Lane_ID": "lane",
+                              "Space_Hdwy": "delta_x", "v_Length": "length"}
+    relevant_columns = {"time", "veh_id", "veh_type", "link", "lane",
+                        "x", "vx", "y", "leader_id", "delta_x", "leader_type",
+                        "front_x", "front_y", "rear_x", "rear_y", "length",
+                        "delta_v", "lane_change"}
 
     def __init__(self, location):
         # self.interval = 0
         try:
             self.data_dir = os.path.join(self.ngsim_dir,
                                          self.location_switch[location])
-            file_name = 'trajectories-'
+            file_name = "trajectories-"
         except KeyError:
-            print('{}: KeyError: location {} not defined'.
+            print("{}: KeyError: location {} not defined".
                   format(self.__class__.__name__, location))
             self.data_dir = None
             file_name = None
         self.file_base_name = file_name
         # DataReader.__init__(self, file_name)
-        self.data_source = 'NGSIM'
+        self.data_source = "NGSIM"
 
     def load_data(self, file_identifier=1):
 
         if file_identifier not in self.interval_switch:
-            print('Requested interval not available')
+            print("Requested interval not available")
             return pd.DataFrame()
 
         # self.interval = interval
@@ -898,11 +898,11 @@ class NGSIMDataReader:
         full_address = os.path.join(self.data_dir,
                                     file_name + self.file_extension)
         try:
-            with open(full_address, 'r') as file:
+            with open(full_address, "r") as file:
                 data = pd.read_csv(file)
                 data.rename(columns=self.ngsim_to_reader_naming, inplace=True)
         except OSError:
-            raise ValueError('No NGSIM file with name {}'.format(file_name))
+            raise ValueError("No NGSIM file with name {}".format(file_name))
 
         self.select_relevant_columns(data)
         return data
@@ -921,22 +921,22 @@ class NGSIMDataReader:
 
 
 class SyntheticDataReader:
-    file_extension = '.csv'
-    data_dir = ('C:\\Users\\fvall\\Documents\\Research\\TrafficSimulation'
-                '\\synthetic_data\\')
-    synthetic_sim_name = 'synthetic_data'
+    file_extension = ".csv"
+    data_dir = ("C:\\Users\\fvall\\Documents\\Research\\TrafficSimulation"
+                "\\synthetic_data\\")
+    synthetic_sim_name = "synthetic_data"
 
     def __init__(self):
         self.sim_number = 0
-        self.column_names = ['time', 'veh_id', 'veh_type', 'link', 'lane', 'x',
-                             'vx', 'y', 'leader_id', 'delta_x']
-        self.data_source = 'synthetic'
+        self.column_names = ["time", "veh_id", "veh_type", "link", "lane", "x",
+                             "vx", "y", "leader_id", "delta_x"]
+        self.data_source = "synthetic"
 
     def load_data(self):
         file_name = "synthetic"
         full_address = os.path.join(self.data_dir,
                                     file_name + self.file_extension)
-        with open(full_address, 'r') as file:
+        with open(full_address, "r") as file:
             data = pd.read_csv(file)
         NGSIMDataReader.select_relevant_columns(data)
         return data
@@ -946,8 +946,8 @@ class SyntheticDataReader:
 
 
 class TrafficLightSourceReader:
-    _file_extension = '.csv'
-    _data_identifier = '_source_times'
+    _file_extension = ".csv"
+    _data_identifier = "_source_times"
 
     def __init__(self, scenario_name: str):
         file_handler = file_handling.FileHandler(scenario_name)
@@ -958,17 +958,17 @@ class TrafficLightSourceReader:
 
     def load_data(self) -> pd.DataFrame:
         tl_data = pd.read_csv(self._file_address)
-        if 'starts_red' not in tl_data.columns:
-            tl_data['starts_red'] = True
-        tl_data['cycle_time'] = (
-                tl_data['red duration']
-                + tl_data['green duration']
-                + tl_data['amber duration'])
+        if "starts_red" not in tl_data.columns:
+            tl_data["starts_red"] = True
+        tl_data["cycle_time"] = (
+                tl_data["red duration"]
+                + tl_data["green duration"]
+                + tl_data["amber duration"])
         return tl_data
 
 
 class SignalControllerFileReader:
-    _file_extension = '.sig'
+    _file_extension = ".sig"
 
     def __init__(self, scenario_name):
         self.scenario_name = scenario_name
@@ -986,16 +986,16 @@ class SignalControllerFileReader:
                                     file_name + str(file_identifier)
                                     + self._file_extension)
         try:
-            with open(full_address, 'r') as file:
+            with open(full_address, "r") as file:
                 return ET.parse(file)
         except OSError:
-            raise ValueError('File {} not found'.format(full_address))
+            raise ValueError("File {} not found".format(full_address))
 
 
 class MovesDataReader(DataReader):
     """ Class to read from Excel files generated by MOVES """
 
-    _file_extension = '.xls'
+    _file_extension = ".xls"
 
     def __init__(self, scenario_name: str, data_identifier: str,
                  sheet_name: str):
@@ -1007,7 +1007,7 @@ class MovesDataReader(DataReader):
     def load_data(self, file_identifier=None) -> pd.DataFrame:
         folder = self.file_handler.get_moves_default_data_folder()
         # file_name = (self.file_handler.get_file_name()
-        #              + '_MOVES_' + self.data_identifier
+        #              + "_MOVES_" + self.data_identifier
         #              + self._file_extension)
         file_name = self.data_identifier + self._file_extension
         full_address = os.path.join(folder, file_name)
@@ -1024,7 +1024,7 @@ class MovesDataReader(DataReader):
     # def get_data_from_all_sheets(self) -> Dict[str, pd.DataFrame]:
     #     folder = self.file_handler.get_moves_data_folder()
     #     file_name = (self.file_handler.get_file_name()
-    #                  + '_MOVES_' +
+    #                  + "_MOVES_" +
     #                  self.data_identifier
     #                  + self._file_extension)
     #     full_address = os.path.join(folder, file_name)
@@ -1034,63 +1034,63 @@ class MovesDataReader(DataReader):
 
 class MovesLinkReader(MovesDataReader):
 
-    _data_identifier = 'links'
-    _sheet_name = 'link'
+    _data_identifier = "links"
+    _sheet_name = "link"
 
     def __init__(self, scenario_name: str):
         MovesDataReader.__init__(self, scenario_name, self._data_identifier,
                                  self._sheet_name)
 
     def get_count_id(self) -> int:
-        data = self.load_data('County')
-        return data['countyID'].iloc[0]
+        data = self.load_data("County")
+        return data["countyID"].iloc[0]
 
     def get_zone_id(self) -> int:
-        data = self.load_data('Zone')
-        return data['zoneID'].iloc[0]
+        data = self.load_data("Zone")
+        return data["zoneID"].iloc[0]
 
     def get_road_id(self) -> int:
-        data = self.load_data('RoadType')
-        return data.loc[data['roadDesc'] == 'Urban Restricted Access',
-                        'roadTypeID'].iloc[0]
+        data = self.load_data("RoadType")
+        return data.loc[data["roadDesc"] == "Urban Restricted Access",
+                        "roadTypeID"].iloc[0]
 
     def get_off_road_id(self) -> int:
-        data = self.load_data('RoadType')
-        return data.loc[data['roadDesc'] == 'Off-Network',
-                        'roadTypeID'].iloc[0]
+        data = self.load_data("RoadType")
+        return data.loc[data["roadDesc"] == "Off-Network",
+                        "roadTypeID"].iloc[0]
 
 
 class MovesLinkSourceReader(MovesDataReader):
 
-    _data_identifier = 'linksource'
-    _sheet_name = 'linkSourceTypeHour'
+    _data_identifier = "linksource"
+    _sheet_name = "linkSourceTypeHour"
 
     def __init__(self, scenario_name: str):
         MovesDataReader.__init__(self, scenario_name, self._data_identifier,
                                  self._sheet_name)
 
     def get_passenger_vehicle_id(self) -> int:
-        data = self.load_data('SourceUseType')
-        return data.loc[data['sourceTypeName'] == 'Passenger Car',
-                        'sourceTypeID'].iloc[0]
+        data = self.load_data("SourceUseType")
+        return data.loc[data["sourceTypeName"] == "Passenger Car",
+                        "sourceTypeID"].iloc[0]
 
 
 class MOVESDatabaseReader (DataReader):
-    user = 'moves'
+    user = "moves"
     port = file_handling.get_moves_database_port()
-    hostname = '127.0.0.1'
+    hostname = "127.0.0.1"
     _vehicle_type_str_map = {
-        VehicleType.HDV: 'hdv',
-        VehicleType.ACC: 'acc',
-        VehicleType.AUTONOMOUS: 'av',
-        VehicleType.CONNECTED: 'cav',
-        VehicleType.PLATOON: 'platoon',
-        VehicleType.VIRDI: 'virdi'
+        VehicleType.HDV: "hdv",
+        VehicleType.ACC: "acc",
+        VehicleType.AUTONOMOUS: "av",
+        VehicleType.CONNECTED: "cav",
+        VehicleType.PLATOON: "platoon",
+        VehicleType.VIRDI: "virdi"
     }
 
     def __init__(self, scenario_name: str):
         DataReader.__init__(self, scenario_name)
-        with open('db_password.txt', 'r') as f:
+        with open("db_password.txt", "r") as f:
             self.password = f.readline()
         self.file_handler = file_handling.FileHandler(scenario_name)
 
@@ -1098,30 +1098,30 @@ class MOVESDatabaseReader (DataReader):
             self, scenario: file_handling.ScenarioInfo) -> pd.DataFrame:
 
         if scenario.platoon_lane_change_strategy is not None:
-            raise RuntimeError('[MOVESDatabaseReader] not yet ready for '
-                               + 'platoon scenarios (sorry, buddy)')
+            raise RuntimeError("[MOVESDatabaseReader] not yet ready for "
+                               + "platoon scenarios (sorry, buddy)")
 
         vehicle_percentages = scenario.vehicle_percentages
         vehicles_per_lane = scenario.vehicles_per_lane
         temp = []
 
         for vt, p in vehicle_percentages.items():
-            p_str = (str(p) + '_') if p < 100 else ''
+            p_str = (str(p) + "_") if p < 100 else ""
             if p > 0:
                 temp.append(p_str + self._vehicle_type_str_map[vt])
         if not temp:
             temp.append(self._vehicle_type_str_map[VehicleType.HDV])
-        vt_str = '_'.join(sorted(temp))
+        vt_str = "_".join(sorted(temp))
 
         # Sample name: highway_in_and_out_hdv_6000_out
-        output_database = '_'.join([self.file_handler.get_file_name(),
-                                    vt_str, str(3 * vehicles_per_lane), 'out'])
-        input_database = '_'.join([self.file_handler.get_file_name(),
-                                   vt_str, str(3 * vehicles_per_lane), 'in'])
+        output_database = "_".join([self.file_handler.get_file_name(),
+                                    vt_str, str(3 * vehicles_per_lane), "out"])
+        input_database = "_".join([self.file_handler.get_file_name(),
+                                   vt_str, str(3 * vehicles_per_lane), "in"])
         data = self._load_pollutants(output_database)
         self._add_volume_data(input_database, data)
         _add_scenario_info_columns(data, scenario)
-        data['emission_per_volume'] = data['emission'] / data['volume']
+        data["emission_per_volume"] = data["emission"] / data["volume"]
         return data
 
     def load_data_from_several_scenarios(
@@ -1151,11 +1151,11 @@ class MOVESDatabaseReader (DataReader):
                      "GROUP BY roadTypeID, pollutantID")
         cur.execute(sql_query)
 
-        data = {'pollutant_id': [], 'emission': [], 'road_type': []}
+        data = {"pollutant_id": [], "emission": [], "road_type": []}
         for roadTypeID, pollutantID, emmissionQuant in cur:
-            data['pollutant_id'].append(pollutantID)
-            data['emission'].append(emmissionQuant)
-            data['road_type'].append(roadTypeID)
+            data["pollutant_id"].append(pollutantID)
+            data["emission"].append(emmissionQuant)
+            data["road_type"].append(roadTypeID)
         conn.close()
         return pd.DataFrame(data=data)
 
@@ -1172,8 +1172,8 @@ class MOVESDatabaseReader (DataReader):
                         "FROM " + input_database + ".link "
                                                    "GROUP BY roadTypeID")
         cur.execute(volume_query)
-        data['volume'] = 0
+        data["volume"] = 0
         for roadTypeID, linkVolume in cur:
-            data.loc[data['road_type'] == roadTypeID, 'volume'] = linkVolume
+            data.loc[data["road_type"] == roadTypeID, "volume"] = linkVolume
         conn.close()
-        data.drop(data[data['volume'] == 0].index, inplace=True)
+        data.drop(data[data["volume"] == 0].index, inplace=True)
