@@ -10,7 +10,7 @@ from sklearn.linear_model import LinearRegression
 import file_handling
 import post_processing
 import readers
-from vehicle import VehicleType, vehicle_type_to_print_name_map
+from vehicle import VehicleType, vehicle_type_to_print_name_map, Vehicle
 
 
 class ResultAnalyzer:
@@ -1116,6 +1116,43 @@ class ResultAnalyzer:
             "maneuver_start_time"].first().to_numpy()
         ax.vlines(start_times, 0, max_value, colors="black")
 
+    def plot_relevant_vehicles_states(
+            self, scenarios: List[file_handling.ScenarioInfo]):
+        """
+        Plots the acceleration and velocity of platoon vehicles and
+        destination lane follower. All strategies are shown in the same plot for
+        easier comparison. Designed for scenarios with a single lane change
+        """
+        reader = readers.VehicleRecordReader(self.scenario_name)
+        generator = reader.generate_data_from_several_scenarios(scenarios)
+        platoon_vehicles_per_strategy = []
+        dest_lane_follower_per_strategy = []
+        for vehicle_records, _ in generator:
+            platoon_vehicles = vehicle_records[
+                vehicle_records["veh_type"] == Vehicle.VISSIM_PLATOON_CAR_ID]
+            platoon_vehicle_ids = platoon_vehicles["veh_id"].unique()
+            dest_lane_follower_id = vehicle_records.loc[
+                (vehicle_records["leader_id"].isin(platoon_vehicle_ids))
+                & (~vehicle_records["veh_id"].isin(platoon_vehicle_ids))
+                & (vehicle_records["lane"] == platoon_vehicles.iloc[-1]["lane"]),
+                "veh_id"
+            ].unique()
+            dest_lane_follower = vehicle_records[
+                vehicle_records["veh_id"].isin(dest_lane_follower_id)]
+            platoon_vehicles_per_strategy.append(platoon_vehicles)
+            dest_lane_follower_per_strategy.append(dest_lane_follower)
+        all_platoon_vehicles = pd.concat(platoon_vehicles_per_strategy)
+        all_dest_lane_followers = pd.concat(dest_lane_follower_per_strategy)
+
+        sns.set_style("whitegrid")
+        sns.relplot(all_platoon_vehicles, y="ax", x="time", kind="line",
+                    hue="lane_change_strategy", style="lane_change_strategy",
+                    col="veh_id", col_wrap=2)
+        plt.show()
+        sns.lineplot(all_dest_lane_followers, y="vx", x="time",
+                     hue="lane_change_strategy", style="lane_change_strategy")
+        plt.show()
+
     def normalize_lane_change_times(self, output_data: pd.DataFrame,
                                     lane_change_data: pd.DataFrame):
         """
@@ -1389,7 +1426,7 @@ class ResultAnalyzer:
         print("total risk:", single_veh["risk"].sum() * sampling)
 
     def speed_color_map(self, scenario: file_handling.ScenarioInfo,
-                        link: int):
+                        link: int, lane: int = None):
         """
         :param scenario: Simulation scenario parameters
         :param link: road link for which we want the color map
@@ -1397,17 +1434,22 @@ class ResultAnalyzer:
         """
 
         reader = readers.VehicleRecordReader(self.scenario_name)
-        data = reader.load_data_from_scenario(scenario)
-        data = data[data["link"] == link]
+        if self.is_debugging:
+            data = reader.load_test_data(scenario)
+        else:
+            data = reader.load_data_from_scenario(scenario)
 
-        data["time [s]"] = ((data["time"] // 10) * 10).astype(int)
+        data = data[data["link"] == link]
+        if lane is not None:
+            data = data[data["lane"] == lane]
+        data["time (s)"] = ((data["time"] // 10) * 10).astype(int)
         space_bins = [i for i in
                       range(0, int(data["x"].max()), 25)]
-        data["x [m]"] = pd.cut(data["x"], bins=space_bins,
+        data["x (m)"] = pd.cut(data["x"], bins=space_bins,
                                labels=space_bins[:-1])
-        plotted_data = data.groupby(["time [s]", "x [m]"],
+        plotted_data = data.groupby(["time (s)", "x (m)"],
                                     as_index=False)["vx"].mean()
-        plotted_data = plotted_data.pivot("time [s]", "x [m]", "vx")
+        plotted_data = plotted_data.pivot("time (s)", "x (m)", "vx")
         fig = plt.figure()
         ax = sns.heatmap(plotted_data)
         ax.invert_yaxis()
@@ -1536,7 +1578,7 @@ class ResultAnalyzer:
             data.drop(index=data[data["link_segment"] != segment].index,
                       inplace=True)
         elif data["link_segment"].nunique() > 1:
-            print("WARNING: the chosen link has several segments, and we're "
+            print("WARNING: the chosen link has several segments, and we are "
                   "keeping all of them")
         # Select lanes
         if self.scenario_name.startswith("in_and_out"):
@@ -1688,8 +1730,8 @@ class ResultAnalyzer:
         longer than others. This function will keep only the simulation
         parameters used by all strategies.
         """
-        if "platoon" not in self.scenario_name:
-            return
+        if "lane_change_strategy" not in data.columns:
+            return data
         grouped = data.groupby("lane_change_strategy")
         max_time = grouped["time"].max().min()
         if use_all_simulations:

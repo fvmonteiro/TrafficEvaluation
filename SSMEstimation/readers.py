@@ -72,6 +72,8 @@ def _add_platoon_lane_change_strategy_column(
         data: pd.DataFrame, strategy: PlatoonLaneChangeStrategy):
     if strategy is not None:
         data["lane_change_strategy"] = strategy_to_print_name_map[strategy]
+    else:
+        data["lane_change_strategy"] = "None"
 
 
 def _add_speeds_column(data: pd.DataFrame,
@@ -395,18 +397,8 @@ class VehicleRecordReader(VissimDataReader):
          Used for debugging purposes.
         """
         for sc in scenarios:
-            print(sc)
+            print(file_handling.print_scenario(sc))
             yield from self.generate_all_data_from_scenario(sc, n_rows)
-
-        # if (lane_change_strategies is None
-        #         or lane_change_strategies[0] is None):
-        #     yield from self.generate_data_with_controlled_percentage(
-        #         vehicle_percentages, vehicle_inputs_per_lane, accepted_risks,
-        #         n_rows)
-        # else:
-        #     yield from self.generate_platoon_scenario_data(
-        #         vehicle_percentages, vehicle_inputs_per_lane,
-        #         lane_change_strategies, orig_and_dest_lane_speeds, n_rows)
 
 
 class DataCollectionReader(AggregatedDataReader):

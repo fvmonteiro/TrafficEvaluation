@@ -150,16 +150,17 @@ def print_scenario(scenario: ScenarioInfo):
     veh_percent_list = [str(p) + "% " + vt.name.lower()
                         for vt, p in scenario.vehicle_percentages.items()]
     str_list.append("Vehicles: " + ", ".join(veh_percent_list))
-    str_list.append(str(scenario.vehicles_per_lane) + " vehs/lane/hour")
+    str_list.append("Input: " + str(scenario.vehicles_per_lane)
+                    + " vehs/lane/hour")
     if scenario.accepted_risk is not None:
         str_list.append("Accepted risk: " + str(scenario.accepted_risk))
     if scenario.platoon_lane_change_strategy is not None:
         str_list.append("Platoon LC strat.: "
                         + scenario.platoon_lane_change_strategy.name.lower())
     if scenario.orig_and_dest_lane_speeds is not None:
-        str_list.append("Platoon speed "
+        str_list.append("Orig lane speed "
                         + str(scenario.orig_and_dest_lane_speeds[0])
-                        + " and dest lane speed: "
+                        + ". Dest lane speed: "
                         + str(scenario.orig_and_dest_lane_speeds[1]))
     if scenario.special_case is not None:
         str_list.append("Special case: " + scenario.special_case)
