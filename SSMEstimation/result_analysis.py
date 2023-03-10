@@ -1055,7 +1055,7 @@ class ResultAnalyzer:
             before_or_after_lc_point: str, lanes: str,
             link_segment_number: int = None,
             aggregation_period: int = 30, warmup_time: int = 10,
-            use_all_simulations: bool = False):
+            sim_time: int = None, use_all_simulations: bool = False):
 
         link, lane_numbers = (
             self._select_link_and_lanes_for_platoon_lc_scenario(
@@ -1064,7 +1064,7 @@ class ResultAnalyzer:
         data = self._load_data(y,  scenarios)
         aggregated_data = self._prepare_link_evaluation_data(
             data, link, link_segment_number, lane_numbers,
-            aggregate_lanes=False, warmup_time=warmup_time,
+            aggregate_lanes=False, warmup_time=warmup_time, sim_time=sim_time,
             aggregation_period=aggregation_period)
 
         in_common_data = self._make_data_uniform(aggregated_data,
@@ -1075,46 +1075,79 @@ class ResultAnalyzer:
         in_common_data.rename(columns={"lane_change_strategy": "Strategy",
                                        "lane": "Lane"},
                               inplace=True)
+        hue_order = in_common_data["Strategy"].unique()
+
+        maneuver_times = self._get_maneuver_times(scenarios)
+        maneuver_times["time"] = (maneuver_times["time_exact"]
+                                  - warmup_time * 60 + 2.4) // 5 * 5
+        merged_data = pd.merge(
+            left=maneuver_times, left_on=["Strategy", "time"],
+            right=in_common_data[["Strategy", "time", "Lane", y]],
+            right_on=["Strategy", "time"])
+
         x_label = "time (s)"
         y_label = " ".join(y.split("_")) + " (" + self._units_map[y] + ")"
         sns.set_style("whitegrid")
         plt.rc("font", size=17)
         g = sns.relplot(in_common_data, x="time", y=y,
-                        kind="line", hue="Strategy", row="Lane",
-                        aspect=2)
+                        kind="line", hue="Strategy", hue_order=hue_order,
+                        row="Lane", aspect=2)
         g.set_axis_labels(x_label, y_label)
-        g.tight_layout()
-        for i in range(len(g.axes)):
-            max_y = in_common_data[y].max()
-            self._show_lane_change_start_times(scenarios[0], max_y,
-                                               g.axes[i][0])
+
+        # Include relevant maneuver points
+        grouped_per_lane = merged_data.groupby("Lane")
+        i = 0
+        for _, group in grouped_per_lane:
+            sns.scatterplot(group, x="time", y=y, hue="Strategy",
+                            hue_order=hue_order, style="Phase",
+                            s=100, ax=g.axes[i][0])
+            i += 1
+        # Reorganize legend
+        handles, labels = g.axes[0][0].get_legend_handles_labels()
+        new_handles = handles[4:5] + handles[:4] + handles[9:]
+        new_labels = labels[4:5] + labels[:4] + labels[9:]
+        old_legend = g.legend
+        old_legend.remove()
+        g.axes[0][0].legend(new_handles, new_labels, loc="upper left",
+                            bbox_to_anchor=(1, 1))
         fig = g.figure
-        sns.move_legend(g, "upper left", bbox_to_anchor=(0.8, 0.7),
-                        frameon=True, facecolor="white", edgecolor="black")
-        # fig = plt.figure()
-        # fig.set_size_inches(10, 5)
-        # ax = sns.lineplot(in_common_data, x="time", y=y,
-        #                   style="Lane", hue="Strategy")
-        # ax.legend(loc="upper left", bbox_to_anchor=(1.01, 0.9))
-        # ax.set_xlabel(x_label)
-        # ax.set_ylabel(y_label)
         fig.tight_layout()
         fig.show()
 
-    def _show_lane_change_start_times(
-            self, scenario: file_handling.ScenarioInfo, max_value: float,
-            ax: plt.axis):
+    def _show_maneuver_times(
+            self, scenarios: List[file_handling.ScenarioInfo],
+            data_over_time: pd.DataFrame, ax: plt.axis):
         """
-        Plot vertical lanes on the given axis to indicate the start of
-        lane changing maneuvers
+        Indicates maneuver relevant times on the given axis
         """
         try:
-            data = self._load_data("platoon_maneuver_time", [scenario])
+            data = self._load_data("platoon_maneuver_time", scenarios)
         except FileNotFoundError:
             return
         start_times = data.groupby("initial_platoon_id")[
             "maneuver_start_time"].first().to_numpy()
-        ax.vlines(start_times, 0, max_value, colors="black")
+        ax.vlines(start_times, 0, colors="black")
+
+    def _get_maneuver_times(self, scenarios: List[file_handling.ScenarioInfo]):
+        lc_data = self._load_data("platoon_maneuver_time", scenarios)
+        first_time_cols = [col for col in lc_data if col.startswith("first")]
+        last_time_cols = [col for col in lc_data if col.startswith("last")]
+
+        grouped = lc_data.groupby("lane_change_strategy")
+        start_times = grouped[first_time_cols].min().min(axis=1)
+        final_times = grouped[last_time_cols].max().max(axis=1)
+        first_lc_times = grouped["first_lane changing"].min()
+        last_lc_times = grouped["last_lane changing"].max()
+        maneuver_times = pd.concat(
+            [start_times, final_times, first_lc_times, last_lc_times], axis=1)
+        maneuver_times.columns = ["comms start", "end", "lc starts", "lc ends"]
+        ordered_cols = ["comms start", "lc starts", "lc ends", "end"]
+        maneuver_times = maneuver_times[ordered_cols]
+        maneuver_times = maneuver_times.stack().reset_index()
+        maneuver_times.columns = ["Strategy", "Phase", "time_exact"]
+        # TODO: read time interval from data
+
+        return maneuver_times
 
     def plot_relevant_vehicles_states(
             self, scenarios: List[file_handling.ScenarioInfo]):
@@ -1567,9 +1600,12 @@ class ResultAnalyzer:
             self, data: pd.DataFrame, link: int, segment: int = None,
             lanes: List[int] = None, sensor_name: str = None,
             aggregate_lanes: bool = True, warmup_time: int = 10,
+            sim_time: int = None,
             aggregation_period: int = 30) -> pd.DataFrame:
         # Drop early samples
-        post_processing.drop_warmup_samples(data, warmup_time)
+        post_processing.drop_warmup_samples(data, warmup_time,
+                                            normalize_time=True)
+        post_processing.drop_late_samples(data, sim_time)
         # Select link
         data.drop(index=data[data["link_number"] != link].index,
                   inplace=True)

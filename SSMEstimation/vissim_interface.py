@@ -387,10 +387,10 @@ class VissimInterface:
         while run_counter < n_runs:
             run_counter += 1
             print("[Client] Simulation", run_counter, "started")
-            print("Controlled speed phase...")
-            self._periodically_set_desired_speed(
-                simulation, first_platoon_time, 60, orig_lane_speed,
-                dest_lane_speed)
+            # print("Controlled speed phase...")
+            # self._periodically_set_desired_speed(
+            #     simulation, first_platoon_time, 60, orig_lane_speed,
+            #     dest_lane_speed)
             print("Platoons phase...")
             self._periodically_create_platoon(
                 simulation, first_platoon_time, platoon_creation_period,
@@ -430,9 +430,9 @@ class VissimInterface:
         platoon_counter = 0
         platoon_creation_time = first_platoon_time
         continue_loop_condition = platoon_creation_time < sim_time
-        if continue_loop_condition:
-            simulation.SetAttValue("SimBreakAt", first_platoon_time)
-            simulation.RunContinuous()
+        # if continue_loop_condition:
+        simulation.SetAttValue("SimBreakAt", first_platoon_time)
+        simulation.RunContinuous()
         while continue_loop_condition:
             platoon_counter += 1
             platoon_creation_time += platoon_creation_period
@@ -444,7 +444,7 @@ class VissimInterface:
             if continue_loop_condition:
                 simulation.SetAttValue("SimBreakAt", platoon_creation_time)
             else:
-                simulation.SetAttValue("SimBreakAt", 5 - 1)
+                simulation.SetAttValue("SimBreakAt", first_platoon_time - 1)
             simulation.RunContinuous()
 
     def run_platoon_scenario_sample(
@@ -623,10 +623,11 @@ class VissimInterface:
                 first_platoon_time = 180
                 creation_period = 60
             elif special_case == "no_lane_change":
+                simulation_period = 600
                 first_platoon_time = simulation_period + 1
                 creation_period = simulation_period
             elif special_case == "single_lane_change":
-                # simulation_period = 1200
+                simulation_period = 1200
                 creation_period = simulation_period + 1
             elif special_case.endswith("lane_change_period"):
                 creation_period = special_case.split("_")[0]
@@ -635,9 +636,9 @@ class VissimInterface:
                 return
 
         # orig_lane_speed_distribution = "same"
-        left_lane_composition_number = (
+        dest_lane_composition_number = (
             self.find_vehicle_composition_number_by_name("dest_lane"))
-        right_lane_composition_number = (
+        orig_lane_composition_number = (
             self.find_vehicle_composition_number_by_name("orig_lane"))
 
         platoon_desired_speed = 110
@@ -656,9 +657,13 @@ class VissimInterface:
             self.set_platoon_lane_change_strategy(
                 sc.platoon_lane_change_strategy)
             self.set_composition_vehicle_types_and_flows(
-                right_lane_composition_number, sc.vehicle_percentages)
+                orig_lane_composition_number, sc.vehicle_percentages)
             self.set_composition_vehicle_types_and_flows(
-                left_lane_composition_number, sc.vehicle_percentages)
+                dest_lane_composition_number, sc.vehicle_percentages)
+            self.set_vehicle_composition_desired_speed(
+                orig_lane_composition_number, sc.orig_and_dest_lane_speeds[0])
+            self.set_vehicle_composition_desired_speed(
+                dest_lane_composition_number, sc.orig_and_dest_lane_speeds[1])
             speed_map = {"orig_lane": sc.orig_and_dest_lane_speeds[0],
                          "dest_lane": sc.orig_and_dest_lane_speeds[1]}
             self.set_reduced_speed_area_limit(speed_map)
