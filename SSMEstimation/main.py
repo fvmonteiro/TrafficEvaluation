@@ -346,31 +346,41 @@ def main():
 
     # =============== Running =============== #
     other_vehicles = {VehicleType.CONNECTED_NO_LANE_CHANGE: 100}
-    lc_scenarios = file_handling.create_multiple_scenarios(
+    lc_scenarios_1 = file_handling.create_multiple_scenarios(
         [other_vehicles], [inputs_per_lane],
         lane_change_strategies=strategies,
         orig_and_dest_lane_speeds=[#("70", "50"),
-                                   #("70", "70"),
-                                   ("70", "90")],
-        special_case="single_lane_change"
+                                   ("70", "70")],
+                                   #("70", "90")],
+        special_cases=[str(i) + "_platoon_vehicles" for i in range(2, 4)]
     )
+    lc_scenarios_2 = file_handling.create_multiple_scenarios(
+        [other_vehicles], [inputs_per_lane],
+        lane_change_strategies=strategies[1:],
+        orig_and_dest_lane_speeds=[  # ("70", "50"),
+            ("70", "70")],
+        # ("70", "90")],
+        special_cases=[str(i) + "_platoon_vehicles" for i in range(5, 10, 2)]
+    )
+
     # no_lc_scenarios = file_handling.create_multiple_scenarios(
     #     [other_vehicles], [inputs_per_lane],
     #     orig_and_dest_lane_speeds=[("70", "50"),
-    #                                ("70", "70")],
-    #                                #("70", "90")],
+    #                                ("70", "70"),
+    #                                ("70", "90")],
     #     special_case="no_lane_change")
 
     # all_scenarios = [no_lc_scenario]
     # all_scenarios.extend(lc_scenarios)
 
-    # vi = VissimInterface()
-    # vi.load_simulation(scenario_name)
+    all_scenarios = lc_scenarios_1 + lc_scenarios_2
+    vi = VissimInterface()
+    vi.load_simulation(scenario_name)
     # # vi.run_multiple_platoon_lane_change_scenarios(
     # #     lc_scenarios, runs_per_scenario=1, is_debugging=False)
-    # vi.run_multiple_platoon_lane_change_scenarios(
-    #     lc_scenarios, runs_per_scenario=1)
-    # vi.close_vissim()
+    vi.run_multiple_platoon_lane_change_scenarios(
+        all_scenarios, runs_per_scenario=1)
+    vi.close_vissim()
 
     # =============== Post processing =============== #
     # post_processing.create_platoon_lane_change_summary(
@@ -380,9 +390,8 @@ def main():
     # file_handler.export_multiple_platoon_results_to_cloud(
     #         vehicle_percentages, vehicle_inputs, strategies,
     #         orig_and_dest_lane_speeds)
-    # file_handler.import_multiple_platoon_results_from_cloud(
-    #     vehicle_percentages, vehicle_inputs, strategies,
-    #     orig_and_dest_lane_speeds)
+    # file_handler.import_multiple_results_from_cloud(lc_scenarios)
+    # file_handler.import_multiple_results_from_cloud(no_lc_scenarios)
 
     # =============== To MOVES =============== #
     # scenarios = file_handling.create_multiple_scenarios(
@@ -403,30 +412,30 @@ def main():
     segment = 1 if before_or_after_lc_point == "after" else 2
     all_sims = True
 
-    scenarios_by_speed = file_handling.split_scenario_by(
-        lc_scenarios, "orig_and_dest_lane_speeds")
-
-    for speed_pair, scenario_subset in scenarios_by_speed.items():
-        print(speed_pair)
-        # ra.plot_relevant_vehicles_states(scenario_subset)
-        ys = [
-            # "volume",
-            "average_speed",
-            # "density",
-            # "delay_relative"
-              ]
-        for y in ys:
-            # ra.plot_link_data_box_plot_vs_strategy(
-            #     y,  lc_scenarios, before_or_after_lc_point, lanes, segment,
-            #     warmup_time=5, aggregation_period=30)
-            ra.plot_link_data_vs_time_per_strategy(
-                y, scenario_subset, before_or_after_lc_point, lanes, segment,
-                warmup_time=2, sim_time=7, aggregation_period=5,
-                use_all_simulations=all_sims)
+    # scenarios_by_speed = file_handling.split_scenario_by(
+    #     lc_scenarios, "orig_and_dest_lane_speeds")
+    #
+    # for speed_pair, scenario_subset in scenarios_by_speed.items():
+    #     print(speed_pair)
+    #     # ra.plot_relevant_vehicles_states(scenario_subset)
+    #     ys = [
+    #         # "volume",
+    #         # "average_speed",
+    #         # "density",
+    #         # "delay_relative"
+    #           ]
+        # for y in ys:
+        #     # ra.plot_link_data_box_plot_vs_strategy(
+        #     #     y,  lc_scenarios, before_or_after_lc_point, lanes, segment,
+        #     #     warmup_time=5, aggregation_period=30)
+        #     ra.plot_link_data_vs_time_per_strategy(
+        #         y, scenario_subset, before_or_after_lc_point, lanes, segment,
+        #         warmup_time=2, sim_time=7, aggregation_period=30,
+        #         use_all_simulations=all_sims)
         # ra.plot_y_vs_platoon_lc_strategy("platoon_maneuver_time", scenarios)
 
-    # for sc in lc_scenarios:
-    #     ra.speed_color_map(sc, link=1)
+        # for sc in scenario_subset:
+        #     ra.speed_color_map(sc, link=3, warmup_time=2, sim_time=7)
 
 
 if __name__ == "__main__":

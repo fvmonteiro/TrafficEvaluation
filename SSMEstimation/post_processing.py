@@ -558,7 +558,7 @@ def compute_gap_between_vehicles(leader_rear_x, leader_rear_y,
 def drop_warmup_samples(data: pd.DataFrame, warmup_time: int,
                         normalize_time: bool = False):
     """
-    Drops samples with time below warmup time.
+    Drops samples (in place) with time below warmup time.
     :param data: Any VISSIM output or post processed data
     :param warmup_time: Time *in minutes*
     :param normalize_time: If true, makes subtracts warmup time from time

@@ -124,7 +124,7 @@ def create_multiple_scenarios(
         lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
         orig_and_dest_lane_speeds: List[Tuple[Union[str, int],
                                               Union[str, int]]] = None,
-        special_case: str = None):
+        special_cases: List[str] = None):
     if accepted_risks is None:
         accepted_risks = [None]
         if lane_change_strategies is None:  # not a platoon scenario
@@ -134,14 +134,15 @@ def create_multiple_scenarios(
         lane_change_strategies = [None]
     if orig_and_dest_lane_speeds is None:
         orig_and_dest_lane_speeds = [None]
+    if special_cases is None:
+        special_cases = [None]
     scenarios = []
-    for vp, vi, ar, st, sp in itertools.product(
+    for vp, vi, ar, st, sp, case in itertools.product(
             vehicle_percentages, vehicle_inputs, accepted_risks,
-            lane_change_strategies, orig_and_dest_lane_speeds):
+            lane_change_strategies, orig_and_dest_lane_speeds, special_cases):
         if sum(vp.values()) == 0 and ar is not None and ar > 0:
             continue
-        scenarios.append(ScenarioInfo(vp, vi, ar, st, sp,
-                                      special_case))
+        scenarios.append(ScenarioInfo(vp, vi, ar, st, sp, case))
     return scenarios
 
 

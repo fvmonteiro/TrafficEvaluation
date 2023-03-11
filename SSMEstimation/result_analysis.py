@@ -1075,16 +1075,8 @@ class ResultAnalyzer:
         in_common_data.rename(columns={"lane_change_strategy": "Strategy",
                                        "lane": "Lane"},
                               inplace=True)
+        # Main plot
         hue_order = in_common_data["Strategy"].unique()
-
-        maneuver_times = self._get_maneuver_times(scenarios)
-        maneuver_times["time"] = (maneuver_times["time_exact"]
-                                  - warmup_time * 60 + 2.4) // 5 * 5
-        merged_data = pd.merge(
-            left=maneuver_times, left_on=["Strategy", "time"],
-            right=in_common_data[["Strategy", "time", "Lane", y]],
-            right_on=["Strategy", "time"])
-
         x_label = "time (s)"
         y_label = " ".join(y.split("_")) + " (" + self._units_map[y] + ")"
         sns.set_style("whitegrid")
@@ -1095,28 +1087,49 @@ class ResultAnalyzer:
         g.set_axis_labels(x_label, y_label)
 
         # Include relevant maneuver points
-        grouped_per_lane = merged_data.groupby("Lane")
-        i = 0
-        for _, group in grouped_per_lane:
-            sns.scatterplot(group, x="time", y=y, hue="Strategy",
-                            hue_order=hue_order, style="Phase",
-                            s=100, ax=g.axes[i][0])
-            i += 1
-        # Reorganize legend
-        handles, labels = g.axes[0][0].get_legend_handles_labels()
-        new_handles = handles[4:5] + handles[:4] + handles[9:]
-        new_labels = labels[4:5] + labels[:4] + labels[9:]
-        old_legend = g.legend
-        old_legend.remove()
-        g.axes[0][0].legend(new_handles, new_labels, loc="upper left",
-                            bbox_to_anchor=(1, 1))
+        lc_scenarios = [sc for sc in scenarios
+                        if sc.special_case != "no_lane_change"]
+        if len(lc_scenarios) > 0:
+            maneuver_times = self._get_maneuver_times(lc_scenarios)
+            maneuver_times["time"] = int(
+                maneuver_times["time_exact"] - warmup_time * 60
+                + aggregation_period / 2 - 0.1)
+            merged_data = pd.merge(
+                left=maneuver_times, left_on=["Strategy", "time"],
+                right=in_common_data[["Strategy", "time", "Lane", y]],
+                right_on=["Strategy", "time"])
+
+            grouped_per_lane = merged_data.groupby("Lane")
+            markers = ["$\\mathbf{" + str(i) + "}$" for i in "ABCD"]
+            for name, group in grouped_per_lane:
+                ax = g.axes_dict[name]
+                sns.scatterplot(group, x="time", y=y, hue="Strategy",
+                                hue_order=hue_order, style="Phase",
+                                s=300, ax=ax, markers=markers)
+
+            # Manage all legends
+            n_strategies = len(hue_order)
+            n_phases = merged_data["Phase"].nunique()
+
+            handles, labels = g.axes[0][0].get_legend_handles_labels()
+            new_handles = (handles[n_strategies:n_strategies+1]  # "Strategy"
+                           + handles[:n_strategies]  # Strategy names
+                           + handles[n_strategies+n_phases+1:])  # Phases
+            new_labels = (labels[n_strategies:n_strategies+1]  # "Strategy"
+                          + labels[:n_strategies]  # Strategy names
+                          + labels[n_strategies+n_phases+1:])  # Phases
+            old_legend = g.legend
+            old_legend.remove()
+            g.axes[1][0].legend().remove()
+            g.axes[0][0].legend(new_handles, new_labels, loc="upper left",
+                                bbox_to_anchor=(1, 1), markerscale=1.5)
+
         fig = g.figure
         fig.tight_layout()
         fig.show()
 
     def _show_maneuver_times(
-            self, scenarios: List[file_handling.ScenarioInfo],
-            data_over_time: pd.DataFrame, ax: plt.axis):
+            self, scenarios: List[file_handling.ScenarioInfo], ax: plt.axis):
         """
         Indicates maneuver relevant times on the given axis
         """
@@ -1140,8 +1153,11 @@ class ResultAnalyzer:
         last_lc_times = grouped["last_lane changing"].max()
         maneuver_times = pd.concat(
             [start_times, final_times, first_lc_times, last_lc_times], axis=1)
-        maneuver_times.columns = ["comms start", "end", "lc starts", "lc ends"]
-        ordered_cols = ["comms start", "lc starts", "lc ends", "end"]
+        maneuver_times.columns = ["coop. request sent", "platoon back together",
+                                  "first lane change starts",
+                                  "last lane change ends"]
+        ordered_cols = ["coop. request sent", "first lane change starts",
+                        "last lane change ends", "platoon back together"]
         maneuver_times = maneuver_times[ordered_cols]
         maneuver_times = maneuver_times.stack().reset_index()
         maneuver_times.columns = ["Strategy", "Phase", "time_exact"]
@@ -1459,7 +1475,8 @@ class ResultAnalyzer:
         print("total risk:", single_veh["risk"].sum() * sampling)
 
     def speed_color_map(self, scenario: file_handling.ScenarioInfo,
-                        link: int, lane: int = None):
+                        link: int, lane: int = None, warmup_time: int = 0,
+                        sim_time: int = None):
         """
         :param scenario: Simulation scenario parameters
         :param link: road link for which we want the color map
@@ -1471,6 +1488,10 @@ class ResultAnalyzer:
             data = reader.load_test_data(scenario)
         else:
             data = reader.load_data_from_scenario(scenario)
+
+        post_processing.drop_warmup_samples(data, warmup_time,
+                                            normalize_time=True)
+        post_processing.drop_late_samples(data, sim_time)
 
         data = data[data["link"] == link]
         if lane is not None:
