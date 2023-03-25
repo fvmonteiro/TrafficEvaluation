@@ -10,8 +10,9 @@ import pywintypes
 import win32com.client as com
 
 import data_writer
-import file_handling
+from file_handling import FileHandler, delete_files_in_folder
 import readers
+from scenario_handling import ScenarioInfo, print_scenario
 import vehicle
 from vehicle import Vehicle, VehicleType, PlatoonLaneChangeStrategy
 
@@ -97,7 +98,7 @@ class VissimInterface:
         :return: boolean indicating if simulation was properly loaded
         """
 
-        self.file_handler = file_handling.FileHandler(scenario_name)
+        self.file_handler = FileHandler(scenario_name)
         self.network_info = self._all_networks_info[
             self.file_handler.get_network_name()]
 
@@ -135,7 +136,7 @@ class VissimInterface:
         if self.file_handler is not None:
             print("This object already has a file handler.")
             return
-        self.file_handler = file_handling.FileHandler(scenario_name)
+        self.file_handler = FileHandler(scenario_name)
         self.network_info = self._all_networks_info[
             self.file_handler.get_network_name()]
 
@@ -361,7 +362,7 @@ class VissimInterface:
         print("[Client] Simulation done.")
 
     def run_platoon_lane_change_scenario(
-            self, scenario: file_handling.ScenarioInfo):
+            self, scenario: ScenarioInfo):
         """
 
         :return: Nothing
@@ -443,10 +444,8 @@ class VissimInterface:
             simulation.RunContinuous()
 
     def run_platoon_scenario_sample(
-            self, platoon_size: int,
-            scenario_info: file_handling.ScenarioInfo,
+            self, scenario_info: ScenarioInfo,
             simulation_period=60, number_of_runs=2,
-            first_platoon_time=10, platoon_creation_period=30,
             random_seed=None, is_fast_mode=False,
             is_simulation_verbose=False, logged_veh_id=None):
         """
@@ -473,13 +472,9 @@ class VissimInterface:
             self.vissim.Graphics.CurrentNetworkWindow.SetAttValue(
                 "QuickMode", 1)
 
-        platoon_speed = scenario_info.orig_and_dest_lane_speeds[0]
         results_folder = self.file_handler.get_vissim_test_folder()
         is_folder_set = self.set_results_folder(results_folder)
-        self.run_platoon_lane_change_scenario(
-            platoon_size, platoon_speed,
-            first_platoon_time=first_platoon_time,
-            creation_period=platoon_creation_period)
+        self.run_platoon_lane_change_scenario(scenario_info)
         self.vissim.Graphics.CurrentNetworkWindow.SetAttValue(
             "QuickMode", 0)
         if not is_folder_set:
@@ -523,7 +518,7 @@ class VissimInterface:
     # MULTIPLE SCENARIO RUN ---------------------------------------------------#
 
     def run_multiple_scenarios(
-            self, scenarios: List[file_handling.ScenarioInfo],
+            self, scenarios: List[ScenarioInfo],
             runs_per_scenario: int = 10, simulation_period: int = None,
             is_debugging: bool = False
     ):
@@ -579,7 +574,7 @@ class VissimInterface:
                                   multiple_sim_end_time, total_runs)
 
     def run_multiple_platoon_lane_change_scenarios(
-            self, scenarios: List[file_handling.ScenarioInfo],
+            self, scenarios: List[ScenarioInfo],
             runs_per_scenario: int = 3, is_debugging: bool = False
     ):
         """
@@ -608,12 +603,12 @@ class VissimInterface:
         print("Starting multiple-scenario run.")
         multiple_sim_start_time = time.perf_counter()
         for sc in scenarios:
-            print("Scenario:\n", file_handling.print_scenario(sc))
+            print("Scenario:\n", print_scenario(sc))
             self.reset_saved_simulations(warning_active=False)
             # self.set_vissim_scenario_parameters(sc)
             if is_debugging:
                 results_folder = self.file_handler.get_vissim_test_folder()
-                file_handling.delete_files_in_folder(results_folder)
+                delete_files_in_folder(results_folder)
             else:
                 results_folder = self.file_handler.get_vissim_data_folder(sc)
             is_folder_set = self.set_results_folder(results_folder)
@@ -661,20 +656,20 @@ class VissimInterface:
 
     # MODIFYING SCENARIO ------------------------------------------------------#
     def set_vissim_scenario_parameters(self,
-                                       scenario: file_handling.ScenarioInfo):
+                                       scenario: ScenarioInfo):
         if "platoon" in self.file_handler.scenario_name:
             self.set_platoon_lane_change_parameters(scenario)
         else:
             self.set_safe_lane_change_parameters(scenario)
 
     def set_safe_lane_change_parameters(self,
-                                        scenario: file_handling.ScenarioInfo):
+                                        scenario: ScenarioInfo):
         self.set_controlled_vehicles_percentage(scenario.vehicle_percentages)
         self.set_uniform_vehicle_input_for_all_lanes(scenario.vehicles_per_lane)
         self.set_accepted_lane_change_risk_to_leaders(scenario.accepted_risk)
 
     def set_platoon_lane_change_parameters(
-            self, scenario: file_handling.ScenarioInfo):
+            self, scenario: ScenarioInfo):
         self.set_platoon_lane_change_strategy(
             scenario.platoon_lane_change_strategy)
         dest_lane_composition_number = (
@@ -695,7 +690,7 @@ class VissimInterface:
         self.set_uniform_vehicle_input_for_all_lanes(scenario.vehicles_per_lane)
 
     def get_parameters_for_special_case_scenario(
-            self, scenario: file_handling.ScenarioInfo):
+            self, scenario: ScenarioInfo):
         # TODO: the "special_case" member treatment is a mess
         platoon_size = 4
         platoon_desired_speed = 110
@@ -712,6 +707,8 @@ class VissimInterface:
             creation_period = simulation_period
         elif special_case == "single_lane_change":
             simulation_period = 1200
+            if scenario.vehicle_percentages == {VehicleType.HDV: 100}:
+                simulation_period = 900
             creation_period = simulation_period + 1
         elif special_case.endswith("lane_change_period"):
             creation_period = int(special_case.split("_")[0])
@@ -836,7 +833,7 @@ class VissimInterface:
             print("Result path it too long. Saving at a temporary location.")
             success = False
             results_folder = self.file_handler.get_temp_results_folder()
-            file_handling.delete_files_in_folder(results_folder)
+            delete_files_in_folder(results_folder)
         self.vissim.Evaluation.SetAttValue("EvalOutDir", results_folder)
         return success
 
@@ -1216,7 +1213,7 @@ class VissimInterface:
         vissim_vehicle_type = vehicle.Vehicle.ENUM_TO_VISSIM_ID[platoon_type]
         platoon_vehicle.free_flow_velocity = desired_speed / 3.6
         h, d = platoon_vehicle.compute_vehicle_following_parameters(
-            leader_max_brake=platoon_vehicle.max_brake, rho=0.05)  # TODO: rho = 0.1
+            leader_max_brake=platoon_vehicle.max_brake, rho=0.1)
         platoon_safe_gap = h * desired_speed / 3.6 + d
 
         net = self.vissim.Net

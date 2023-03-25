@@ -1,13 +1,11 @@
-import itertools
 import warnings
 from dataclasses import dataclass
-from collections import defaultdict
 import os
 import shutil
-from typing import Any, Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
-from vehicle import VehicleType, PlatoonLaneChangeStrategy, \
-    vehicle_type_to_print_name_map, strategy_to_print_name_map
+from vehicle import VehicleType, PlatoonLaneChangeStrategy
+from scenario_handling import ScenarioInfo
 
 
 @dataclass
@@ -27,29 +25,6 @@ class _NetworkInfo:
     file_name: str
     n_lanes: int
     main_links: List[int]
-
-
-@dataclass
-class ScenarioInfo:
-    """Defines a VISSIM scenario. The scenario parameters must agree with
-    the network being run
-    vehicle_percentages: Describes the percentages of controlled
-     vehicles in the simulations.
-    vehicles_per_lane: Vehicle input per lane on VISSIM. Possible
-     values depend on the controlled_vehicles_percentage: 500:500:2500
-    accepted_risk: maximum lane changing risk in m/s
-    platoon_lane_change_strategy: Coordination strategy used in platoon lane
-     changing scenarios.
-    orig_and_dest_lane_speeds: Mean desired speeds in the platoon lane
-     changing scenario
-    """
-    vehicle_percentages: Dict[VehicleType, int]
-    vehicles_per_lane: int
-    accepted_risk: Union[int, None] = None
-    platoon_lane_change_strategy: Union[PlatoonLaneChangeStrategy, None] = None
-    orig_and_dest_lane_speeds: Union[Tuple[Union[str, int], Union[str, int]],
-                                     None] = None
-    special_case: Union[str, None] = None  # identifies test simulation runs
 
 
 _folders_map = {
@@ -117,89 +92,6 @@ def temp_name_editing():
         os.rename(old_file, new_file)
 
 
-def create_multiple_scenarios(
-        vehicle_percentages: List[Dict[VehicleType, int]],
-        vehicle_inputs: List[int],
-        accepted_risks: List[int] = None,
-        lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
-        orig_and_dest_lane_speeds: List[Tuple[Union[str, int],
-                                              Union[str, int]]] = None,
-        special_cases: List[str] = None):
-    if accepted_risks is None:
-        accepted_risks = [None]
-        if lane_change_strategies is None:  # not a platoon scenario
-            print("[WARNING] Using empty list of accepted risks instead of "
-                  "[None] might prevent the readers from working.")
-    if lane_change_strategies is None:
-        lane_change_strategies = [None]
-    if orig_and_dest_lane_speeds is None:
-        orig_and_dest_lane_speeds = [None]
-    if special_cases is None:
-        special_cases = [None]
-    scenarios = []
-    for vp, vi, ar, st, sp, case in itertools.product(
-            vehicle_percentages, vehicle_inputs, accepted_risks,
-            lane_change_strategies, orig_and_dest_lane_speeds, special_cases):
-        if sum(vp.values()) == 0 and ar is not None and ar > 0:
-            continue
-        scenarios.append(ScenarioInfo(vp, vi, ar, st, sp, case))
-    return scenarios
-
-
-def print_scenario(scenario: ScenarioInfo):
-    str_list = []
-    veh_percent_list = [str(p) + "% " + vt.name.lower()
-                        for vt, p in scenario.vehicle_percentages.items()]
-    str_list.append("Vehicles: " + ", ".join(veh_percent_list))
-    str_list.append("Input: " + str(scenario.vehicles_per_lane)
-                    + " vehs/lane/hour")
-    if scenario.accepted_risk is not None:
-        str_list.append("Accepted risk: " + str(scenario.accepted_risk))
-    if scenario.platoon_lane_change_strategy is not None:
-        str_list.append("Platoon LC strat.: "
-                        + scenario.platoon_lane_change_strategy.name.lower())
-    if scenario.orig_and_dest_lane_speeds is not None:
-        str_list.append("Orig lane speed "
-                        + str(scenario.orig_and_dest_lane_speeds[0])
-                        + ". Dest lane speed: "
-                        + str(scenario.orig_and_dest_lane_speeds[1]))
-    if scenario.special_case is not None:
-        str_list.append("Special case: " + scenario.special_case)
-    return "\n".join(str_list)
-
-
-def split_scenario_by(scenarios: List[ScenarioInfo], attribute: str) \
-        -> Dict[Any, List[ScenarioInfo]]:
-    """
-    Splits a list of scenarios in subsets based on the value of the attribute.
-    :returns: Dictionary where keys are unique values of the attribute and
-     values are lists of scenarios.
-    """
-    def attribute_value_to_str(value):
-        if value is None:
-            return "None"
-        if attribute == "vehicle_percentages":
-            return vehicle_percentage_dict_to_string(value)
-        elif attribute == "platoon_lane_change_strategy":
-            return strategy_to_print_name_map[value]
-        else:
-            return value
-
-    subsets = defaultdict(list)
-    for sc in scenarios:
-        subsets[attribute_value_to_str(getattr(sc, attribute))].append(sc)
-    return subsets
-
-
-def vehicle_percentage_dict_to_string(vp_dict: Dict[VehicleType, int]) -> str:
-    if sum(vp_dict.values()) == 0:
-        return "100% HDV"
-    ret_str = []
-    for veh_type, p in vp_dict.items():
-        ret_str.append(str(p) + "% " + vehicle_type_to_print_name_map[veh_type])
-    return " ".join(sorted(ret_str))
-
-
 def delete_files_in_folder(folder):
     for filename in os.listdir(folder):
         file_path = os.path.join(folder, filename)
@@ -210,6 +102,7 @@ def delete_files_in_folder(folder):
                 shutil.rmtree(file_path)
         except Exception as e:
             print("Failed to delete %s. Reason: %s" % (file_path, e))
+
 
 class FileHandler:
     """Class is the interface between scenario names and all their properties"""

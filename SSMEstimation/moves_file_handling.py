@@ -8,6 +8,8 @@ import data_writer
 import file_handling
 from post_processing import drop_warmup_samples
 import readers
+from result_analysis import ResultAnalyzer
+from scenario_handling import ScenarioInfo
 
 _km_to_mile = 0.6213712
 
@@ -15,9 +17,69 @@ _km_to_mile = 0.6213712
 #  segments
 
 
+# TODO [Mar 23]: codng this quickly as function first. Then we can try to reuse
+#  code. Function is working, but it's a mess
+def platoon_scenario_to_moves(scenarios: List[ScenarioInfo]):
+    scenario_name = "platoon_discretionary_lane_change"
+    file_handler = file_handling.FileHandler(scenario_name)
+    main_links = file_handler.get_main_links()
+
+    # We'll merge the two main links and assume each lane is an individual link
+    link_reader = readers.LinkReader(scenario_name)
+    moves_link_data = link_reader.load_data()
+    moves_link_data = moves_link_data[moves_link_data["number"].isin(
+        main_links)]
+    total_length = moves_link_data["length"].sum()
+
+    ra = ResultAnalyzer(scenario_name)
+    reader = readers.VehicleRecordReader(scenario_name)
+    ds_processor = MovesLinkDriveProcessor(scenario_name, True)
+    ls_processor = MovesLinkSourceProcessor(scenario_name,
+                                            data_source="link_ids")
+    link_processor = MovesLinksProcessor(scenario_name)
+    for sc in scenarios:
+        impacted_vehicles = ra.get_vehicles_impacted_by_lane_change([sc])
+        veh_ids = set(impacted_vehicles["veh_id"])
+        data_generator = reader.generate_all_data_from_scenario(sc)
+        for vehicle_records, _ in data_generator:
+            vehicle_records = vehicle_records[
+                (vehicle_records["veh_id"].isin(veh_ids))
+                & (vehicle_records["link"].isin(main_links))]
+            # Let's pretend each lane is a link
+            vehicle_records.rename(columns={"link": "original_link"})
+            vehicle_records["link"] = vehicle_records["lane"]
+
+            link_data = pd.DataFrame(columns=["linkID", "segment_length",
+                                              "volume", "average_speed"])
+            link_data["linkID"] = vehicle_records["link"].unique()
+            link_data["linkID"] = link_data["linkID"].astype(int)
+            link_data["segment_length"] = total_length
+            link_source_data_per_lane = []
+            drive_schedule_per_lane = []
+            for key, group in vehicle_records.groupby("link"):
+                link_data.loc[link_data["linkID"] == key,
+                              ["volume", "average_speed"]] = [
+                    group["veh_id"].nunique(), group["vx"].mean()]
+
+                drive_schedule_per_lane.append(
+                    ds_processor.process(group))
+                link_source_data_per_lane.append(ls_processor.process(
+                    pd.DataFrame(data=[key], columns=["linkID"])))
+            drive_schedule = pd.concat(drive_schedule_per_lane)
+            link_data["volume"] = link_data["volume"].astype(int)
+            link_data["average_speed"] = link_data["average_speed"].astype(
+                float)
+            moves_link_data = link_processor.process(link_data)
+            link_source_data = pd.concat(link_source_data_per_lane)
+
+            ds_processor.writer.save_data(drive_schedule, sc)
+            link_processor.writer.save_data(moves_link_data, sc)
+            ls_processor.writer.save_data(link_source_data, sc)
+
+
 def get_individual_vehicle_trajectories_to_moves(
         scenario_name: str,
-        scenario_info: file_handling.ScenarioInfo,
+        scenario_info: ScenarioInfo,
         first_minute: int = 15,
         vehs_per_simulation: int = 1):
     """
@@ -60,7 +122,7 @@ def get_individual_vehicle_trajectories_to_moves(
             single_veh_link_data = (
                 _create_link_evaluation_data_for_single_vehicle(
                     link_eval_data, vehicle_data))
-            single_veh_link_data["link_id"] = (
+            single_veh_link_data["linkID"] = (
                     single_veh_link_data["link_number"].map(link_id_map)
                     + init_link_number)
             link_data_list.append(single_veh_link_data)
@@ -96,7 +158,7 @@ def get_individual_vehicle_trajectories_to_moves(
 
 # def translate_links_from_vissim_to_moves_old(
 #         scenario_name: str,
-#         scenario_info: file_handling.ScenarioInfo,
+#         scenario_info: ScenarioInfo,
 #         links: List[int] = None, warmup_minutes: int = 10):
 #     """
 #     Reads link evaluation output files from VISSIM and write link,
@@ -147,7 +209,7 @@ def get_individual_vehicle_trajectories_to_moves(
 
 
 def translate_link_evaluation_to_moves(
-        scenario_info: file_handling.ScenarioInfo,
+        scenario_info: ScenarioInfo,
         warmup_minutes: int = 5):
     """
     Reads link evaluation output files from VISSIM and write link,
@@ -174,7 +236,7 @@ def translate_link_evaluation_to_moves(
     link_evaluation_data["linkID"] = MovesProcessor.create_unique_link_ids(
         link_evaluation_data)
 
-    link_evaluation_data.sort_values("link_id", kind="stable", inplace=True,
+    link_evaluation_data.sort_values("linkID", kind="stable", inplace=True,
                                      ignore_index=True)
 
     # Aggregated data files
@@ -361,7 +423,7 @@ class MovesLinksProcessor(MovesProcessor):
         off_net_id = moves_link_reader.get_off_road_id()
         moves_link_data = pd.DataFrame()
 
-        moves_link_data["linkID"] = data["link_id"]
+        moves_link_data["linkID"] = data["linkID"]
         moves_link_data["countyID"] = county_id
         moves_link_data["zoneID"] = zone_id
         moves_link_data["roadTypeID"] = road_type_id
@@ -382,15 +444,31 @@ class MovesLinksProcessor(MovesProcessor):
 class MovesLinkSourceProcessor(MovesProcessor):
     _writer = data_writer.MOVESLinkSourceWriter
 
-    def __init__(self, scenario_name: str):
-        MovesProcessor.__init__(self, scenario_name, self._writer)
-
-    def process(self, data: pd.DataFrame) -> pd.DataFrame:
+    def __init__(self, scenario_name: str, data_source: str = None):
         """
-        :param data: All link ids
+        :param scenario_name: Depending on which VISSIM file was used to
+         generate data
+        :param data_source: Data source from which the link source will be
+         created. Possible values are: 'MOVES', 'link_eval', 'vehicle_records',
+         'link_ids'
+        """
+        MovesProcessor.__init__(self, scenario_name, self._writer)
+        if data_source is None:
+            self.data_source = "MOVES"
+        else:
+            self.data_source = data_source
+
+    def process(self, data) -> pd.DataFrame:
+        """
+        Creates a link source data frame based link ids in the data parameter.
+        data
+        :param data: Dataframe of link data created for MOVES
         """
         # NOTE: for now we"re only dealing with cars
-        on_road_links = data.loc[data["roadTypeID"] != 1, "linkID"]
+        try:
+            on_road_links = data.loc[data["roadTypeID"] != 1, "linkID"]
+        except KeyError:
+            on_road_links = data["linkID"]
         moves_link_source_reader = readers.MovesLinkSourceReader(
             self.scenario_name)
         car_id = moves_link_source_reader.get_passenger_vehicle_id()
@@ -404,6 +482,18 @@ class MovesLinkSourceProcessor(MovesProcessor):
             "sourceTypeHourFraction": 1
         })
         return moves_link_source_data
+
+    def get_link_ids(self, data):
+        if self.data_source == "MOVES":
+            return data.loc[data["roadTypeID"] != 1, "linkID"]
+        elif self.data_source == "link_eval":
+            return data["linkID"]
+        elif self.data_source == "vehicle_records":
+            return data["link"].unique()
+        elif self.data_source == "link_ids":
+            return data["linkID"]
+        else:
+            raise ValueError("Invalid data source for MovesLinkSourceProcessor")
 
 
 class MovesLinkDriveProcessor(MovesProcessor):
@@ -424,6 +514,8 @@ class MovesLinkDriveProcessor(MovesProcessor):
         """
         :param data: Vehicle records on the relevant link
         """
+        if "secondID" not in data.columns:
+            data["secondID"] = np.floor(data["time"]).astype(int)
         drive_sched = data.groupby(
             "secondID", as_index=False).agg({"link": "first", "vx": "mean"})
         # drive_sched.drop(

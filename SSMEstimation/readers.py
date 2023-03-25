@@ -7,7 +7,8 @@ import mariadb
 import pandas as pd
 import xml.etree.ElementTree as ET
 
-import file_handling
+from file_handling import FileHandler, get_moves_database_port
+from scenario_handling import ScenarioInfo, print_scenario
 from vehicle import PlatoonLaneChangeStrategy, VehicleType, \
     vehicle_type_to_print_name_map, strategy_to_print_name_map
 
@@ -31,7 +32,7 @@ def match_sim_number_to_random_seed(data):
 
 
 def _add_scenario_info_columns(data: pd.DataFrame,
-                               scenario_info: file_handling.ScenarioInfo):
+                               scenario_info: ScenarioInfo):
     """
     Modifies data in place
     """
@@ -41,6 +42,7 @@ def _add_scenario_info_columns(data: pd.DataFrame,
     _add_platoon_lane_change_strategy_column(
         data, scenario_info.platoon_lane_change_strategy)
     _add_speeds_column(data, scenario_info.orig_and_dest_lane_speeds)
+    _add_special_case_columns(data, scenario_info.special_case)
 
 
 def _add_vehicle_type_columns(data: pd.DataFrame,
@@ -83,6 +85,34 @@ def _add_speeds_column(data: pd.DataFrame,
         data["dest_lane_speed"] = orig_and_dest_lane_speeds[1]
 
 
+def _add_special_case_columns(data: pd.DataFrame, special_case: str):
+
+    platoon_size = 4
+    # platoon_desired_speed = 110
+    first_platoon_time = 180
+    # creation_period = 60
+    if special_case is None:
+        return
+    elif special_case == "no_lane_change":
+        simulation_period = 600
+        first_platoon_time = simulation_period + 1
+        creation_period = simulation_period
+    elif special_case == "single_lane_change":
+        simulation_period = 1200
+        creation_period = simulation_period + 1
+    elif special_case.endswith("lane_change_period"):
+        creation_period = int(special_case.split("_")[0])
+    elif special_case.endswith("platoon_vehicles"):
+        simulation_period = 1200
+        creation_period = simulation_period + 1  # single lane change
+        platoon_size = int(special_case.split("_")[0])
+    else:
+        raise ValueError("Unknown special case: {}.".format(special_case))
+    data["platoon_size"] = platoon_size
+    data["creation_period"] = creation_period
+    data["first_platoon_time"] = first_platoon_time
+
+
 class DataReader(ABC):
 
     def __init__(self, scenario_name=None):
@@ -94,14 +124,14 @@ class DataReader(ABC):
 
     @abstractmethod
     def load_data_from_several_scenarios(
-            self, scenarios: List[file_handling.ScenarioInfo]) -> pd.DataFrame:
+            self, scenarios: List[ScenarioInfo]) -> pd.DataFrame:
         """
         :param scenarios: List of simulation parameters for several scenarios
         """
         pass
 
     def load_test_data(
-            self, scenario_info: file_handling.ScenarioInfo) -> pd.DataFrame:
+            self, scenario_info: ScenarioInfo) -> pd.DataFrame:
         pass
 
 
@@ -113,7 +143,7 @@ class VissimDataReader(DataReader):
                  data_identifier: str, header_identifier: str,
                  header_map: dict):
 
-        self.file_handler = file_handling.FileHandler(scenario_name)
+        self.file_handler = FileHandler(scenario_name)
         # network_data_dir = self.file_handler.get_results_base_folder()
         DataReader.__init__(self, scenario_name)
         # self.vehicle_type = vehicle_type.name.lower()
@@ -191,7 +221,7 @@ class VissimDataReader(DataReader):
         return data
 
     def load_data_from_scenario(
-            self, scenario_info: file_handling.ScenarioInfo,
+            self, scenario_info: ScenarioInfo,
             n_rows: int = None) -> pd.DataFrame:
         """
         Loads all the simulation data from the scenario described by the
@@ -205,7 +235,7 @@ class VissimDataReader(DataReader):
         pass
 
     def load_test_data(
-            self, scenario_info: file_handling.ScenarioInfo) -> pd.DataFrame:
+            self, scenario_info: ScenarioInfo) -> pd.DataFrame:
         file_number = 1
         file_name = self._create_file_name(file_number)
         data_folder = self.file_handler.get_vissim_test_folder()
@@ -217,7 +247,7 @@ class VissimDataReader(DataReader):
         return data
 
     def load_data_from_several_scenarios(
-            self, scenarios: List[file_handling.ScenarioInfo]) -> pd.DataFrame:
+            self, scenarios: List[ScenarioInfo]) -> pd.DataFrame:
         """
         :param scenarios: List of simulation parameters for several scenarios
         """
@@ -231,7 +261,7 @@ class VissimDataReader(DataReader):
 
     def load_single_file_from_scenario(
             self, file_identifier: int,
-            scenario_info: file_handling.ScenarioInfo,
+            scenario_info: ScenarioInfo,
             n_rows: int = None) -> pd.DataFrame:
         """
         Creates the file address based on the scenario parameters and loads
@@ -255,7 +285,7 @@ class VissimDataReader(DataReader):
 
     def _create_full_file_address(
             self, file_identifier: Union[int, str],
-            scenario_info: file_handling.ScenarioInfo) -> str:
+            scenario_info: ScenarioInfo) -> str:
         """
 
         :param file_identifier: This can be either a integer indicating
@@ -306,7 +336,7 @@ class AggregatedDataReader(VissimDataReader):
     and data collection results. """
 
     def load_data_from_scenario(
-            self, scenario_info: file_handling.ScenarioInfo,
+            self, scenario_info: ScenarioInfo,
             n_rows: int = None) -> pd.DataFrame:
         """
         Loads all the simulation data from the scenario described by the
@@ -356,17 +386,25 @@ class VehicleRecordReader(VissimDataReader):
                                   self._header_identifier, self._header_map)
 
     def load_data_from_scenario(
-            self, scenario_info: file_handling.ScenarioInfo,
-            n_rows: int = None) -> pd.DataFrame:
-        print("[VehicleRecordReader] To load all data from this scenario, use "
-              "the generator methods.\n"
-              "Returning single file from the scenario")
+            self, scenario_info: ScenarioInfo,
+            n_rows: int = None, emit_warning: bool = True) -> pd.DataFrame:
+        if emit_warning:
+            print("[VehicleRecordReader] To load all data from this scenario, "
+                  "use the generator methods.\n"
+                  "Returning single file from the scenario")
         file_number = 1
         return self.load_single_file_from_scenario(
                 file_number, scenario_info, n_rows)
 
+    def load_sample_data_from_scenario(
+            self, scenario_info: ScenarioInfo,
+            n_rows: int = None):
+        """Loads only the first vehicle record data from the scenario."""
+        return self.load_data_from_scenario(scenario_info, n_rows,
+                                            emit_warning=False)
+
     def generate_all_data_from_scenario(
-            self, scenario_info: file_handling.ScenarioInfo,
+            self, scenario_info: ScenarioInfo,
             n_rows: int = None) -> (pd.DataFrame, int):
         """
         Yields all the vehicle record files for the chosen simulation scenario.
@@ -388,7 +426,7 @@ class VehicleRecordReader(VissimDataReader):
                 file_number, scenario_info, n_rows), file_number)
 
     def generate_data_from_several_scenarios(
-            self, scenarios: List[file_handling.ScenarioInfo],
+            self, scenarios: List[ScenarioInfo],
             n_rows: int = None) -> pd.DataFrame:
         """
 
@@ -397,7 +435,7 @@ class VehicleRecordReader(VissimDataReader):
          Used for debugging purposes.
         """
         for sc in scenarios:
-            print(file_handling.print_scenario(sc))
+            print(print_scenario(sc))
             yield from self.generate_all_data_from_scenario(sc, n_rows)
 
 
@@ -544,7 +582,7 @@ class VissimLaneChangeReader(VissimDataReader):
 
     def load_data_from_scenario(
             self,
-            scenario_info: file_handling.ScenarioInfo,
+            scenario_info: ScenarioInfo,
             n_rows: int = None) -> pd.DataFrame:
         """
         Loads all the simulation data from the scenario described by the
@@ -601,7 +639,7 @@ class LinkReader(VissimDataReader):
         return data
 
     def load_data_from_scenario(
-            self, scenario_info: file_handling.ScenarioInfo = None,
+            self, scenario_info: ScenarioInfo = None,
             n_rows: int = None) -> pd.DataFrame:
         # All scenarios of the same network have the same links
         return self.load_data()
@@ -653,7 +691,7 @@ class PostProcessedDataReader(DataReader):
     data_identifier = ""
 
     def __init__(self, scenario_name: str, data_identifier: str):
-        self.file_handler = file_handling.FileHandler(scenario_name)
+        self.file_handler = FileHandler(scenario_name)
         DataReader.__init__(self, scenario_name)
         self.data_identifier = data_identifier
 
@@ -693,7 +731,7 @@ class PostProcessedDataReader(DataReader):
         return data
 
     def load_test_data(
-            self, scenario_info: file_handling.ScenarioInfo) -> pd.DataFrame:
+            self, scenario_info: ScenarioInfo) -> pd.DataFrame:
         network_file_name = self.file_handler.get_file_name()
         file_name = (network_file_name + self.data_identifier
                      + self.file_format)
@@ -704,7 +742,7 @@ class PostProcessedDataReader(DataReader):
         return data
 
     def load_data_from_scenario(
-            self, scenario_info: file_handling.ScenarioInfo) -> pd.DataFrame:
+            self, scenario_info: ScenarioInfo) -> pd.DataFrame:
         """
         :param scenario_info: Simulation scenario parameters
         """
@@ -718,7 +756,7 @@ class PostProcessedDataReader(DataReader):
         return data
 
     def load_data_from_several_scenarios(
-            self, scenarios: List[file_handling.ScenarioInfo]) -> pd.DataFrame:
+            self, scenarios: List[ScenarioInfo]) -> pd.DataFrame:
         """
         :param scenarios: List of simulation parameters for several scenarios
         """
@@ -844,6 +882,14 @@ class PlatoonLaneChangeEfficiencyReader(PostProcessedDataReader):
                                          self._data_identifier)
 
 
+class PlatoonLaneChangeImpactsReader(PostProcessedDataReader):
+    _data_identifier = "_Platoon Lane Change Impacts"
+
+    def __init__(self, scenario_name):
+        PostProcessedDataReader.__init__(self, scenario_name,
+                                         self._data_identifier)
+
+
 class NGSIMDataReader:
     """Reads raw vehicle trajectory data from NGSIM scenarios on the US-101"""
 
@@ -942,7 +988,7 @@ class TrafficLightSourceReader:
     _data_identifier = "_source_times"
 
     def __init__(self, scenario_name: str):
-        file_handler = file_handling.FileHandler(scenario_name)
+        file_handler = FileHandler(scenario_name)
         file_name = (file_handler.get_file_name()
                      + self._data_identifier + self._file_extension)
         self._file_address = os.path.join(
@@ -964,7 +1010,7 @@ class SignalControllerFileReader:
 
     def __init__(self, scenario_name):
         self.scenario_name = scenario_name
-        self.file_handler = file_handling.FileHandler(scenario_name)
+        self.file_handler = FileHandler(scenario_name)
 
     def load_data(self, file_identifier: int) -> ET.ElementTree:
         """
@@ -994,7 +1040,7 @@ class MovesDataReader(DataReader):
         DataReader.__init__(self, scenario_name)
         self.data_identifier = data_identifier
         self.sheet_name = sheet_name
-        self.file_handler = file_handling.FileHandler(scenario_name)
+        self.file_handler = FileHandler(scenario_name)
 
     def load_data(self, file_identifier=None) -> pd.DataFrame:
         folder = self.file_handler.get_moves_default_data_folder()
@@ -1010,7 +1056,7 @@ class MovesDataReader(DataReader):
         return data
 
     def load_data_from_several_scenarios(
-            self, scenarios: List[file_handling.ScenarioInfo]) -> pd.DataFrame:
+            self, scenarios: List[ScenarioInfo]) -> pd.DataFrame:
         # TODO
         return pd.DataFrame()
     # def get_data_from_all_sheets(self) -> Dict[str, pd.DataFrame]:
@@ -1069,13 +1115,14 @@ class MovesLinkSourceReader(MovesDataReader):
 
 class MOVESDatabaseReader (DataReader):
     user = "moves"
-    port = file_handling.get_moves_database_port()
+    port = get_moves_database_port()
     hostname = "127.0.0.1"
     _vehicle_type_str_map = {
         VehicleType.HDV: "hdv",
         VehicleType.ACC: "acc",
         VehicleType.AUTONOMOUS: "av",
         VehicleType.CONNECTED: "cav",
+        VehicleType.CONNECTED_NO_LANE_CHANGE: "cav",
         VehicleType.PLATOON: "platoon",
         VehicleType.VIRDI: "virdi"
     }
@@ -1084,40 +1131,54 @@ class MOVESDatabaseReader (DataReader):
         DataReader.__init__(self, scenario_name)
         with open("db_password.txt", "r") as f:
             self.password = f.readline()
-        self.file_handler = file_handling.FileHandler(scenario_name)
+        self.file_handler = FileHandler(scenario_name)
 
-    def load_data(
-            self, scenario: file_handling.ScenarioInfo) -> pd.DataFrame:
-
-        if scenario.platoon_lane_change_strategy is not None:
-            raise RuntimeError("[MOVESDatabaseReader] not yet ready for "
-                               + "platoon scenarios (sorry, buddy)")
-
-        vehicle_percentages = scenario.vehicle_percentages
-        vehicles_per_lane = scenario.vehicles_per_lane
-        temp = []
-
-        for vt, p in vehicle_percentages.items():
-            p_str = (str(p) + "_") if p < 100 else ""
-            if p > 0:
-                temp.append(p_str + self._vehicle_type_str_map[vt])
-        if not temp:
-            temp.append(self._vehicle_type_str_map[VehicleType.HDV])
-        vt_str = "_".join(sorted(temp))
-
-        # Sample name: highway_in_and_out_hdv_6000_out
-        output_database = "_".join([self.file_handler.get_file_name(),
-                                    vt_str, str(3 * vehicles_per_lane), "out"])
-        input_database = "_".join([self.file_handler.get_file_name(),
-                                   vt_str, str(3 * vehicles_per_lane), "in"])
+    def load_data(self, scenario: ScenarioInfo) -> pd.DataFrame:
+        database_name = self._get_database_name(scenario)
+        output_database = "_".join([database_name, "out"])
+        input_database = "_".join([database_name, "in"])
         data = self._load_pollutants(output_database)
         self._add_volume_data(input_database, data)
         _add_scenario_info_columns(data, scenario)
         data["emission_per_volume"] = data["emission"] / data["volume"]
         return data
 
+    def _get_database_name(self, scenario: ScenarioInfo):
+        if scenario.platoon_lane_change_strategy is None:
+            # Single vehicle *safe* lane change maneuvers
+            # Sample name: highway_in_and_out_hdv_6000
+            vehicle_percentages = scenario.vehicle_percentages
+            vehicles_per_lane = scenario.vehicles_per_lane
+            temp = []
+            for vt, p in vehicle_percentages.items():
+                p_str = (str(p) + "_") if p < 100 else ""
+                if p > 0:
+                    temp.append(p_str + self._vehicle_type_str_map[vt])
+            if not temp:
+                temp.append(self._vehicle_type_str_map[VehicleType.HDV])
+            vt_str = "_".join(sorted(temp))
+            return "_".join([self.file_handler.get_file_name(), vt_str,
+                             str(3 * vehicles_per_lane)])
+        else:
+            # Platoon lane changes
+            # Name format:
+            # platoon_discretionary_lane_change_[hdv or cav]
+            # + [strategy]_[x]_dest_speed
+            hdv = VehicleType.HDV
+            veh_percentages = scenario.vehicle_percentages
+            if len(veh_percentages) > 1:
+                raise ValueError("MOVES reader not ready for platoon scenarios "
+                                 "with mixed vehicles.")
+            veh_type_str = self._vehicle_type_str_map[
+                list(veh_percentages.keys())[0]]
+            strategy_str = strategy_to_print_name_map[
+                scenario.platoon_lane_change_strategy]
+            speed_str = str(scenario.orig_and_dest_lane_speeds[1])
+            return "_".join([self.file_handler.get_file_name(), veh_type_str,
+                             strategy_str, speed_str, "dest_speed"])
+
     def load_data_from_several_scenarios(
-            self, scenarios: List[file_handling.ScenarioInfo]
+            self, scenarios: List[ScenarioInfo]
     ):
         data_per_folder = []
         for sc in scenarios:
@@ -1169,3 +1230,4 @@ class MOVESDatabaseReader (DataReader):
             data.loc[data["road_type"] == roadTypeID, "volume"] = linkVolume
         conn.close()
         data.drop(data[data["volume"] == 0].index, inplace=True)
+

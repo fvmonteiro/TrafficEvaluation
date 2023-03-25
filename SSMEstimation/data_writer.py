@@ -1,12 +1,12 @@
 import os
-from typing import Dict, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import xml.etree.ElementTree as ET
 
-from vehicle import Vehicle
+from scenario_handling import ScenarioInfo
 import file_handling
+from vehicle import Vehicle
 
 
 class DataWriter:
@@ -58,7 +58,7 @@ class PostProcessedDataWriter(DataWriter):
                             self._file_extension, scenario_name)
 
     def save_as_csv(self, data: pd.DataFrame,
-                    scenario_info: file_handling.ScenarioInfo):
+                    scenario_info: ScenarioInfo):
         """
         Saves the data on the proper results folder based on the simulated
         network, controlled vehicles percentage and vehicle input.
@@ -148,7 +148,7 @@ class MOVESDataWriter(DataWriter):
         self.sheet_name = sheet_name
 
     def save_data(self, data: pd.DataFrame,
-                  scenario_info: file_handling.ScenarioInfo):
+                  scenario_info: ScenarioInfo):
         folder_path = self.file_handler.get_moves_data_folder(scenario_info)
         file_name = self.file_base_name + self.file_extension
         self._save_as_xls(data, folder_path, file_name, self.sheet_name)

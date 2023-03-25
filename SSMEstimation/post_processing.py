@@ -9,8 +9,9 @@ import pandas as pd
 from scipy.stats import truncnorm
 
 import data_writer
-import file_handling
+from file_handling import FileHandler
 import readers
+from scenario_handling import ScenarioInfo
 from vehicle import Vehicle
 
 # ============================== Constants =================================== #
@@ -193,7 +194,7 @@ def compute_values_relative_to_leader(data_source: str,
 
 
 def create_summary_traffic_light_simulations(
-        scenarios: List[file_handling.ScenarioInfo],
+        scenarios: List[ScenarioInfo],
         debugging: bool = False):
     """Reads multiple vehicle record data files, postprocesses them,
     computes and aggregates SSMs results, extracts risky maneuvers, and
@@ -219,7 +220,7 @@ def create_summary_traffic_light_simulations(
 
 
 def create_summary_with_risks(
-        scenario_name: str, scenarios: List[file_handling.ScenarioInfo],
+        scenario_name: str, scenarios: List[ScenarioInfo],
         analyze_lane_change: bool = True, debugging: bool = False):
     """
     Reads multiple vehicle record data files, postprocesses them,
@@ -243,12 +244,16 @@ def create_summary_with_risks(
         LaneChangeIssuesProcessor(scenario_name),
         DiscomfortProcessor(scenario_name)
     ]
-
+    n = len(scenarios)
+    print("Starting processing of {} platoon scenarios".format(n))
+    counter = 1
     for sc in scenarios:
+        print("======== Scenario: {}/{} ========".format(counter, n))
         create_summary_for_single_scenario(
             scenario_name, sc, post_processors,
             analyze_lane_change=analyze_lane_change,
             debugging=debugging)
+        counter += 1
 
     # for vp in vehicle_percentages:
     #     for vi in vehicle_inputs:
@@ -261,7 +266,7 @@ def create_summary_with_risks(
     #         else:
     #             relevant_risks = accepted_risks
     #         for ar in relevant_risks:
-    #             scenario_info = file_handling.ScenarioInfo(
+    #             scenario_info = ScenarioInfo(
     #                 vp, vi, accepted_risk=ar)
     #             create_summary_for_single_scenario(
     #                 scenario_name, scenario_info, post_processors,
@@ -270,7 +275,7 @@ def create_summary_with_risks(
 
 
 def create_platoon_lane_change_summary(
-        scenario_name: str, scenarios: List[file_handling.ScenarioInfo],
+        scenario_name: str, scenarios: List[ScenarioInfo],
         debugging: bool = False):
     """
 
@@ -289,7 +294,7 @@ def create_platoon_lane_change_summary(
 
 
 def find_lane_change_issues(
-        network_name: str, scenario_info: file_handling.ScenarioInfo):
+        network_name: str, scenario_info: ScenarioInfo):
     """
     Looks for cases of vehicles that were either removed from the simulation
     for waiting too long for a lane change or AVs which gave control to vissim.
@@ -349,7 +354,7 @@ def create_time_from_intervals(data: pd.DataFrame):
 
 
 def check_human_take_over(network_name: str,
-                          scenario_info: file_handling.ScenarioInfo):
+                          scenario_info: ScenarioInfo):
     """Reads multiple vehicle record data files to check how often the
     autonomous vehicles gave control back to VISSIM
 
@@ -400,7 +405,7 @@ def check_human_take_over(network_name: str,
 
 
 def find_removed_vehicles(network_name: str,
-                          scenario_info: file_handling.ScenarioInfo):
+                          scenario_info: ScenarioInfo):
     """Checks whether VISSIM removed any vehicles for standing still too
     long.
     """
@@ -485,7 +490,7 @@ def create_time_bins_and_labels(period, vehicle_records):
 
 
 def check_already_processed_scenarios(
-        network_name: str, scenario_info: file_handling.ScenarioInfo):
+        network_name: str, scenario_info: ScenarioInfo):
     """
     Checks if the scenario being post processed was processed before.
     Prints a message if yes.
@@ -2243,7 +2248,7 @@ class VISSIMDataPostProcessor(ABC):
         """
         self.data_name = data_name
         self.writer = writer(scenario_name)
-        self.file_handler = file_handling.FileHandler(scenario_name)
+        self.file_handler = FileHandler(scenario_name)
         # self.post_processing_function = self._mapping[data_name]["function"]
         # self.secondary_parameter = secondary_parameter
 
@@ -2568,17 +2573,6 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
             maneuver_phase_times.columns.map("_".join), axis=1)
         result_df = result_df.merge(maneuver_phase_times, left_index=True,
                                     right_index=True)
-
-        # platoon_maneuver_start_times = result_df.groupby("platoon_id")[
-        #     "first_increasing gap"].min()
-        # platoon_maneuver_end_times = result_df.groupby("platoon_id")[
-        #     "last_closing gap"].max()
-        # platoon_maneuver_times = (platoon_maneuver_end_times
-        #                           - platoon_maneuver_start_times).rename(
-        #     "platoon_maneuver_time")
-        # result_df = pd.merge(left=result_df, left_on="platoon_id",
-        #                      right=platoon_maneuver_times, right_index=True)
-
         # def accel_comp(g):
         #     start_time = platoon_maneuver_start_times.loc[
         #         g["platoon_id"].iloc[0]]
@@ -2589,15 +2583,6 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
         #                   * sampling_time)
         # grouped_by_id = platoon_vehicles.groupby("veh_id")
         # result_df["accel_cost"] = grouped_by_id.apply(accel_comp)
-
-        # TODO: not working
-        # grouped_by_platoon = platoon_vehicles.groupby("platoon_id")
-        # result_df["maneuver_start_position"] = grouped_by_platoon.apply(
-        #     lambda g: g.loc[g["time"] == g["maneuver_start_time"], "x"].max()
-        # )
-        # result_df["maneuver_end_position"] = grouped_by_platoon.apply(
-        #     lambda g: g.loc[g["time"] == g["maneuver_end_time"], "x"].max()
-        # )
 
         result_df.reset_index(inplace=True, names="veh_id")
         return result_df
@@ -2647,35 +2632,67 @@ class PlatoonLaneChangeImpactsProcessor(VISSIMDataPostProcessor):
         """
 
         """
-        results = dict()
+
         self.sampling_time = 0.1  # TODO: read from data
-
-        # Get origin and destination lanes (the same for all platoons)
         main_links = self.file_handler.get_main_links()
-        relevant_data = data[data["link"].isin(main_links)]
-        first_and_last_lanes = relevant_data.groupby(
-            "platoon_id").agg({"lane": ["first", "last"]})
-        first_and_last_lanes = first_and_last_lanes[
-            first_and_last_lanes.index >= 0]
-        # We assume the first platoon always finishes the maneuver
-        lanes = {"orig_lane": first_and_last_lanes["lane"]["first"].iloc[0],
-                 "dest_lane": first_and_last_lanes["lane"]["last"].iloc[0]}
+        in_link_data = data[data["link"].isin(main_links)].copy()
+        leader_id = in_link_data[["veh_id", "leader_id"]].fillna(0)
+        grouped = in_link_data.groupby("veh_id")
+        platoon_id = grouped["platoon_id"].first()
+        platoon_id.loc[0] = -1
+        platoon_id[platoon_id == -1] = pd.NA  # to use filling function later on
+        in_link_data["leader_platoon_id"] = pd.merge(
+            left=leader_id, right=platoon_id,
+            left_on="leader_id", right_index=True)["platoon_id"]
+        result = grouped.agg(
+            {"lane": "first", "veh_type": "first",
+             "platoon_id": "first", "leader_platoon_id": "max"}
+        )
+        times = grouped.agg({"time": ["first", "last"]})
+        result[["entrance_time", "exit_time"]] = times
+        sim_time = data["time"].max()
+        result.drop(index=result[result["exit_time"] == sim_time].index,
+                    inplace=True)
+        result["platoon_ahead"] = result.groupby(
+            "lane", sort=False, group_keys=False)[
+            "leader_platoon_id"].apply(lambda x: x.ffill())
+        result.fillna(-1, inplace=True)
+        result[["leader_platoon_id", "platoon_ahead"]] = result[[
+            "leader_platoon_id", "platoon_ahead"]].astype(int)
+        result["simulation_number"] = data.iloc[0]["simulation_number"]
+        return result.reset_index()
 
-        # Aggregated for all vehicles
-        results.update(self.support_1(relevant_data))
-        # Per lane
-        for lane_name, lane_number in lanes.items():
-            data_on_lane = relevant_data[relevant_data["lane"] == lane_number]
-            results.update(self.support_1(data_on_lane,
-                           suffix=lane_name))
-            results.update(self.support_2(relevant_data, lane_number,
-                                          lane_name))
-
-        results["simulation_number"] = relevant_data.iloc[0][
-            "simulation_number"]
-        results["total_vehicles"] = relevant_data["veh_id"].nunique()
-
-        return pd.DataFrame(data=results, index=[0])
+        # result["platoon ahead"] = float("nan")
+        # result.loc[platoon_follower_ids, "platoon_ahead"] = (
+        #     data.loc[data["veh_id"].isin(platoon_follower_ids), "leader_id"]
+        # )
+        # results = dict()
+        # # Get origin and destination lanes (the same for all platoons)
+        # main_links = self.file_handler.get_main_links()
+        # relevant_data = data[data["link"].isin(main_links)]
+        # first_and_last_lanes = relevant_data.groupby(
+        #     "platoon_id").agg({"lane": ["first", "last"]})
+        # first_and_last_lanes = first_and_last_lanes[
+        #     first_and_last_lanes.index >= 0]
+        # # We assume the first platoon always finishes the maneuver
+        # lanes = {"orig_lane": first_and_last_lanes["lane"]["first"].iloc[0],
+        #          "dest_lane": first_and_last_lanes["lane"]["last"].iloc[0]}
+        #
+        # # Aggregated for all vehicles
+        # results.update(self.support_1(relevant_data))
+        # # Per lane
+        # for lane_name, lane_number in lanes.items():
+        #     data_on_lane = relevant_data[relevant_data["lane"] == lane_number]
+        #     results.update(self.support_1(data_on_lane,
+        #                    suffix=lane_name))
+        #     results.update(self.support_2(relevant_data, lane_number,
+        #                                   lane_name))
+        #
+        # results["simulation_number"] = relevant_data.iloc[0][
+        #     "simulation_number"]
+        # results["total_vehicles"] = relevant_data["veh_id"].nunique()
+        #
+        # return pd.DataFrame(data=results, index=[0])
 
     def support_1(self, data: pd.DataFrame, suffix: str = None):
         """
@@ -2775,7 +2792,7 @@ def compute_accel_cost(platoon_vehicles: pd.DataFrame):
 
 
 def create_summary_for_single_scenario(
-        scenario_name: str, scenario_info: file_handling.ScenarioInfo,
+        scenario_name: str, scenario_info: ScenarioInfo,
         post_processors: List[VISSIMDataPostProcessor],
         analyze_lane_change: bool = True,
         debugging: bool = False):

@@ -103,9 +103,9 @@ strategy_to_print_name_map = {
     PlatoonLaneChangeStrategy.human_driven: "HDV",
     PlatoonLaneChangeStrategy.no_strategy: "CAV",
     PlatoonLaneChangeStrategy.single_body_platoon: "SBP",
-    PlatoonLaneChangeStrategy.leader_first: "Ld First",
-    PlatoonLaneChangeStrategy.last_vehicle_first: "LV First",
-    PlatoonLaneChangeStrategy.leader_first_and_reverse: "Ld First Rev"
+    PlatoonLaneChangeStrategy.leader_first: "LdF",
+    PlatoonLaneChangeStrategy.last_vehicle_first: "LVF",
+    PlatoonLaneChangeStrategy.leader_first_and_reverse: "LdFR"
 }
 
 
