@@ -214,11 +214,18 @@ def plot_comparison_scenario(save_results=False):
         simulation_percentages, veh_inputs)
     result_analyzer = result_analysis.ResultAnalyzer(scenario_name,
                                                      save_results)
-    result_analyzer.plot_flow_box_plot_vs_controlled_percentage(
-        scenarios, warmup_time=10)
-    result_analyzer.plot_risk_histograms("total_risk", scenarios, min_risk=1)
-    result_analyzer.plot_risk_histograms("total_lane_change_risk", scenarios,
-                                         min_risk=1)
+    # result_analyzer.plot_flow_box_plot_vs_controlled_percentage(
+    #     scenarios, warmup_time=10)
+    result_analyzer.plot_link_evaluation_box_plot_vs_controlled_percentage(
+        "volume", scenarios, warmup_time=10, aggregation_period=5)
+    result_analyzer.plot_link_evaluation_box_plot_vs_controlled_percentage(
+        "average_speed", scenarios, warmup_time=10, aggregation_period=5)
+    result_analyzer.plot_link_evaluation_box_plot_vs_controlled_percentage(
+        "density", scenarios, warmup_time=10, aggregation_period=5)
+    # result_analyzer.plot_risk_histograms("total_risk", scenarios, min_risk=1)
+    # result_analyzer.plot_risk_histograms("total_lane_change_risk", scenarios,
+    #                                      min_risk=1)
+    # result_analyzer.plot_emission_heatmap(scenarios)
     result_analyzer.plot_fd_discomfort(scenarios)
 
 
@@ -317,58 +324,57 @@ def plots_for_platoon_scenarios(should_save_fig: bool = False):
 
     cav_scenarios = scenario_handling.get_platoon_lane_change_scenarios(
         "dest_lane_speed")
-    # ra.illustrate_travel_time_delay(cav_scenarios[0], lane="Origin",
-    #                                 warmup_time=2, sim_time=5)
-    #
-    # selector = ["dest_lane_speed", "vehicles_per_lane", "platoon_size"]
-    # for s in selector:
+    # for i in [1, 3, 7, 10]:  # chosen after checking all figures
+    #     ra.plot_platoon_states(cav_scenarios[i])
+    ra.illustrate_travel_time_delay(cav_scenarios[0], lane="Origin",
+                                    warmup_time=2, sim_time=5)
+
+    selector = ["dest_lane_speed", "vehicles_per_lane", "platoon_size"]
+    # for s in selector[1:]:
     #     cav_scenarios = scenario_handling.get_platoon_lane_change_scenarios(s)
-    #     ra.compare_travel_times(cav_scenarios, x="dest_lane_speed",
+    #     ra.compare_travel_times(cav_scenarios, x="delta_v",
     #                             plot_cols=s, warmup_time=1, sim_time=11)
 
     hdv_scenarios = scenario_handling.get_platoon_lane_change_scenarios(
         "vehicles_per_lane", with_hdv=True)
-    ra.plot_successful_maneuvers(hdv_scenarios)
+    # ra.plot_successful_maneuvers(hdv_scenarios)
+    # ra.compare_travel_times(hdv_scenarios, x="delta_v",
+    #                         plot_cols="vehicles_per_lane",
+    #                         warmup_time=1, sim_time=11)
 
     scenarios = scenario_handling.get_platoon_lane_change_scenarios(
         "dest_lane_speed")
-    ra.compare_emissions_for_platoon_scenarios(scenarios)
+    # ra.compare_emissions_for_platoon_scenarios(scenarios)
 
-    # ra.compare_travel_times_all_data(hdv_scenarios, 1, 11)
-    # scenario_subsets = file_handling.split_scenario_by(hdv_scenarios,
-    #                                                    "vehicles_per_lane")
-    # ss = scenario_subsets[1500]
-    # smaller_subsets = file_handling.split_scenario_by(
-    #     ss, "orig_and_dest_lane_speeds")
-    # ss2 = smaller_subsets[("70", "50")]
-    # ra.plot_travel_times_vs_entrance_times(ss2, 1, 11)
-
-    # before_or_after_lc_point = "after"
-    # lanes = "both"
-    # segment = 1 if before_or_after_lc_point == "after" else 2
-    # all_sims = True
-    # scenarios = file_handling.get_platoon_lane_change_scenarios("dest_lane_speed")
-    # scenarios_by_speed = file_handling.split_scenario_by(
-    #     scenarios, "orig_and_dest_lane_speeds")
-    # for key, scenario_subset in scenarios_by_speed.items():
-    #     print(key)
+    before_or_after_lc_point = "after"
+    lanes = "both"
+    segment = 1 if before_or_after_lc_point == "after" else 2
+    all_sims = True
+    scenarios = scenario_handling.get_platoon_lane_change_scenarios(
+        "dest_lane_speed")
+    scenarios_by_speed = scenario_handling.split_scenario_by(
+        scenarios, "orig_and_dest_lane_speeds")
+    for key, scenario_subset in scenarios_by_speed.items():
+        print(key)
+        warmup_time = 2.5
+        sim_time = (12 if key[1] == "90" else 7) - warmup_time
     #     # ra.plot_travel_times_vs_entrance_times(scenario_subset, 1, 7)
-    #     # ra.compare_travel_times(scenario_subset, "Lanes", 1, 11)
-    #     # ra.plot_relevant_vehicles_states(scenario_subset)
-    #     ys = [
-    #         # "volume",
-    #         "average_speed",
-    #         # "density",
-    #         # "delay_relative"
-    #     ]
-    #     for y in ys:
-    #         # ra.plot_link_data_box_plot_vs_strategy(
-    #         #     y,  lc_scenarios, before_or_after_lc_point, lanes, segment,
-    #         #     warmup_time=5, aggregation_period=30)
-    #         ra.plot_link_data_vs_time_per_strategy(
-    #             y, scenario_subset, before_or_after_lc_point, lanes, segment,
-    #             warmup_time=3, sim_time=7, aggregation_period=5,
-    #             use_all_simulations=all_sims)
+        ys = [
+            # "volume",
+            # "average_speed",
+            # "density",
+            # "delay_relative"
+        ]
+        for y in ys:
+            # ra.plot_link_data_box_plot_vs_strategy(
+            #     y,  scenario_subset, before_or_after_lc_point, lanes, segment,
+            #     warmup_time=warmup_time, sim_time=sim_time,
+            #     aggregation_period=5)
+
+            ra.plot_link_data_vs_time_per_strategy(
+                y, scenario_subset, before_or_after_lc_point, lanes, segment,
+                warmup_time=warmup_time, sim_time=sim_time,
+                aggregation_period=5, use_all_simulations=all_sims)
     #     # ra.plot_y_vs_platoon_lc_strategy("platoon_maneuver_time", scenarios)
     #
     #     # for sc in scenario_subset:
@@ -390,6 +396,8 @@ def run_some_simulation():
 
 
 def main():
+    # plots_for_platoon_scenarios(False)
+    plot_comparison_scenario(False)
     # =============== Scenario Definition =============== #
     scenario_name = "platoon_discretionary_lane_change"
 
@@ -435,7 +443,7 @@ def main():
     # moves_file_handling.platoon_scenario_to_moves(scenarios)
 
     # =============== Check results graphically =============== #
-    plots_for_platoon_scenarios(False)
+
     # all_plots_for_scenarios_with_risk(scenario_name, save_fig=False)
     # all_plots_for_scenarios_with_risk_and_varying_penetration(scenario_name,
     #                                                           True)

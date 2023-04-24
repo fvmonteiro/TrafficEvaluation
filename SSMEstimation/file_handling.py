@@ -74,7 +74,9 @@ _network_info_all = {
                      "platoon_mandatory_lane_change", 2, [3]),
     "platoon_discretionary_lane_change":
         _NetworkInfo("platoon_discretionary_lane_change",
-                     "platoon_discretionary_lane_change", 2, [1, 3])
+                     "platoon_discretionary_lane_change", 2, [1, 3]),
+    "risky_lane_changes":
+        _NetworkInfo("risky_lane_changes", "risky_lane_changes", 2, [1, 3])
 }
 
 

@@ -560,7 +560,7 @@ def compute_gap_between_vehicles(leader_rear_x, leader_rear_y,
                    + (leader_rear_y - follower_front_y) ** 2)
 
 
-def drop_warmup_samples(data: pd.DataFrame, warmup_time: int,
+def drop_warmup_samples(data: pd.DataFrame, warmup_time: float,
                         normalize_time: bool = False):
     """
     Drops samples (in place) with time below warmup time.
@@ -576,7 +576,7 @@ def drop_warmup_samples(data: pd.DataFrame, warmup_time: int,
         data["time"] -= warmup_time
 
 
-def drop_late_samples(data: pd.DataFrame, last_time: int):
+def drop_late_samples(data: pd.DataFrame, last_time: float):
     """
     Drops samples with time above last time.
     :param data: Any VISSIM output or post processed data

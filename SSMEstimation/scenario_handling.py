@@ -224,6 +224,7 @@ def get_platoon_lane_change_scenarios(
     if select == "all" or select == "vehicles_per_lane":
         scenarios.extend(create_multiple_scenarios(
             other_vehicles, [i for i in range(500, 3001, 500)],
+            # other_vehicles, [1000, 1500, 2000, 3000],
             lane_change_strategies=strategies,
             orig_and_dest_lane_speeds=[("70", "50"),
                                        ("70", "70"),
@@ -238,7 +239,7 @@ def get_platoon_lane_change_scenarios(
                                        ("70", "70"),
                                        ("70", "90")],
             special_cases=[str(i) + "_platoon_vehicles" for i in
-                           [2, 3, 5, 7, 9]]
+                           [2, 3, 7, 9]]
         ))
     if include_no_lane_change:
         scenarios.extend(create_multiple_scenarios(
