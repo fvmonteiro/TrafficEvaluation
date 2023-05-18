@@ -30,6 +30,12 @@ class ScenarioInfo:
     special_case: Union[str, None] = None
 
 
+def is_all_human(scenario: ScenarioInfo) -> bool:
+    return (sum(scenario.vehicle_percentages.values()) == 0
+            or (VehicleType.HDV in scenario.vehicle_percentages
+                and scenario.vehicle_percentages[VehicleType.HDV] == 100))
+
+
 def create_vehicle_percentages_dictionary(
         vehicle_types: List[VehicleType], percentages: List[int],
         n_vehicle_types: int) -> List[Dict[VehicleType, int]]:
@@ -128,7 +134,6 @@ def filter_scenarios(
                 will_include = False
             if max_vpl is not None and scenario_vpl > max_vpl:
                 will_include = False
-
 
     new_list = []
     for sc in scenarios:

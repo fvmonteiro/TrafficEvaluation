@@ -146,6 +146,49 @@ def run_comparison_method():
         print("Couldn't copy files to shared folder.")
 
 
+def run_all_risky_lane_change_scenarios():
+    # Scenario definition
+    scenario_name = "risky_lane_changes"
+    vehicle_type = [
+        VehicleType.AUTONOMOUS,
+        # VehicleType.CONNECTED,
+    ]
+
+    percentages = [0]  # [i for i in range(0, 101, 100)]
+    full_penetration = (
+        scenario_handling.create_vehicle_percentages_dictionary(
+            vehicle_type, percentages, 1))
+    # varied_cav_penetration = create_vehicle_percentages_dictionary(
+    #     [VehicleType.CONNECTED], [i for i in range(0, 76, 25)], 1)
+    orig_lane_input = [1000, 2000]
+    accepted_risks = [0]
+
+    full_penetration_scenarios = scenario_handling.create_multiple_scenarios(
+        full_penetration, orig_lane_input, accepted_risks
+    )
+
+    # Running
+    vi = VissimInterface()
+    vi.load_simulation(scenario_name)
+    vi.run_multiple_scenarios(full_penetration_scenarios, runs_per_scenario=3)
+    vi.close_vissim()
+
+    # Post-processing
+    post_processing.create_summary_with_risks(
+        scenario_name, full_penetration_scenarios)
+    # for ipl in inputs_per_lane:
+    #     post_processing.get_individual_vehicle_trajectories_to_moves(
+    #         scenario_name, ipl, sp, 0)
+
+    # Transfer files to the cloud
+    # file_handler = FileHandler(scenario_name)
+    # try:
+    #     file_handler.export_multiple_results_to_cloud(
+    #         full_penetration_scenarios)
+    # except FileNotFoundError:
+    #     print("Couldn't copy files to shared folder.")
+
+
 def run_platoon_scenarios():
     scenario_name = "platoon_discretionary_lane_change"
     lc_scenarios = scenario_handling.get_platoon_lane_change_scenarios(
@@ -243,6 +286,43 @@ def plot_cav_varying_percentage_results(save_results=False):
     result_analyzer.get_flow_and_risk_plots(scenarios)
 
 
+def plot_risky_lane_changes_results(save_results=False):
+    scenario_name = "risky_lane_changes"
+    vehicle_types = [
+        VehicleType.AUTONOMOUS,
+        # VehicleType.CONNECTED,
+    ]
+    percentages = [0]  # [i for i in range(0, 101, 100)]
+    full_penetration = (
+        scenario_handling.create_vehicle_percentages_dictionary(
+            vehicle_types, percentages, 1))
+    # varied_cav_penetration = create_vehicle_percentages_dictionary(
+    #     [VehicleType.CONNECTED], [i for i in range(0, 76, 25)], 1)
+    orig_lane_input = [500, 1000, 1500]
+    accepted_risks = [0]
+
+    scenarios = scenario_handling.create_multiple_scenarios(
+        full_penetration, orig_lane_input, accepted_risks
+    )
+
+    result_analyzer = result_analysis.ResultAnalyzer(scenario_name,
+                                                     save_results)
+    # result_analyzer.plot_flow_box_plot_vs_controlled_percentage(
+    #     scenarios, warmup_time=10)
+    result_analyzer.plot_link_evaluation_box_plot_vs_controlled_percentage(
+        "volume", scenarios, warmup_time=10, aggregation_period=5)
+    result_analyzer.plot_link_evaluation_box_plot_vs_controlled_percentage(
+        "average_speed", scenarios, warmup_time=10, aggregation_period=5)
+    result_analyzer.plot_link_evaluation_box_plot_vs_controlled_percentage(
+        "density", scenarios, warmup_time=10, aggregation_period=5)
+
+    # result_analyzer.plot_risk_histograms("total_risk", scenarios, min_risk=1)
+    # result_analyzer.plot_risk_histograms("total_lane_change_risk", scenarios,
+    #                                      min_risk=1)
+    # result_analyzer.plot_fd_discomfort(scenarios)
+    # result_analyzer.plot_emission_heatmap(scenarios)
+
+
 def plot_traffic_lights_results(save_results=False):
     network_name = "traffic_lights"
     vehicle_types = [VehicleType.TRAFFIC_LIGHT_ACC,
@@ -280,8 +360,8 @@ def all_plots_for_scenarios_with_risk(network_name: str, save_fig=False):
         vehicle_percentages, inputs_per_lane, risks)
     ra = result_analysis.ResultAnalyzer(network_name,
                                         should_save_fig=save_fig)
-    scenario_subsets = scenario_handling.split_scenario_by(scenarios,
-                                                       "vehicles_per_lane")
+    scenario_subsets = scenario_handling.split_scenario_by(
+        scenarios, "vehicles_per_lane")
     for key, sc in scenario_subsets.items():
         ra.plot_pointplot_vs_accepted_risk("volume", sc)
         ra.plot_pointplot_vs_accepted_risk("total_lane_change_risk", sc)
@@ -397,12 +477,14 @@ def run_some_simulation():
 
 def main():
     # plots_for_platoon_scenarios(False)
-    plot_comparison_scenario(False)
+    # plot_comparison_scenario(False)
     # =============== Scenario Definition =============== #
-    scenario_name = "platoon_discretionary_lane_change"
+    scenario_name = "risky_lane_changes"
 
     # =============== Running =============== #
 
+    run_all_risky_lane_change_scenarios()
+    plot_risky_lane_changes_results()
     # run_platoon_scenarios()
     # vi = VissimInterface()
     # vi.load_simulation(scenario_name)

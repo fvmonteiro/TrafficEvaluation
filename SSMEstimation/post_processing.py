@@ -17,7 +17,8 @@ from vehicle import Vehicle
 # ============================== Constants =================================== #
 # TODO: determine highway or traffic light from network_info dictionary in
 #  file_handling file
-HIGHWAY_SCENARIOS = {"in_and_out", "in_and_merge", "i710", "us101"}
+HIGHWAY_SCENARIOS = {"in_and_out", "in_and_merge", "risky_lane_changes",
+                     "i710", "us101"}
 TRAFFIC_LIGHT_SCENARIOS = {"traffic_lights"}
 data_source_VISSIM = "vissim"
 data_source_NGSIM = "ngsim"
@@ -245,7 +246,7 @@ def create_summary_with_risks(
         DiscomfortProcessor(scenario_name)
     ]
     n = len(scenarios)
-    print("Starting processing of {} platoon scenarios".format(n))
+    print("Starting processing of {} scenarios".format(n))
     counter = 1
     for sc in scenarios:
         print("======== Scenario: {}/{} ========".format(counter, n))
@@ -818,14 +819,18 @@ def add_overlooked_lane_changes(veh_data: pd.DataFrame,
                 [nearby_vehicle["veh_id"], nearby_vehicle["vx"],
                  lc["vx"] - nearby_vehicle["vx"], inter_vehicle_gap])
         new_data.append(new_row)
-    new_df = pd.DataFrame(data=new_data,
-                          columns=vissim_lane_change_data.columns[:len(
-                              new_data[0])])
-    links = vissim_lane_change_data["link"].unique()
-    new_df.drop(index=new_df[~new_df["link"].isin(links)].index, inplace=True)
 
-    ret_df = pd.concat([vissim_lane_change_data, new_df],
-                       ignore_index=True).fillna(method="ffill")
+    if len(new_data) == 0:
+        ret_df = vissim_lane_change_data
+    else:
+        new_df = pd.DataFrame(data=new_data,
+                              columns=vissim_lane_change_data.columns[:len(
+                                  new_data[0])])
+        links = vissim_lane_change_data["link"].unique()
+        new_df.drop(index=new_df[~new_df["link"].isin(links)].index,
+                    inplace=True)
+        ret_df = pd.concat([vissim_lane_change_data, new_df],
+                           ignore_index=True).fillna(method="ffill")
     return ret_df.sort_values("time")
 
 
@@ -957,7 +962,7 @@ def compute_initial_lane_change_risks(lc_data: pd.Series) -> (float, float,
         orig_lane_leader = Vehicle(veh_type)
         risk_lo = compute_risk(lane_changing_veh, orig_lane_leader,
                                True, lc_data["vx"], lc_data["lo_vx"],
-                               lc_data["lo_gap"])
+                               lc_data["lo_gap"], print_warning=False)
     if lc_data["ld_id"] > 0:
         # veh_type = veh_data.loc[veh_data["veh_id"] == lc_data["ld_id"],
         #                         "veh_type"].iloc[0]
@@ -966,7 +971,7 @@ def compute_initial_lane_change_risks(lc_data: pd.Series) -> (float, float,
         dest_lane_leader = Vehicle(veh_type)
         risk_ld = compute_risk(lane_changing_veh, dest_lane_leader,
                                True, lc_data["vx"], lc_data["ld_vx"],
-                               lc_data["ld_gap"])
+                               lc_data["ld_gap"], print_warning=False)
     if lc_data["fd_id"] > 0 and lc_data["fd_vx"] > 0.5:
         # veh_type = veh_data.loc[veh_data["veh_id"] == lc_data["fd_id"],
         #                         "veh_type"].iloc[0]
@@ -978,7 +983,8 @@ def compute_initial_lane_change_risks(lc_data: pd.Series) -> (float, float,
         dest_lane_follower = Vehicle(veh_type)
         risk_fd = compute_risk(dest_lane_follower, lane_changing_veh,
                                False, lc_data["fd_vx"],
-                               lc_data["vx"], lc_data["fd_gap"])
+                               lc_data["vx"], lc_data["fd_gap"],
+                               print_warning=False)
     return risk_lo, risk_ld, risk_fd
 
 
@@ -1177,7 +1183,8 @@ def compute_collision_free_gap(follower: Vehicle, leader: Vehicle,
 
 
 def compute_risk(follower: Vehicle, leader: Vehicle, is_lane_changing: bool,
-                 follower_vel: float, leader_vel: float, gap: float):
+                 follower_vel: float, leader_vel: float, gap: float,
+                 print_warning: bool = True):
     """
 
     :param follower:
@@ -1186,6 +1193,7 @@ def compute_risk(follower: Vehicle, leader: Vehicle, is_lane_changing: bool,
     :param follower_vel:
     :param leader_vel:
     :param gap:
+    :param print_warning
     :return:
     """
     # TODO: not sure we should have this
@@ -1243,7 +1251,7 @@ def compute_risk(follower: Vehicle, leader: Vehicle, is_lane_changing: bool,
     risk = compute_risk_given_phase(
         follower, leader, np.array([follower_vel]), np.array([leader_vel]),
         np.array([delta_vel]), np.array([gap]), np.array([follower_max_brake]),
-        np.array([follower_lambda1]), np.argmax(idx_cases))
+        np.array([follower_lambda1]), np.argmax(idx_cases), print_warning)
     # for case in range(len(idx_cases)):
     #     mask = idx_cases[case]
     #     risk[mask] = compute_risk_given_phase(
@@ -1323,7 +1331,7 @@ def compute_gap_thresholds_for_collision(follower: Vehicle, leader: Vehicle,
 def compute_risk_given_phase(follower: Vehicle, leader: Vehicle,
                              follower_vel, leader_vel, delta_vel, gap,
                              follower_max_brake, follower_lambda1,
-                             case):
+                             case, print_warning: bool = True):
     """
 
     :param follower:
@@ -1335,6 +1343,7 @@ def compute_risk_given_phase(follower: Vehicle, leader: Vehicle,
     :param follower_max_brake:
     :param follower_lambda1:
     :param case:
+    :param print_warning
     :return:
     """
     if case == 0:
@@ -1349,12 +1358,12 @@ def compute_risk_given_phase(follower: Vehicle, leader: Vehicle,
     elif case == 2:
         risk = SSMEstimator.compute_risk_during_jerk_phase(
             follower, leader, gap, follower_vel, leader_vel,
-            False
+            False, print_warning
         )
     elif case == 3:
         risk = SSMEstimator.compute_risk_during_jerk_phase(
             follower, leader, gap, follower_vel, leader_vel,
-            True
+            True, print_warning
         )
     elif case == 4:
         risk_squared = ((-delta_vel - follower_lambda1) ** 2
@@ -2098,7 +2107,8 @@ class SSMEstimator:
                                        gap: np.ndarray,
                                        follower_vel: np.ndarray,
                                        leader_vel: np.ndarray,
-                                       leader_at_full_stop: bool):
+                                       leader_at_full_stop: bool, 
+                                       print_warning: bool = True):
 
         a = follower.max_jerk / 6
         b = -(follower.accel_t0 + follower.max_jerk * follower.brake_delay) / 2
@@ -2133,7 +2143,7 @@ class SSMEstimator:
                                    tc - follower.brake_delay) ** 2 / 2)
             except ValueError:
                 error_count += 1
-        if error_count > 0:
+        if error_count > 0 and print_warning:
             print("Leader at full stop: ", leader_at_full_stop)
             print("Could not find collision time in ", error_count, " cases.")
         return risk
@@ -2828,7 +2838,7 @@ def create_summary_for_single_scenario(
     data_generator = vehicle_record_reader.generate_all_data_from_scenario(
         scenario_info, n_rows)
     data = defaultdict(list)
-    print("Start of summary creation for network {}\nscenario".format(
+    print("Start of summary creation for network {}\nscenario {}".format(
         scenario_name, scenario_info))
     for (vehicle_records, file_number) in data_generator:
         # post_process_data(data_source_VISSIM, vehicle_records)

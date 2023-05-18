@@ -5,7 +5,7 @@ import shutil
 from typing import Dict, List, Tuple, Union
 
 from vehicle import VehicleType, PlatoonLaneChangeStrategy
-from scenario_handling import ScenarioInfo
+from scenario_handling import ScenarioInfo, is_all_human
 
 
 @dataclass
@@ -63,12 +63,6 @@ _network_info_all = {
         _NetworkInfo("in_and_out", "highway_in_and_out_lanes", 3, [3]),
     "in_and_merge":
         _NetworkInfo("in_and_merge", "highway_in_and_merge", 3, [3]),
-    "i710":
-        _NetworkInfo("i710", "I710-MultiSec-3mi", 3, []),
-    "us101":
-        _NetworkInfo("us101", "US_101", 6, []),
-    "traffic_lights":
-        _NetworkInfo("traffic_lights", "traffic_lights_study", 2, []),
     "platoon_mandatory_lane_change":
         _NetworkInfo("platoon_mandatory_lane_change",
                      "platoon_mandatory_lane_change", 2, [3]),
@@ -76,7 +70,13 @@ _network_info_all = {
         _NetworkInfo("platoon_discretionary_lane_change",
                      "platoon_discretionary_lane_change", 2, [1, 3]),
     "risky_lane_changes":
-        _NetworkInfo("risky_lane_changes", "risky_lane_changes", 2, [1, 3])
+        _NetworkInfo("risky_lane_changes", "risky_lane_changes", 2, [1, 3]),
+    "traffic_lights":
+        _NetworkInfo("traffic_lights", "traffic_lights_study", 2, []),
+    "i710":
+        _NetworkInfo("i710", "I710-MultiSec-3mi", 3, []),
+    "us101":
+        _NetworkInfo("us101", "US_101", 6, []),
 }
 
 
@@ -150,7 +150,7 @@ class FileHandler:
 
     def get_main_links(self) -> List[int]:
         return self._network_info.main_links
-    
+
     def get_n_lanes(self) -> int:
         return self._network_info.n_lanes
 
@@ -171,7 +171,8 @@ class FileHandler:
         data folder.
         """
 
-        if (scenario_info.vehicle_percentages is not None
+        if (self.get_file_name() == "in_and_out"
+                and scenario_info.vehicle_percentages is not None
                 and sum(scenario_info.vehicle_percentages.values()) == 0):
             scenario_info.accepted_risk = None
             base_folder = self.get_network_file_folder()
@@ -387,14 +388,15 @@ def create_file_path(
         folder_list.append(create_percent_folder_name(
             scenario_info.vehicle_percentages))
         folder_list.append(create_vehs_per_lane_folder_name(
-                scenario_info.vehicles_per_lane))
+            scenario_info.vehicles_per_lane))
         if scenario_info.orig_and_dest_lane_speeds is not None:
             folder_list.append(create_speeds_folder_name(
                 scenario_info.orig_and_dest_lane_speeds))
     else:
         folder_list.append(create_vehs_per_lane_folder_name(
-                scenario_info.vehicles_per_lane))
-    if scenario_info.accepted_risk is not None:
+            scenario_info.vehicles_per_lane))
+    if (scenario_info.accepted_risk is not None
+            and not is_all_human(scenario_info)):
         folder_list.append(create_accepted_risk_folder_name(
             scenario_info.accepted_risk))
     if scenario_info.special_case is not None:

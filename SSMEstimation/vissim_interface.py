@@ -52,10 +52,12 @@ class VissimInterface:
                 1200, 1, self.run_platoon_lane_change_scenario),
             "platoon_discretionary_lane_change": _ScenarioParameters(
                 1200, 1, self.run_platoon_lane_change_scenario),
-            "i710": _ScenarioParameters(3600, 10, self.run_i710_simulation),
-            "us101": _ScenarioParameters(1800, 1, self.run_us_101_simulation),
+            "risky_lane_changes": _ScenarioParameters(
+                1800, 5, self.run_risky_lane_change_scenario),
             "traffic_lights": _ScenarioParameters(
                 1800, 10, self.run_traffic_lights_scenario),
+            "i710": _ScenarioParameters(3600, 10, self.run_i710_simulation),
+            "us101": _ScenarioParameters(1800, 1, self.run_us_101_simulation),
         }
 
         if vissim is None:
@@ -365,7 +367,7 @@ class VissimInterface:
         if not self.is_correct_network_loaded():
             return
 
-        self.set_vissim_scenario_parameters(scenario)
+        # self.set_vissim_scenario_parameters(scenario)
         platoon_size, platoon_speed, first_platoon_time, creation_period = (
             self.get_parameters_for_special_case_scenario(scenario)
         )
@@ -429,8 +431,14 @@ class VissimInterface:
 
         print("Simulation done")
 
-    def run_risky_lane_change_scenario(self, scenario: ScenarioInfo):
+    def run_risky_lane_change_scenario(self):
+        if not self.is_correct_network_loaded():
+            return
 
+        # Run
+        print("[Client] Simulation starting.")
+        self.vissim.Simulation.RunContinuous()
+        print("[Client] Simulation done.")
 
     def test_lane_access(self):
         """Code to figure out how to read lane by lane information"""
@@ -469,24 +477,28 @@ class VissimInterface:
             runs_per_scenario: int = 10, simulation_period: int = None,
             is_debugging: bool = False
     ):
+        """
+
+        :param scenarios: List of simulation parameters for several scenarios
+        :param runs_per_scenario:
+        :param is_debugging: If true, runs the scenario only once for a
+         short time period, and results are saved to a test folder.
+        :param simulation_period: Only set if is_debugging is true
+        """
         # Set-up simulation parameters
-        if is_debugging:
-            warm_up_minutes = 0
-            runs_per_scenario = 1
-            simulation_period = 360
-        else:
-            warm_up_minutes = self.network_info.warm_up_minutes
+        if not is_debugging:
+            warm_up_seconds = self.network_info.warm_up_minutes * 60
             self.set_verbose_simulation(False)
             self.set_logged_vehicle_id(0)
             self.vissim.Graphics.CurrentNetworkWindow.SetAttValue(
                 "QuickMode", 1)
             self.vissim.SuspendUpdateGUI()
-
-        if simulation_period is None:
             simulation_period = self.network_info.evaluation_period
+        else:
+            warm_up_seconds = 0
+
         self.set_evaluation_options(True, False, True, True, True,
-                                    warm_up_minutes * 60,
-                                    data_frequency=5)
+                                    warm_up_seconds, data_frequency=5)
         self.set_random_seed(self._initial_random_seed)
         self.set_random_seed_increment(1)
         self.set_simulation_period(simulation_period)
@@ -495,11 +507,12 @@ class VissimInterface:
         print("Starting multiple-scenario run.")
         multiple_sim_start_time = time.perf_counter()
         for sc in scenarios:
+            print("Scenario:\n", print_scenario(sc))
             self.reset_saved_simulations(warning_active=False)
             self.set_vissim_scenario_parameters(sc)
-            # self.set_accepted_lane_change_risk_to_follower(ar / 2)
             if is_debugging:
                 results_folder = self.file_handler.get_vissim_test_folder()
+                delete_files_in_folder(results_folder)
             else:
                 results_folder = self.file_handler.get_vissim_data_folder(sc)
             is_folder_set = self.set_results_folder(results_folder)
@@ -510,8 +523,11 @@ class VissimInterface:
             end_time = time.perf_counter()
             _print_run_time_with_unit(start_time, end_time, runs_per_scenario)
             if not is_folder_set:
+                print("Copying result files to their proper "
+                      "location")
                 self.file_handler.copy_all_files_from_temp_folder(
                     results_folder)
+
         self.vissim.ResumeUpdateGUI()
         self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode", 0)
 
@@ -552,7 +568,7 @@ class VissimInterface:
         for sc in scenarios:
             print("Scenario:\n", print_scenario(sc))
             self.reset_saved_simulations(warning_active=False)
-            # self.set_vissim_scenario_parameters(sc)
+            self.set_vissim_scenario_parameters(sc)
             if is_debugging:
                 results_folder = self.file_handler.get_vissim_test_folder()
                 delete_files_in_folder(results_folder)
@@ -606,6 +622,8 @@ class VissimInterface:
                                        scenario: ScenarioInfo):
         if "platoon" in self.file_handler.scenario_name:
             self.set_platoon_lane_change_parameters(scenario)
+        if "risky" in self.file_handler.scenario_name:
+            self.set_risky_lane_change_parameters(scenario)
         else:
             self.set_safe_lane_change_parameters(scenario)
 
@@ -619,13 +637,13 @@ class VissimInterface:
             self, scenario: ScenarioInfo):
         self.set_platoon_lane_change_strategy(
             scenario.platoon_lane_change_strategy)
-        dest_lane_composition_number = (
-            self.find_vehicle_composition_number_by_name("dest_lane"))
         orig_lane_composition_number = (
             self.find_vehicle_composition_number_by_name("orig_lane"))
-        self.set_composition_vehicle_types_and_flows(
+        dest_lane_composition_number = (
+            self.find_vehicle_composition_number_by_name("dest_lane"))
+        self.set_composition_vehicle_types_and_percentages(
             orig_lane_composition_number, scenario.vehicle_percentages)
-        self.set_composition_vehicle_types_and_flows(
+        self.set_composition_vehicle_types_and_percentages(
             dest_lane_composition_number, scenario.vehicle_percentages)
         self.set_vehicle_composition_desired_speed(
             orig_lane_composition_number, scenario.orig_and_dest_lane_speeds[0])
@@ -635,6 +653,13 @@ class VissimInterface:
                      "dest_lane": scenario.orig_and_dest_lane_speeds[1]}
         self.set_reduced_speed_area_limit(speed_map)
         self.set_uniform_vehicle_input_for_all_lanes(scenario.vehicles_per_lane)
+
+    def set_risky_lane_change_parameters(self, scenario: ScenarioInfo):
+        self.set_controlled_vehicles_percentage(scenario.vehicle_percentages)
+        self.set_use_linear_lane_change_gap(False)
+        self.set_accepted_lane_change_risk_to_leaders(scenario.accepted_risk)
+        self.set_vehicle_inputs({"left_lane": 2000,
+                                 "right_lane": scenario.vehicles_per_lane})
 
     def get_parameters_for_special_case_scenario(
             self, scenario: ScenarioInfo):
@@ -884,7 +909,7 @@ class VissimInterface:
         percentage of autonomous vehicles in it. The rest of the composition
         will be made of "human" driven vehicles.
         Assumption worth noting: the vehicle composition in VISSIM already
-        exists and it contains two vehicle types: regular car and the
+        exists, and it contains two vehicle types: regular car and the
         controlled vehicle type
 
         :param vehicle_percentages: Describes the percentages of controlled
@@ -1143,7 +1168,7 @@ class VissimInterface:
                 signal_head.SetAttValue("Pos", position)
             signal_head.SetAttValue("SG", str(sc_id) + "-1")
 
-    def set_composition_vehicle_types_and_flows(
+    def set_composition_vehicle_types_and_percentages(
             self, composition_number: int,
             vehicle_percentages: Dict[VehicleType, int]):
         """
