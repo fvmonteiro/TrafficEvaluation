@@ -226,17 +226,24 @@ class ResultAnalyzer:
         _produce_console_output(relevant_data, "flow", scenarios, np.median,
                                 show_variation=True)
 
-    def plot_link_evaluation_box_plot_vs_controlled_percentage(
+    def plot_link_data_box_plot_vs_controlled_percentage(
             self, y: str, scenarios: List[ScenarioInfo],
+            before_or_after_lc_point: str = None, lanes: str = None,
+            link_segment_number: int = None,
             warmup_time: float = 10, aggregation_period: int = 30):
 
-        link = FileHandler(self.scenario_name).get_main_links()[0]
+        link, lane_numbers = self._select_link_and_lanes(
+            before_or_after_lc_point, lanes)
         data = self._load_data(y, scenarios)
         relevant_data = self._prepare_link_evaluation_data(
-            data, link, lanes=[1, 2, 3], warmup_time=warmup_time,
-            aggregation_period=aggregation_period)
+            data, link, link_segment_number, lane_numbers,
+            warmup_time=warmup_time, aggregation_period=aggregation_period)
         fig, ax = _my_boxplot(relevant_data, "control percentages", y,
-                              "vehicles per hour")
+                              "vehicles_per_lane", will_show=False)
+        ax.legend(loc="upper center",  bbox_to_anchor=(1.1, 1.1),
+                  title="orig lane vehs/hour", ncols=1)
+        plt.tight_layout()
+        plt.show()
         if self.should_save_fig:
             fig_name = self.create_figure_name("box_plot", y, scenarios)
             self.save_fig(fig, fig_name=fig_name)
@@ -978,6 +985,15 @@ class ResultAnalyzer:
         fig.show()
         _produce_console_output(data, col_to_count, scenarios, agg_function)
 
+    def print_unfinished_lane_changes_for_risky_scenario(
+            self, scenarios: List[ScenarioInfo]):
+        data = self._load_data("lane_change_issues",
+                               scenarios)
+        # n_simulations = data["simulation_number"].nunique()
+        print(data.groupby(
+            ["vehicles_per_lane", "control percentages",
+             "accepted_risk"])["percent unfinished"].mean())
+
     def print_summary_of_issues(
             self, scenarios: List[ScenarioInfo],
             warmup_time: float = 10):
@@ -1060,10 +1076,8 @@ class ResultAnalyzer:
         """
         Uses volume and density from link evaluation.
         """
-        link, lane_numbers = (
-            self._select_link_and_lanes_for_platoon_lc_scenario(
-                before_or_after_lc_point, lanes
-            ))
+        link, lane_numbers = self._select_link_and_lanes(
+                before_or_after_lc_point, lanes)
         axes = self.plot_fundamental_diagram(
             scenarios, link, link_segment_number=link_segment_number,
             lanes=lane_numbers, hue="lane", col="lane_change_strategy",
@@ -1241,10 +1255,8 @@ class ResultAnalyzer:
         """
 
         """
-        link, lane_numbers = (
-            self._select_link_and_lanes_for_platoon_lc_scenario(
-                before_or_after_lc_point, lanes
-            ))
+        link, lane_numbers = self._select_link_and_lanes(
+            before_or_after_lc_point, lanes)
         data = self._load_data(y, scenarios)
         data["# CAVs (veh/h)"] = data["vehicles_per_lane"] * 2
         relevant_data = self._prepare_link_evaluation_data(
@@ -1295,10 +1307,8 @@ class ResultAnalyzer:
             aggregation_period: int = 30, warmup_time: float = 10,
             sim_time: float = None, use_all_simulations: bool = False):
 
-        link, lane_numbers = (
-            self._select_link_and_lanes_for_platoon_lc_scenario(
-                before_or_after_lc_point, lanes
-            ))
+        link, lane_numbers = self._select_link_and_lanes(
+                before_or_after_lc_point, lanes)
         data = self._load_data(y, scenarios)
         aggregated_data = self._prepare_link_evaluation_data(
             data, link, link_segment_number, lane_numbers,
@@ -2345,7 +2355,25 @@ class ResultAnalyzer:
                                             :lane_numbers[-1]]
         return in_flow_sensors, out_flow_sensors
 
-    def _select_link_and_lanes_for_platoon_lc_scenario(
+    def _select_link_and_lanes(self, before_or_after_lc_point: str = None,
+                               lanes: str = None) -> (int, List[int]):
+        if "in_and_out" in self.scenario_name:
+            link = FileHandler(self.scenario_name).get_main_links()[0]
+            lane_numbers = [1, 2, 30]
+        elif "platoon" in self.scenario_name:
+            link, lane_numbers = (
+                self._select_link_and_lanes_for_two_lane_highway(
+                    before_or_after_lc_point, lanes))
+        elif "risky" in self.scenario_name:
+            link, lane_numbers = link, lane_number = (
+                self._select_link_and_lanes_for_two_lane_highway(
+                    before_or_after_lc_point, lanes))
+        else:
+            raise ValueError("Evaluation link and lanes not defined for "
+                             "scenario %s".format(self.scenario_name))
+        return link, lane_numbers
+
+    def _select_link_and_lanes_for_two_lane_highway(
             self, before_or_after_lc_point: str, lanes: str):
         if lanes == "orig":
             lane_numbers = [1]

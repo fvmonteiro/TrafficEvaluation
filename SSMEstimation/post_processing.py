@@ -9,6 +9,7 @@ import pandas as pd
 from scipy.stats import truncnorm
 
 import data_writer
+import scenario_handling
 from file_handling import FileHandler
 import readers
 from scenario_handling import ScenarioInfo
@@ -2472,8 +2473,6 @@ class DiscomfortProcessor(VISSIMDataPostProcessor):
         vehicle_records = data
         # print("[WARNING] are you sure the sampling interval is correct?")
         sampling_interval = 0.1
-            # (vehicle_records["time"].iloc[1]
-            #                  - vehicle_records["time"].iloc[0])
         discomfort_columns = []
         for b in self.comfortable_brake:
             discomfort_idx = vehicle_records["ax"] < b
@@ -2506,17 +2505,55 @@ class LaneChangeIssuesProcessor(VISSIMDataPostProcessor):
     def __init__(self, scenario_name):
         VISSIMDataPostProcessor.__init__(self, scenario_name,
                                          "lane_change_issues", self._writer)
-        self.exit_links = [5, 6]  # exit links for the in_and_out scenario
 
     def post_process(self, data) -> pd.DataFrame:
+        scenario_name = self.file_handler.scenario_name
+        if "in_and_out" in scenario_name:
+            return self.post_process_in_and_out_scenario(data)
+        elif "risky" in scenario_name:
+            return self.post_process_risky_lane_change(data)
+        else:
+            raise ValueError("No 'LaneChangeIssuesProcessor' for scenario",
+                             scenario_name)
+
+    def post_process_risky_lane_change(self, data) -> pd.DataFrame:
         """
+        Find vehicles that didn't change lanes
+        :param data: Vehicle record of a VISSIM simulation
+        """
+        right_lane_input_link = 2
+        orig_lane = 1
+        max_time = data.iloc[-1]["time"]
+        data_per_veh = data[data["link"] == 3].groupby("veh_id").agg(
+            {"time": "last", "lane": ["first", "last"]}
+        )
+        lane_changing_vehicles = data_per_veh.loc[
+            (data_per_veh["lane"]["first"] == orig_lane)
+            & (data_per_veh["time"]["last"] < max_time)].reset_index()
+
+        percent_unfinished = (np.count_nonzero(
+            lane_changing_vehicles["lane"]["last"] == orig_lane)
+                           / lane_changing_vehicles.shape[0])
+        failed_lane_changes = pd.DataFrame(
+            data={"percent unfinished": percent_unfinished,
+                  "simulation_number": data["simulation_number"].iloc[0]},
+            index=[0]
+            )
+        return failed_lane_changes
+
+    def post_process_in_and_out_scenario(self, data) -> pd.DataFrame:
+        """
+        Find vehicles removed from the simulation for being stuck as well as
+        'human interventions'.
+
         :param data: Vehicle record of a VISSIM simulation
         """
         # Find removed vehicles
+        exit_links = [5, 6]  # exit links for the in_and_out scenario
         max_time = data.iloc[-1]["time"]
         last_entry_per_veh = data.groupby("veh_id", as_index=False).last()
         removed_vehicles = last_entry_per_veh.loc[
-            ~(last_entry_per_veh["link"].isin(self.exit_links))
+            ~(last_entry_per_veh["link"].isin(exit_links))
             & (last_entry_per_veh["time"] < max_time), ["time", "veh_id"]]
         removed_vehicles["issue"] = "removed"
 
@@ -2544,12 +2581,12 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
 
     def post_process(self, data) -> pd.DataFrame:
         """
-
+        :param data: vehicle record data
         """
         # TODO: split the function
 
         sim_time = data.iloc[-1]["time"]
-        sampling_time = 0.1  # TODO: read from data
+        # sampling_time = 0.1  # TODO: read from data
 
         platoon_vehicles = data[data["veh_type"]
                                 == Vehicle.VISSIM_PLATOON_CAR_ID]
@@ -2838,8 +2875,9 @@ def create_summary_for_single_scenario(
     data_generator = vehicle_record_reader.generate_all_data_from_scenario(
         scenario_info, n_rows)
     data = defaultdict(list)
-    print("Start of summary creation for network {}\nscenario {}".format(
-        scenario_name, scenario_info))
+    print("Start of summary creation for network {}\nscenario{}".format(
+        scenario_name, scenario_handling.print_scenario(scenario_info)))
+
     for (vehicle_records, file_number) in data_generator:
         # post_process_data(data_source_VISSIM, vehicle_records)
         for single_pp in post_processors:

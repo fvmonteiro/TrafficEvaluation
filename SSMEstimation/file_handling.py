@@ -171,7 +171,7 @@ class FileHandler:
         data folder.
         """
 
-        if (self.get_file_name() == "in_and_out"
+        if ("in_and_out" in self.get_file_name()
                 and scenario_info.vehicle_percentages is not None
                 and sum(scenario_info.vehicle_percentages.values()) == 0):
             scenario_info.accepted_risk = None
