@@ -21,7 +21,7 @@ class DataWriter:
         #  [vt.name.lower() for vt in vehicle_type]
 
     def _save_as_csv(self, data: pd.DataFrame, folder_path: str,
-                     file_name: str):
+                     file_name: str) -> None:
         full_address = os.path.join(folder_path, file_name)
         try:
             data.to_csv(full_address, index=False)
@@ -35,7 +35,7 @@ class DataWriter:
 
     @staticmethod
     def _save_as_xls(data: pd.DataFrame, folder_path: str,
-                     file_name: str, sheet_name: str):
+                     file_name: str, sheet_name: str) -> None:
         if not os.path.isdir(folder_path):
             os.makedirs(folder_path)
         full_address = os.path.join(folder_path, file_name)
@@ -49,7 +49,8 @@ class DataWriter:
 
 
 class PostProcessedDataWriter(DataWriter):
-    """Helps saving results obtained after processing VISSIM results to files"""
+    """Helps to save results obtained after processing VISSIM results to
+    files"""
     _file_extension = ".csv"
 
     def __init__(self, scenario_name: str,  # vehicle_type: List[VehicleType],
@@ -58,7 +59,7 @@ class PostProcessedDataWriter(DataWriter):
                             self._file_extension, scenario_name)
 
     def save_as_csv(self, data: pd.DataFrame,
-                    scenario_info: ScenarioInfo):
+                    scenario_info: ScenarioInfo) -> None:
         """
         Saves the data on the proper results folder based on the simulated
         network, controlled vehicles percentage and vehicle input.
@@ -148,7 +149,7 @@ class MOVESDataWriter(DataWriter):
         self.sheet_name = sheet_name
 
     def save_data(self, data: pd.DataFrame,
-                  scenario_info: ScenarioInfo):
+                  scenario_info: ScenarioInfo) -> None:
         folder_path = self.file_handler.get_moves_data_folder(scenario_info)
         file_name = self.file_base_name + self.file_extension
         self._save_as_xls(data, folder_path, file_name, self.sheet_name)
@@ -190,7 +191,7 @@ class SyntheticDataWriter:
     data_dir = ("C:\\Users\\fvall\\Documents\\Research\\TrafficSimulation"
                 "\\synthetic_data\\")
 
-    def write_data(self, data):
+    def write_data(self, data) -> None:
         """
 
         :param data: pandas dataframe
@@ -203,7 +204,8 @@ class SyntheticDataWriter:
     @staticmethod
     def create_single_veh_data(vf, vl, is_lane_changing: bool = False,
                                follower_type=Vehicle.VISSIM_CAR_ID,
-                               leader_type=Vehicle.VISSIM_CAR_ID):
+                               leader_type=Vehicle.VISSIM_CAR_ID
+                               ) -> pd.DataFrame:
         """
         Creates simple data for tests. Data includes only one vehicle at
         constant speed, with constant relative speed to its leader and
@@ -260,7 +262,7 @@ class SignalControllerTreeEditor:
 
     def set_times(self, signal_controller_tree: ET.ElementTree,
                   red_duration: int, green_duration: int,
-                  amber_duration: int = 5, starts_at_red: bool = True):
+                  amber_duration: int = 5, starts_at_red: bool = True) -> None:
         """"
         Sets red, green and optionally amber times. The function also sets the
         cycle time equal to the sum of the three times.
@@ -305,7 +307,7 @@ class SignalControllerTreeEditor:
             "duration", str(amber_duration))
 
     def save_file(self, signal_controller_tree: ET.ElementTree,
-                  folder: str, file_name: str):
+                  folder: str, file_name: str) -> None:
         signal_controller_tree.write(os.path.join(folder, file_name
                                                   + self._file_extension),
                                      encoding="UTF-8",
@@ -313,5 +315,5 @@ class SignalControllerTreeEditor:
 
     @staticmethod
     def set_signal_controller_id(signal_controller_tree: ET.ElementTree,
-                                 new_id: int):
+                                 new_id: int) -> None:
         signal_controller_tree.getroot().set("id", str(new_id))

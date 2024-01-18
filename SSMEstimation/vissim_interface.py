@@ -2,7 +2,8 @@ from dataclasses import dataclass
 from enum import Enum
 import os
 import time
-from typing import List, Dict, Callable, Union
+from collections.abc import Mapping
+from typing import Callable, Union
 import warnings
 
 import pandas as pd
@@ -66,7 +67,7 @@ class VissimInterface:
         else:
             self.vissim = vissim
 
-    def open_vissim(self):
+    def open_vissim(self) -> bool:
         # Connect to the COM server, which opens a new Vissim window
         # vissim = com.gencache.EnsureDispatch("Vissim.Vissim")  # if
         # connecting for the first time ever
@@ -82,10 +83,11 @@ class VissimInterface:
                 print("[Client] Failed attempt #" + str(i + 1))
         return False
 
-    def close_vissim(self):
+    def close_vissim(self) -> None:
         self.vissim = None
 
-    def load_simulation(self, scenario_name: str, layout_file: str = None):
+    def load_simulation(self, scenario_name: str, layout_file: str = None
+                        ) -> bool:
         """ Loads a VISSIM network and optionally sets it to save vehicle
         records and ssam files.
 
@@ -125,7 +127,7 @@ class VissimInterface:
         self.create_network_results_directory()
         return True
 
-    def create_file_handler(self, scenario_name: str):
+    def create_file_handler(self, scenario_name: str) -> None:
         """
         Creates a file handler instance, which is used determine where
         results are saved. The function is mostly useful during debugging when
@@ -140,9 +142,9 @@ class VissimInterface:
 
     # RUNNING NETWORKS --------------------------------------------------------#
 
-    def run_simple_scenario(self,
-                            in_flow_input: int = None,
-                            main_flow_input: int = None):
+    def run_simple_scenario(
+            self, in_flow_input: int = None, main_flow_input: int = None
+    ) -> None:
         """
         Runs the one of the toy scenarios: highway_in_and_out_lanes or
         highway_in_and_merge. Vehicle results are automatically saved.
@@ -171,7 +173,7 @@ class VissimInterface:
         print("[Client] Simulation done.")
 
     def run_in_and_out_scenario(self, in_flow_input: int = None,
-                                main_flow_input: int = None):
+                                main_flow_input: int = None) -> None:
         """
         Runs the highway_in_and_out_lanes VISSIM scenario. Vehicle results are
         automatically saved.
@@ -189,7 +191,7 @@ class VissimInterface:
         self.run_simple_scenario(in_flow_input, main_flow_input)
 
     def run_in_and_merge_scenario(self, in_flow_input: int = None,
-                                  main_flow_input: int = None):
+                                  main_flow_input: int = None) -> None:
         """
         Runs the highway_in_and_merge VISSIM scenario. Vehicle results are
         automatically saved.
@@ -203,7 +205,7 @@ class VissimInterface:
 
     def run_us_101_simulation(self, highway_input: int = 8200,
                               ramp_input: int = 450,
-                              speed_limit_per_lane: list = None):
+                              speed_limit_per_lane: list = None) -> None:
         """
         Run PTV VISSIM simulation of the US 101
 
@@ -232,7 +234,7 @@ class VissimInterface:
         self.vissim.Simulation.RunContinuous()
         print("Simulation done.")
 
-    def run_i710_simulation(self, scenario_idx: int = 1, demand=None):
+    def run_i710_simulation(self, scenario_idx: int = 1, demand=None) -> None:
         """
         Run PTV VISSIM simulation of the I-710 with possible accident.
 
@@ -343,7 +345,7 @@ class VissimInterface:
 
         print("Simulation done")
 
-    def run_traffic_lights_scenario(self, vehicle_input=None):
+    def run_traffic_lights_scenario(self, vehicle_input=None) -> None:
         """
         Run PTV VISSIM simulation traffic_lights_study.
 
@@ -359,7 +361,7 @@ class VissimInterface:
         self.vissim.Simulation.RunContinuous()
         print("[Client] Simulation done.")
 
-    def run_platoon_lane_change_scenario(self, scenario: ScenarioInfo):
+    def run_platoon_lane_change_scenario(self, scenario: ScenarioInfo) -> None:
         """
 
         :return: Nothing
@@ -393,7 +395,7 @@ class VissimInterface:
             self, scenario_info: ScenarioInfo,
             simulation_period=60, number_of_runs=2,
             random_seed=None, is_fast_mode=False,
-            is_simulation_verbose=False, logged_veh_id=None):
+            is_simulation_verbose=False, logged_veh_id=None) -> None:
         """
         For initial test. Allows us to perform single runs of the platoon
         scenario with given parameters.
@@ -431,7 +433,7 @@ class VissimInterface:
 
         print("Simulation done")
 
-    def run_risky_lane_change_scenario(self):
+    def run_risky_lane_change_scenario(self) -> None:
         if not self.is_correct_network_loaded():
             return
 
@@ -440,7 +442,7 @@ class VissimInterface:
         self.vissim.Simulation.RunContinuous()
         print("[Client] Simulation done.")
 
-    def test_lane_access(self):
+    def test_lane_access(self) -> None:
         """Code to figure out how to read lane by lane information"""
 
         if not self.load_simulation("i710"):
@@ -473,10 +475,10 @@ class VissimInterface:
     # MULTIPLE SCENARIO RUN ---------------------------------------------------#
 
     def run_multiple_scenarios(
-            self, scenarios: List[ScenarioInfo],
+            self, scenarios: list[ScenarioInfo],
             runs_per_scenario: int = 10, simulation_period: int = None,
             is_debugging: bool = False
-    ):
+    ) -> None:
         """
 
         :param scenarios: List of simulation parameters for several scenarios
@@ -537,9 +539,9 @@ class VissimInterface:
                                   multiple_sim_end_time, total_runs)
 
     def run_multiple_platoon_lane_change_scenarios(
-            self, scenarios: List[ScenarioInfo],
+            self, scenarios: list[ScenarioInfo],
             runs_per_scenario: int = 3, is_debugging: bool = False
-    ):
+    ) -> None:
         """
 
         :param scenarios: List of simulation parameters for several scenarios
@@ -595,10 +597,11 @@ class VissimInterface:
         _print_run_time_with_unit(multiple_sim_start_time,
                                   multiple_sim_end_time, total_runs)
 
-    def _check_result_folder_length(self, results_folder):
+    def _check_result_folder_length(self, results_folder) -> bool:
         return len(results_folder + self.file_handler.scenario_name) > 230
 
-    def run_us_101_with_different_speed_limits(self, possible_speeds=None):
+    def run_us_101_with_different_speed_limits(self, possible_speeds=None
+                                               ) -> None:
         if not self.is_correct_network_loaded():
             return
 
@@ -619,7 +622,7 @@ class VissimInterface:
 
     # MODIFYING SCENARIO PARAMETERS ----------------------------------------#
     def set_vissim_scenario_parameters(self,
-                                       scenario: ScenarioInfo):
+                                       scenario: ScenarioInfo) -> None:
         if "platoon" in self.file_handler.scenario_name:
             self.set_platoon_lane_change_parameters(scenario)
         if "risky" in self.file_handler.scenario_name:
@@ -628,13 +631,13 @@ class VissimInterface:
             self.set_safe_lane_change_parameters(scenario)
 
     def set_safe_lane_change_parameters(self,
-                                        scenario: ScenarioInfo):
+                                        scenario: ScenarioInfo) -> None:
         self.set_controlled_vehicles_percentage(scenario.vehicle_percentages)
         self.set_uniform_vehicle_input_for_all_lanes(scenario.vehicles_per_lane)
         self.set_accepted_lane_change_risk_to_leaders(scenario.accepted_risk)
 
     def set_platoon_lane_change_parameters(
-            self, scenario: ScenarioInfo):
+            self, scenario: ScenarioInfo) -> None:
         self.set_platoon_lane_change_strategy(
             scenario.platoon_lane_change_strategy)
         orig_lane_composition_number = (
@@ -654,7 +657,7 @@ class VissimInterface:
         self.set_reduced_speed_area_limit(speed_map)
         self.set_uniform_vehicle_input_for_all_lanes(scenario.vehicles_per_lane)
 
-    def set_risky_lane_change_parameters(self, scenario: ScenarioInfo):
+    def set_risky_lane_change_parameters(self, scenario: ScenarioInfo) -> None:
         self.set_controlled_vehicles_percentage(scenario.vehicle_percentages)
         self.set_use_linear_lane_change_gap(False)
         self.set_accepted_lane_change_risk_to_leaders(scenario.accepted_risk)
@@ -662,7 +665,7 @@ class VissimInterface:
                                  "right_lane": scenario.vehicles_per_lane})
 
     def get_parameters_for_special_case_scenario(
-            self, scenario: ScenarioInfo):
+            self, scenario: ScenarioInfo) -> tuple[int, int, int, int]:
         # TODO: the "special_case" member treatment is a mess
         platoon_size = 4
         platoon_desired_speed = 110
@@ -696,14 +699,13 @@ class VissimInterface:
         return (platoon_size, platoon_desired_speed,
                 first_platoon_time, creation_period)
 
-    def set_evaluation_options(self,
-                               save_vehicle_record: bool = False,
-                               save_ssam_file: bool = False,
-                               activate_data_collections: bool = False,
-                               activate_link_evaluation: bool = False,
-                               save_lane_changes: bool = False,
-                               warm_up_time: int = 0,
-                               data_frequency: int = 30):
+    def set_evaluation_options(
+            self, save_vehicle_record: bool = False,
+            save_ssam_file: bool = False,
+            activate_data_collections: bool = False,
+            activate_link_evaluation: bool = False,
+            save_lane_changes: bool = False, warm_up_time: int = 0,
+            data_frequency: int = 30) -> None:
         """
         Sets evaluation output options for various possible VISSIM outputs.
         Sets VISSIM to keep results of all runs.
@@ -748,7 +750,7 @@ class VissimInterface:
         evaluation.SetAttValue("LaneChangesWriteFile", save_lane_changes)
         evaluation.SetAttValue("LaneChangesFromTime", warm_up_time)
 
-    def set_simulation_parameters(self, sim_params: dict):
+    def set_simulation_parameters(self, sim_params: dict) -> None:
         """
         Sets parameters accessible through the Simulation member of a Vissim
         instance.
@@ -767,7 +769,7 @@ class VissimInterface:
                 print("Failed to set parameter")
                 print("err=", err)
 
-    def set_simulation_period(self, period):
+    def set_simulation_period(self, period) -> None:
         """Sets the period of the simulation if different from None. Otherwise,
         sets the default period based on the simulation name
         """
@@ -776,17 +778,17 @@ class VissimInterface:
         sim_params = {"SimPeriod": period}
         self.set_simulation_parameters(sim_params)
 
-    def set_random_seed(self, seed):
+    def set_random_seed(self, seed) -> None:
         """Sets the simulation random seed"""
         sim_params = {"RandSeed": seed}
         self.set_simulation_parameters(sim_params)
 
-    def set_random_seed_increment(self, seed_increment):
+    def set_random_seed_increment(self, seed_increment) -> None:
         """Sets the random seed increment when running several simulations"""
         sim_params = {"RandSeedIncr": seed_increment}
         self.set_simulation_parameters(sim_params)
 
-    def set_number_of_runs(self, number_of_runs):
+    def set_number_of_runs(self, number_of_runs) -> None:
         """Sets the total number of runs performed in a row"""
         sim_params = {"NumRuns": number_of_runs}
         self.set_simulation_parameters(sim_params)
@@ -809,7 +811,7 @@ class VissimInterface:
         self.vissim.Evaluation.SetAttValue("EvalOutDir", results_folder)
         return success
 
-    def set_vehicle_inputs(self, new_veh_inputs: dict):
+    def set_vehicle_inputs(self, new_veh_inputs: dict) -> None:
         """
         Sets the several vehicle inputs in the simulation by name.
 
@@ -834,7 +836,7 @@ class VissimInterface:
                   "found in simulation".format(vi_key))
 
     def set_uniform_vehicle_input_for_all_lanes(self, input_per_lane: int,
-                                                time_interval=1):
+                                                time_interval=1) -> None:
         """ Looks at all vehicle inputs and sets each of them equal to
         input_per_lane * n_lanes
 
@@ -864,7 +866,8 @@ class VissimInterface:
                   format(veh_input.AttValue("Name"),
                          veh_input.AttValue("Volume(1)")))
 
-    def set_all_vehicle_inputs_composition(self, composition_number: int):
+    def set_all_vehicle_inputs_composition(self, composition_number: int
+                                           ) -> None:
         """
         Sets the desired composition to all the vehicle inputs in the
         network.
@@ -882,7 +885,7 @@ class VissimInterface:
                              composition_number).AttValue("Name")))
 
     def set_vehicle_inputs_compositions(
-            self, input_to_composition_map: Dict[str, int]):
+            self, input_to_composition_map: Mapping[str, int]) -> None:
         """
         Sets the desired composition to each vehicle input in the network.
 
@@ -903,7 +906,7 @@ class VissimInterface:
                                  comp_number).AttValue("Name")))
 
     def set_controlled_vehicles_percentage(
-            self, vehicle_percentages: Dict[VehicleType, int]) -> int:
+            self, vehicle_percentages: Mapping[VehicleType, int]) -> int:
         """
         Looks for the specified vehicle composition and sets the
         percentage of autonomous vehicles in it. The rest of the composition
@@ -945,7 +948,8 @@ class VissimInterface:
                              relative_flow.AttValue("RelFlow")))
         return composition_number
 
-    def set_vehicle_inputs_composition_by_name(self, composition_name: str):
+    def set_vehicle_inputs_composition_by_name(self, composition_name: str
+                                               ) -> None:
         """
         :returns: Nothing. Modifies the open simulation.
         """
@@ -953,8 +957,8 @@ class VissimInterface:
             composition_name)
         self.set_all_vehicle_inputs_composition(composition_number)
 
-    def set_desired_speed_for_first_vehicle_in_link(self, link_number: int,
-                                                    desired_speed: float):
+    def set_desired_speed_for_first_vehicle_in_link(
+            self, link_number: int, desired_speed: float) -> None:
         """
         Sets the desired speed of first vehicles in the link
         """
@@ -965,8 +969,8 @@ class VissimInterface:
         #       first_vehicle.AttValue("No"), "to", desired_speed)
         first_vehicle.SetAttValue("DesSpeed", desired_speed)
 
-    def set_desired_speed_for_all_vehicles_in_link(self, link_number: int,
-                                                   desired_speed: float):
+    def set_desired_speed_for_all_vehicles_in_link(
+            self, link_number: int, desired_speed: float) -> None:
         """
         Sets the desired speed of all vehicles in the link
         """
@@ -975,19 +979,22 @@ class VissimInterface:
         #       link.AttValue("No"), "to", desired_speed)
         link.Vehs.SetAllAttValues("DesSpeed", desired_speed)
 
-    def set_accepted_lane_change_risk_to_leaders(self, accepted_risk: float):
+    def set_accepted_lane_change_risk_to_leaders(self,
+                                                 accepted_risk: float) -> None:
         if accepted_risk is None:
             accepted_risk = 0
         self.set_uda_default_value(_UDANumber.risk_to_leaders,
                                    accepted_risk)
 
-    def set_accepted_lane_change_risk_to_follower(self, accepted_risk: float):
+    def set_accepted_lane_change_risk_to_follower(self,
+                                                  accepted_risk: float) -> None:
         if accepted_risk is None:
             accepted_risk = 0
         self.set_uda_default_value(_UDANumber.risk_to_follower,
                                    accepted_risk)
 
-    def set_use_linear_lane_change_gap(self, use_linear_lane_change_gap: bool):
+    def set_use_linear_lane_change_gap(
+            self, use_linear_lane_change_gap: bool) -> None:
         """
         Determines whether the accepted lane change gaps are computed using a
          linear overestimation of the non-linear value
@@ -998,7 +1005,7 @@ class VissimInterface:
                                    use_linear_lane_change_gap)
 
     def set_platoon_lane_change_strategy(
-            self, platoon_lc_strategy: PlatoonLaneChangeStrategy):
+            self, platoon_lc_strategy: PlatoonLaneChangeStrategy) -> None:
         if platoon_lc_strategy is not None:
             print("[Client] Setting platoon lane change strategy to",
                   platoon_lc_strategy.value,
@@ -1007,16 +1014,16 @@ class VissimInterface:
                 _UDANumber.platoon_lane_change_strategy,
                 platoon_lc_strategy.value)
 
-    def set_verbose_simulation(self, is_simulation_verbose: bool):
+    def set_verbose_simulation(self, is_simulation_verbose: bool) -> None:
         self.set_uda_default_value(_UDANumber.verbose_simulation,
                                    is_simulation_verbose)
 
-    def set_logged_vehicle_id(self, veh_id: int):
+    def set_logged_vehicle_id(self, veh_id: int) -> None:
         self.set_uda_default_value(_UDANumber.logged_vehicle,
                                    veh_id)
 
     def set_uda_default_value(self, uda_number: _UDANumber,
-                              uda_value: Union[bool, int, float]):
+                              uda_value: Union[bool, int, float]) -> None:
         """
         Sets the default value of a user defined attribute
         :param uda_number: number identifying the uda
@@ -1028,7 +1035,7 @@ class VissimInterface:
             uda_number.value)
         uda.SetAttValue("DefValue", uda_value)
 
-    def set_traffic_lights(self):
+    def set_traffic_lights(self) -> None:
         """
         Sets simulation traffic lights based on information on a csv file.
         The function modifies signal controller files (.sig) as well as signal
@@ -1102,7 +1109,8 @@ class VissimInterface:
                             self.file_handler.get_file_name()
                             + str(sc_id))
 
-    def set_signal_controller(self, sc_id, signal_controller_container=None):
+    def set_signal_controller(self, sc_id, signal_controller_container=None
+                              ) -> None:
         """
         Sets the file named [simulation_name]sc_id.sig as the supply file for
         signal controller with id sc_id. Creates a new signal controller if one
@@ -1133,7 +1141,7 @@ class VissimInterface:
                   "produce and error. Press any key when done.")
 
     def set_signal_head(self, sc_id: int, lane_container, position: int,
-                        signal_head_container=None):
+                        signal_head_container=None) -> None:
         """
         Sets as many signal heads as lanes in the lane_container to the given
         position and with the given signal controller. Assumes that each signal
@@ -1170,7 +1178,7 @@ class VissimInterface:
 
     def set_composition_vehicle_types_and_percentages(
             self, composition_number: int,
-            vehicle_percentages: Dict[VehicleType, int]):
+            vehicle_percentages: Mapping[VehicleType, int]) -> None:
         """
         Edits a given vehicle composition. The dictionary must have
         the same number of vehicle types as the composition
@@ -1190,8 +1198,9 @@ class VissimInterface:
             relative_flows[i].SetAttValue(
                 "RelFlow", vehicle_percentages[veh_type[i]])
 
-    def set_vehicle_composition_desired_speed(self, composition_number: int,
-                                              speed_distribution_name: str):
+    def set_vehicle_composition_desired_speed(
+            self, composition_number: int, speed_distribution_name: str
+    ) -> None:
         veh_composition = self.vissim.Net.VehicleCompositions.ItemByKey(
             composition_number)
         speed_distribution = self.get_speed_distribution_by_name(
@@ -1203,7 +1212,8 @@ class VissimInterface:
                   veh_composition.AttValue("Name"),
                   speed_distribution.AttValue("Name")))
 
-    def set_reduced_speed_area_limit(self, speed_limits: Dict[str, str]):
+    def set_reduced_speed_area_limit(
+            self, speed_limits: Mapping[str, str]) -> None:
         reduced_speed_areas = self.vissim.Net.ReducedSpeedAreas
         for rsa in reduced_speed_areas:
             speed_distribution = self.get_speed_distribution_by_name(
@@ -1214,7 +1224,7 @@ class VissimInterface:
                                      rsa.AttValue("DesSpeedDistr(10)")))
 
     # ALTER SIMULATION DURING RUN -------------------------------------------- #
-    def _create_platoon(self, platoon_size, desired_speed):
+    def _create_platoon(self, platoon_size, desired_speed) -> None:
         """
 
         :param platoon_size: Number of vehicles in the platoon
@@ -1264,7 +1274,7 @@ class VissimInterface:
 
     def _periodically_set_desired_speed(self, simulation, first_platoon_time,
                                         break_period, orig_lane_speed: int,
-                                        dest_lane_speed: int):
+                                        dest_lane_speed: int) -> None:
         sim_time = simulation.AttValue("SimPeriod")
         origin_lane_link = 2
         dest_lane_link = 4
@@ -1291,7 +1301,7 @@ class VissimInterface:
 
     def _periodically_create_platoon(self, simulation, first_platoon_time,
                                      platoon_creation_period,
-                                     platoon_size, platoon_speed):
+                                     platoon_size, platoon_speed) -> None:
         sim_time = simulation.AttValue("SimPeriod")
         platoon_counter = 0
         platoon_creation_time = first_platoon_time
@@ -1316,7 +1326,7 @@ class VissimInterface:
     # HELPER FUNCTIONS --------------------------------------------------------#
 
     def find_composition_matching_percentages(
-            self, vehicle_percentages: Dict[VehicleType, int]) -> int:
+            self, vehicle_percentages: Mapping[VehicleType, int]) -> int:
         """
         Finds the vehicle composition that has exactly the same vehicle types
         listed in the parameter
@@ -1347,7 +1357,7 @@ class VissimInterface:
                              self.file_handler.get_network_name()))
 
     def find_composition_matching_speed_distributions(
-            self, desired_speed_distribution: Dict[VehicleType, str]) -> int:
+            self, desired_speed_distribution: Mapping[VehicleType, str]) -> int:
         """
         Finds the vehicle composition that has exactly the same vehicle types
         listed in the parameter
@@ -1405,7 +1415,7 @@ class VissimInterface:
                              speed_distribution_name,
                              self.file_handler.get_network_name()))
 
-    def is_some_network_loaded(self):
+    def is_some_network_loaded(self) -> bool:
         return self.vissim.AttValue("InputFile") != ""
         # if self.vissim.AttValue("InputFile") != "":
         #     # In case we loaded the simulation through VISSIM"s interface:
@@ -1420,7 +1430,7 @@ class VissimInterface:
         # else:
         #     return False
 
-    def is_correct_network_loaded(self):
+    def is_correct_network_loaded(self) -> bool:
         if (self.vissim.AttValue("InputFile")
                 != self.file_handler.get_file_name() + self.vissim_net_ext):
             print("You must load the ", self.file_handler.get_network_name(),
@@ -1428,9 +1438,9 @@ class VissimInterface:
             return False
         return True
 
-    def reset_saved_simulations(self, warning_active: bool = True):
+    def reset_saved_simulations(self, warning_active: bool = True) -> None:
         """
-        Deletes the data from previous simulations in VISSIM"s lists. If the
+        Deletes the data from previous simulations in VISSIM's lists. If the
         directory where files are saved is not changed, previously saved
         files might be overwritten.
 
@@ -1464,11 +1474,11 @@ class VissimInterface:
         # self.vissim.Evaluation.SetAttValue("KeepPrevResults", "KEEPALL")
         # self.set_results_folder(result_folder)
 
-    def use_debug_folder_for_results(self):
+    def use_debug_folder_for_results(self) -> None:
         debug_log_folder = self.file_handler.get_vissim_test_folder()
         self.set_results_folder(debug_log_folder)
 
-    def get_max_decel_data(self):
+    def get_max_decel_data(self) -> pd.DataFrame:
         """Checks the vehicle types used in simulation, creates a Panda
         dataframe with max deceleration values by vehicle type and speed, and
         saves the dataframe as csv
@@ -1478,7 +1488,7 @@ class VissimInterface:
 
         if not self.is_some_network_loaded():
             print("No network loaded")
-            return
+            return pd.DataFrame()
             # if self.network_name is None:
             #     print("No network file defined to load either")
             #     return
@@ -1537,7 +1547,7 @@ class VissimInterface:
 
         return max_decel_df
 
-    def check_saved_variables(self):
+    def check_saved_variables(self) -> bool:
         """If the simulation is set to export vehicle records, the method
         checks whether all the necessary vehicle variables are set to be
         saved. Returns True otherwise.
@@ -1574,13 +1584,13 @@ class VissimInterface:
             print("All necessary variables set to be saved.")
             return True
 
-    def create_network_results_directory(self):
+    def create_network_results_directory(self) -> None:
         results_directory = self.file_handler.get_results_base_folder()
         if not os.path.isdir(results_directory):
             os.mkdir(results_directory)
 
 
-def _print_run_time_with_unit(start_time, end_time, total_runs):
+def _print_run_time_with_unit(start_time, end_time, total_runs) -> None:
     """
     Computes the run time and returns it with the appropriate unit. Run times
     are given in seconds if below a minute, in minutes if below an hour,

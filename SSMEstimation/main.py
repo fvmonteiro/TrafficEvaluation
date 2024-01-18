@@ -175,18 +175,18 @@ def run_all_risky_lane_change_scenarios():
 
     # Post-processing
     post_processing.create_summary_with_risks(
-        scenario_name, full_penetration_scenarios, analyze_lane_change=False)
+        scenario_name, full_penetration_scenarios, analyze_lane_change=True)
     # for ipl in inputs_per_lane:
     #     post_processing.get_individual_vehicle_trajectories_to_moves(
     #         scenario_name, ipl, sp, 0)
 
     # Transfer files to the cloud
-    # file_handler = FileHandler(scenario_name)
-    # try:
-    #     file_handler.export_multiple_results_to_cloud(
-    #         full_penetration_scenarios)
-    # except FileNotFoundError:
-    #     print("Couldn't copy files to shared folder.")
+    file_handler = FileHandler(scenario_name)
+    try:
+        file_handler.export_multiple_results_to_cloud(
+            full_penetration_scenarios)
+    except FileNotFoundError:
+        print("Couldn't copy files to shared folder.")
 
 
 def run_platoon_scenarios():
@@ -461,18 +461,19 @@ def plots_for_platoon_scenarios(should_save_fig: bool = False):
     #     #     ra.speed_color_map(sc, link=3, warmup_time=2, sim_time=7)
 
 
-def run_some_simulation():
+def run_a_platoon_simulation():
     scenario_name = "platoon_discretionary_lane_change"
     other_vehicles = {VehicleType.HDV: 100}
     strategy = PlatoonLaneChangeStrategy.single_body_platoon
     scenario = scenario_handling.ScenarioInfo(
-        other_vehicles, 2700, None, strategy, ("70", "90"),
+        other_vehicles, 0, None, strategy, ("70", "90"),
         "single_lane_change")
     vi = vissim_interface.VissimInterface()
     vi.load_simulation(scenario_name)
     vi.set_random_seed(8)
     vi.set_logged_vehicle_id(280)
     vi.run_platoon_lane_change_scenario(scenario)
+    vi.close_vissim()
 
 
 def main():
@@ -483,9 +484,9 @@ def main():
 
     # =============== Running =============== #
 
-    run_all_risky_lane_change_scenarios()
-    plot_risky_lane_changes_results(False)
-    # all_plots_for_scenarios_with_risk("in_and_out_risk_in_gap", False)
+    # run_all_risky_lane_change_scenarios()
+    # plot_risky_lane_changes_results(False)
+    run_a_platoon_simulation()
     # run_platoon_scenarios()
     # vi = VissimInterface()
     # vi.load_simulation(scenario_name)

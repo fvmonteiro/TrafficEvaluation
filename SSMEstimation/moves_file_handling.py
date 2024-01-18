@@ -19,7 +19,7 @@ _km_to_mile = 0.6213712
 
 # TODO [Mar 23]: codng this quickly as function first. Then we can try to reuse
 #  code. Function is working, but it's a mess
-def platoon_scenario_to_moves(scenarios: List[ScenarioInfo]):
+def platoon_scenario_to_moves(scenarios: List[ScenarioInfo]) -> None:
     scenario_name = "platoon_discretionary_lane_change"
     file_handler = file_handling.FileHandler(scenario_name)
     main_links = file_handler.get_main_links()
@@ -81,7 +81,7 @@ def get_individual_vehicle_trajectories_to_moves(
         scenario_name: str,
         scenario_info: ScenarioInfo,
         first_minute: int = 15,
-        vehs_per_simulation: int = 1):
+        vehs_per_simulation: int = 1) -> None:
     """
     Finds the first vehicle entering the simulation link after the cut-off
     minute and save its info in MOVES format
@@ -210,7 +210,7 @@ def get_individual_vehicle_trajectories_to_moves(
 
 def translate_link_evaluation_to_moves(
         scenario_info: ScenarioInfo,
-        warmup_minutes: int = 5):
+        warmup_minutes: int = 5) -> None:
     """
     Reads link evaluation output files from VISSIM and write link,
     link source and drive schedule xls files for use in MOVES
@@ -283,7 +283,7 @@ def translate_link_evaluation_to_moves(
 def _create_link_evaluation_data_for_single_vehicle(
         link_evaluation_data: pd.DataFrame,
         vehicle_data: pd.DataFrame
-):
+) -> pd.DataFrame:
     """
     :param link_evaluation_data: Link evaluation data of simulation
     :param vehicle_data: Vehicle record of a single vehicle
@@ -391,7 +391,7 @@ class MovesProcessor(ABC):
         pass
 
     @staticmethod
-    def create_unique_link_ids(data: pd.DataFrame):
+    def create_unique_link_ids(data: pd.DataFrame) -> pd.DataFrame:
         """
         :param data: Link evaluation data from VISSIM
         """
@@ -483,7 +483,7 @@ class MovesLinkSourceProcessor(MovesProcessor):
         })
         return moves_link_source_data
 
-    def get_link_ids(self, data):
+    def get_link_ids(self, data: pd.DataFrame) -> pd.Series:
         if self.data_source == "MOVES":
             return data.loc[data["roadTypeID"] != 1, "linkID"]
         elif self.data_source == "link_eval":

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import os
-from typing import Dict, List, Tuple, Union
+from typing import Union
 import warnings
 
 import mariadb
@@ -13,7 +13,7 @@ from vehicle import PlatoonLaneChangeStrategy, VehicleType, \
     vehicle_type_to_print_name_map, strategy_to_print_name_map
 
 
-def match_sim_number_to_random_seed(data):
+def match_sim_number_to_random_seed(data) -> None:
     """Matches each simulation number to the used random seed. This is only
     possible if we know the initial random seed, the random seed increment,
     and the number of runs per vehicle input."""
@@ -32,7 +32,7 @@ def match_sim_number_to_random_seed(data):
 
 
 def _add_scenario_info_columns(data: pd.DataFrame,
-                               scenario_info: ScenarioInfo):
+                               scenario_info: ScenarioInfo) -> None:
     """
     Modifies data in place
     """
@@ -46,7 +46,8 @@ def _add_scenario_info_columns(data: pd.DataFrame,
 
 
 def _add_vehicle_type_columns(data: pd.DataFrame,
-                              vehicle_percentages: Dict[VehicleType, int]):
+                              vehicle_percentages: dict[VehicleType, int]
+                              ) -> None:
     if vehicle_percentages is not None:
         s = ""
         if sum(vehicle_percentages.values()) == 0:
@@ -59,19 +60,19 @@ def _add_vehicle_type_columns(data: pd.DataFrame,
 
 
 def _add_vehicle_input_column(data: pd.DataFrame,
-                              vehicles_per_lane: int):
+                              vehicles_per_lane: int) -> None:
     if vehicles_per_lane is not None:
         data["vehicles_per_lane"] = int(vehicles_per_lane)
 
 
 def _add_risk_column(data: pd.DataFrame,
-                     accepted_risk: Union[int, None]):
+                     accepted_risk: Union[int, None]) -> None:
     if accepted_risk is not None:
         data["accepted_risk"] = int(accepted_risk)
 
 
 def _add_platoon_lane_change_strategy_column(
-        data: pd.DataFrame, strategy: PlatoonLaneChangeStrategy):
+        data: pd.DataFrame, strategy: PlatoonLaneChangeStrategy) -> None:
     if strategy is not None:
         data["lane_change_strategy"] = strategy_to_print_name_map[strategy]
     else:
@@ -79,13 +80,13 @@ def _add_platoon_lane_change_strategy_column(
 
 
 def _add_speeds_column(data: pd.DataFrame,
-                       orig_and_dest_lane_speeds: Tuple[int, str]):
+                       orig_and_dest_lane_speeds: tuple[int, str]) -> None:
     if orig_and_dest_lane_speeds is not None:
         data["orig_lane_speed"] = orig_and_dest_lane_speeds[0]
         data["dest_lane_speed"] = orig_and_dest_lane_speeds[1]
 
 
-def _add_special_case_columns(data: pd.DataFrame, special_case: str):
+def _add_special_case_columns(data: pd.DataFrame, special_case: str) -> None:
 
     platoon_size = 4
     # platoon_desired_speed = 110
@@ -119,12 +120,12 @@ class DataReader(ABC):
         self.scenario_name = scenario_name
 
     @abstractmethod
-    def load_data(self, file_identifier):
+    def load_data(self, file_identifier) -> pd.DataFrame:
         pass
 
     @abstractmethod
     def load_data_from_several_scenarios(
-            self, scenarios: List[ScenarioInfo]) -> pd.DataFrame:
+            self, scenarios: list[ScenarioInfo]) -> pd.DataFrame:
         """
         :param scenarios: List of simulation parameters for several scenarios
         """
@@ -247,7 +248,7 @@ class VissimDataReader(DataReader):
         return data
 
     def load_data_from_several_scenarios(
-            self, scenarios: List[ScenarioInfo]) -> pd.DataFrame:
+            self, scenarios: list[ScenarioInfo]) -> pd.DataFrame:
         """
         :param scenarios: List of simulation parameters for several scenarios
         """
@@ -313,7 +314,7 @@ class VissimDataReader(DataReader):
         return file_name
 
     @staticmethod
-    def _keep_only_aggregated_data(data: pd.DataFrame):
+    def _keep_only_aggregated_data(data: pd.DataFrame) -> None:
         """
         Some files contains data aggregated for all vehicle categories and
         then detailed for each vehicle category. This method keeps only the
@@ -398,14 +399,14 @@ class VehicleRecordReader(VissimDataReader):
 
     def load_sample_data_from_scenario(
             self, scenario_info: ScenarioInfo,
-            n_rows: int = None):
+            n_rows: int = None) -> pd.DataFrame:
         """Loads only the first vehicle record data from the scenario."""
         return self.load_data_from_scenario(scenario_info, n_rows,
                                             emit_warning=False)
 
     def generate_all_data_from_scenario(
             self, scenario_info: ScenarioInfo,
-            n_rows: int = None) -> (pd.DataFrame, int):
+            n_rows: int = None) -> tuple[pd.DataFrame, int]:
         """
         Yields all the vehicle record files for the chosen simulation scenario.
 
@@ -426,7 +427,7 @@ class VehicleRecordReader(VissimDataReader):
                 file_number, scenario_info, n_rows), file_number)
 
     def generate_data_from_several_scenarios(
-            self, scenarios: List[ScenarioInfo],
+            self, scenarios: list[ScenarioInfo],
             n_rows: int = None) -> pd.DataFrame:
         """
 
@@ -484,7 +485,8 @@ class DataCollectionReader(AggregatedDataReader):
         return data
 
     @staticmethod
-    def _compute_flow(vehicle_count: pd.Series, measurement_interval: str):
+    def _compute_flow(vehicle_count: pd.Series, measurement_interval: str
+                      ) -> pd.Series:
         interval_start, _, interval_end = measurement_interval.partition("-")
         measurement_period = int(interval_end) - int(interval_start)
         seconds_in_hour = 3600
@@ -581,9 +583,8 @@ class VissimLaneChangeReader(VissimDataReader):
     #     return data
 
     def load_data_from_scenario(
-            self,
-            scenario_info: ScenarioInfo,
-            n_rows: int = None) -> pd.DataFrame:
+            self, scenario_info: ScenarioInfo, n_rows: int = None
+    ) -> pd.DataFrame:
         """
         Loads all the simulation data from the scenario described by the
         parameters.
@@ -756,7 +757,7 @@ class PostProcessedDataReader(DataReader):
         return data
 
     def load_data_from_several_scenarios(
-            self, scenarios: List[ScenarioInfo]) -> pd.DataFrame:
+            self, scenarios: list[ScenarioInfo]) -> pd.DataFrame:
         """
         :param scenarios: List of simulation parameters for several scenarios
         """
@@ -776,7 +777,8 @@ class PostProcessedDataReader(DataReader):
         #         vehicle_percentages, vehicle_input_per_lane,
         #         lane_change_strategies, orig_and_dest_lane_speeds)
 
-    def _load_file_starting_with_name(self, network_file, data_folder):
+    def _load_file_starting_with_name(self, network_file, data_folder
+                                      ) -> str:
         base_name = network_file + self.data_identifier
         file_with_longer_name = []
         for file in os.listdir(data_folder):
@@ -925,7 +927,7 @@ class NGSIMDataReader:
         # DataReader.__init__(self, file_name)
         self.data_source = "NGSIM"
 
-    def load_data(self, file_identifier=1):
+    def load_data(self, file_identifier=1) -> pd.DataFrame:
 
         if file_identifier not in self.interval_switch:
             print("Requested interval not available")
@@ -950,7 +952,7 @@ class NGSIMDataReader:
     #     return self.interval_switch[self.interval]
 
     @staticmethod
-    def select_relevant_columns(data):
+    def select_relevant_columns(data) -> None:
         columns_to_drop = []
         for col in data.columns:
             if col not in NGSIMDataReader.relevant_columns:
@@ -970,7 +972,7 @@ class SyntheticDataReader:
                              "vx", "y", "leader_id", "delta_x"]
         self.data_source = "synthetic"
 
-    def load_data(self):
+    def load_data(self) -> pd.DataFrame:
         file_name = "synthetic"
         full_address = os.path.join(self.data_dir,
                                     file_name + self.file_extension)
@@ -979,7 +981,7 @@ class SyntheticDataReader:
         NGSIMDataReader.select_relevant_columns(data)
         return data
 
-    def load_test_data(self):
+    def load_test_data(self) -> pd.DataFrame:
         return self.load_data()
 
 
@@ -1056,10 +1058,10 @@ class MovesDataReader(DataReader):
         return data
 
     def load_data_from_several_scenarios(
-            self, scenarios: List[ScenarioInfo]) -> pd.DataFrame:
+            self, scenarios: list[ScenarioInfo]) -> pd.DataFrame:
         # TODO
         return pd.DataFrame()
-    # def get_data_from_all_sheets(self) -> Dict[str, pd.DataFrame]:
+    # def get_data_from_all_sheets(self) -> dict[str, pd.DataFrame]:
     #     folder = self.file_handler.get_moves_data_folder()
     #     file_name = (self.file_handler.get_file_name()
     #                  + "_MOVES_" +
@@ -1143,7 +1145,7 @@ class MOVESDatabaseReader (DataReader):
         data["emission_per_volume"] = data["emission"] / data["volume"]
         return data
 
-    def _get_database_name(self, scenario: ScenarioInfo):
+    def _get_database_name(self, scenario: ScenarioInfo) -> str:
         if scenario.platoon_lane_change_strategy is None:
             # Single vehicle *safe* lane change maneuvers
             # Sample name: highway_in_and_out_hdv_6000
@@ -1178,15 +1180,15 @@ class MOVESDatabaseReader (DataReader):
                              strategy_str, speed_str, "dest_speed"])
 
     def load_data_from_several_scenarios(
-            self, scenarios: List[ScenarioInfo]
-    ):
+            self, scenarios: list[ScenarioInfo]
+    ) -> pd.DataFrame:
         data_per_folder = []
         for sc in scenarios:
             data_per_folder.append(self.load_data(sc))
         data = pd.concat(data_per_folder, ignore_index=True)
         return data
 
-    def _load_pollutants(self, output_database: str):
+    def _load_pollutants(self, output_database: str) -> pd.DataFrame:
         conn = mariadb.connect(
             user=self.user,
             password=self.password,
@@ -1212,7 +1214,7 @@ class MOVESDatabaseReader (DataReader):
         conn.close()
         return pd.DataFrame(data=data)
 
-    def _add_volume_data(self, input_database: str, data: pd.DataFrame):
+    def _add_volume_data(self, input_database: str, data: pd.DataFrame) -> None:
         conn = mariadb.connect(
             user=self.user,
             password=self.password,

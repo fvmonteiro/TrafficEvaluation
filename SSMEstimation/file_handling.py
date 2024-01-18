@@ -2,7 +2,7 @@ import warnings
 from dataclasses import dataclass
 import os
 import shutil
-from typing import Dict, List, Tuple, Union
+from typing import Union
 
 from vehicle import VehicleType, PlatoonLaneChangeStrategy
 from scenario_handling import ScenarioInfo, is_all_human
@@ -24,10 +24,10 @@ class _NetworkInfo:
     name: str
     file_name: str
     n_lanes: int
-    main_links: List[int]
+    main_links: list[int]
 
 
-_folders_map = {
+_folders_map: dict[str, _PCInfo] = {
     "DESKTOP-P2O85S9": _PCInfo("personal_pc",
                                "C:\\Users\\fvall\\Documents\\Research\\"
                                "TrafficSimulation\\VISSIM_networks",
@@ -58,7 +58,7 @@ _folders_map = {
 }
 
 # TODO: check main links of remaining scenarios
-_network_info_all = {
+_network_info_all: dict[str, _NetworkInfo] = {
     "in_and_out":
         _NetworkInfo("in_and_out", "highway_in_and_out_lanes", 3, [3]),
     "in_and_merge":
@@ -80,7 +80,7 @@ _network_info_all = {
 }
 
 
-def temp_name_editing():
+def temp_name_editing() -> None:
     folder = ("C:\\Users\\fvall\\Documents\\Research\\TrafficSimulation"
               "\\VISSIM_networks\\highway_in_and_out_lanes\\test")
     for file in os.listdir(folder):
@@ -94,7 +94,7 @@ def temp_name_editing():
         os.rename(old_file, new_file)
 
 
-def delete_files_in_folder(folder):
+def delete_files_in_folder(folder) -> None:
     for filename in os.listdir(folder):
         file_path = os.path.join(folder, filename)
         try:
@@ -121,48 +121,48 @@ class FileHandler:
         # self._scenario_info = _scenario_info_all[scenario_name]
         self._is_data_in_cloud = is_data_in_cloud
 
-    def set_is_data_in_cloud(self, use_cloud_directory: bool = False):
+    def set_is_data_in_cloud(self, use_cloud_directory: bool = False) -> None:
         self._is_data_in_cloud = use_cloud_directory
 
-    def get_network_name(self):
+    def get_network_name(self) -> str:
         return self._network_info.name
 
-    def get_file_name(self):
+    def get_file_name(self) -> str:
         return self._network_info.file_name
 
-    def get_network_file_relative_address(self):
+    def get_network_file_relative_address(self) -> str:
         # The network files are in folder with the same name as the file
         return self._network_info.file_name
 
-    def get_networks_folder(self):
+    def get_networks_folder(self) -> str:
         if self._is_data_in_cloud:
             return get_cloud_networks_folder()
         else:
             return get_local_networks_folder()
 
-    def get_network_file_folder(self):
+    def get_network_file_folder(self) -> str:
         return os.path.join(self.get_networks_folder(),
                             self.get_network_file_relative_address())
 
-    def get_results_base_folder(self):
+    def get_results_base_folder(self) -> str:
         return os.path.join(self.get_networks_folder(),
                             self.get_results_relative_address())
 
-    def get_main_links(self) -> List[int]:
+    def get_main_links(self) -> list[int]:
         return self._network_info.main_links
 
     def get_n_lanes(self) -> int:
         return self._network_info.n_lanes
 
-    def get_results_relative_address(self):
+    def get_results_relative_address(self) -> str:
         return os.path.join(self.get_network_file_relative_address(),
                             self.simulation_output_folder)
 
-    def get_moves_default_data_folder(self):
+    def get_moves_default_data_folder(self) -> str:
         return os.path.join(get_moves_folder(),
                             self.get_network_file_relative_address())
 
-    def get_vissim_test_folder(self):
+    def get_vissim_test_folder(self) -> str:
         return os.path.join(self.get_results_base_folder(), "test")
 
     def get_vissim_data_folder(self, scenario_info: ScenarioInfo) -> str:
@@ -191,7 +191,7 @@ class FileHandler:
 
     def find_min_max_file_number(
             self, data_identifier: str, file_format: str,
-            scenario_info: ScenarioInfo) -> (int, int):
+            scenario_info: ScenarioInfo) -> tuple[int, int]:
         """"
         Looks for the file with the highest simulation number. This is
         usually the file containing results from all simulations.
@@ -229,15 +229,16 @@ class FileHandler:
 
         return min_simulation_number, max_simulation_number
 
-    def export_multiple_results_to_cloud(self, scenarios: List[ScenarioInfo]):
+    def export_multiple_results_to_cloud(self, scenarios: list[ScenarioInfo]
+                                         ) -> None:
         self._move_multiple_results(True, scenarios)
 
     def import_multiple_results_from_cloud(
-            self, scenarios: List[ScenarioInfo]):
+            self, scenarios: list[ScenarioInfo]) -> None:
         self._move_multiple_results(False, scenarios)
 
     def _move_multiple_results(
-            self, is_exporting: bool, scenarios: List[ScenarioInfo]):
+            self, is_exporting: bool, scenarios: list[ScenarioInfo]) -> None:
         for sc in scenarios:
             try:
                 self.move_result_files(is_exporting, sc)
@@ -248,7 +249,7 @@ class FileHandler:
                 continue
 
     def move_result_files(self, is_exporting: bool,
-                          scenario_info: ScenarioInfo):
+                          scenario_info: ScenarioInfo) -> None:
         """
         Moves data collections, link segments, and all post-processed data
         from the local to cloud folder is is_exporting is true, or from cloud
@@ -289,10 +290,10 @@ class FileHandler:
 
         self.set_is_data_in_cloud(temp)
 
-    def get_temp_results_folder(self):
+    def get_temp_results_folder(self) -> str:
         return os.path.join(self.get_networks_folder(), "temp_results")
 
-    def copy_all_files_from_temp_folder(self, target_dir):
+    def copy_all_files_from_temp_folder(self, target_dir) -> None:
         source_dir = self.get_temp_results_folder()
         all_files = os.listdir(source_dir)
         for file_name in all_files:
@@ -300,7 +301,7 @@ class FileHandler:
 
 
 def create_percent_folder_name(
-        vehicle_percentages: Dict[VehicleType, int]) -> str:
+        vehicle_percentages: dict[VehicleType, int]) -> str:
     """Creates the name of the folder which contains results for the
     given percentage of controlled vehicles (not the full path)"""
 
@@ -358,7 +359,7 @@ def create_platoon_lc_strategy_folder_name(
     return platoon_lc_strategy.name
 
 
-def create_speeds_folder_name(orig_and_dest_lane_speeds: Tuple[int, str]
+def create_speeds_folder_name(orig_and_dest_lane_speeds: tuple[int, str]
                               ) -> str:
     return "_".join(["origin_lane", str(orig_and_dest_lane_speeds[0]),
                      "dest_lane", str(orig_and_dest_lane_speeds[1])])
