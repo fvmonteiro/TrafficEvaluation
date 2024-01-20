@@ -1,6 +1,6 @@
 import itertools
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Union
 from collections import defaultdict
 
 from vehicle import VehicleType, PlatoonLaneChangeStrategy, \
@@ -21,13 +21,12 @@ class ScenarioInfo:
     orig_and_dest_lane_speeds: Mean desired speeds in the platoon lane
      changing scenario
     """
-    vehicle_percentages: Dict[VehicleType, int]
+    vehicle_percentages: dict[VehicleType, int]
     vehicles_per_lane: int
-    accepted_risk: Union[int, None] = None
-    platoon_lane_change_strategy: Union[PlatoonLaneChangeStrategy, None] = None
-    orig_and_dest_lane_speeds: Union[Tuple[Union[str, int], Union[str, int]],
-                                     None] = None
-    special_case: Union[str, None] = None
+    accepted_risk: int = None
+    platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None
+    orig_and_dest_lane_speeds: tuple[Union[str, int], Union[str, int]] = None
+    special_case: str = None
 
 
 def is_all_human(scenario: ScenarioInfo) -> bool:
@@ -37,8 +36,8 @@ def is_all_human(scenario: ScenarioInfo) -> bool:
 
 
 def create_vehicle_percentages_dictionary(
-        vehicle_types: List[VehicleType], percentages: List[int],
-        n_vehicle_types: int) -> List[Dict[VehicleType, int]]:
+        vehicle_types: list[VehicleType], percentages: list[int],
+        n_vehicle_types: int) -> list[dict[VehicleType, int]]:
     """
     :param vehicle_types:
     :param percentages:
@@ -64,13 +63,13 @@ def create_vehicle_percentages_dictionary(
 
 
 def create_multiple_scenarios(
-        vehicle_percentages: List[Dict[VehicleType, int]],
-        vehicle_inputs: List[int],
-        accepted_risks: List[int] = None,
-        lane_change_strategies: List[PlatoonLaneChangeStrategy] = None,
-        orig_and_dest_lane_speeds: List[Tuple[Union[str, int],
+        vehicle_percentages: list[dict[VehicleType, int]],
+        vehicle_inputs: list[int],
+        accepted_risks: list[int] = None,
+        lane_change_strategies: list[PlatoonLaneChangeStrategy] = None,
+        orig_and_dest_lane_speeds: list[tuple[Union[str, int],
                                               Union[str, int]]] = None,
-        special_cases: List[str] = None):
+        special_cases: list[str] = None) -> list[ScenarioInfo]:
     if accepted_risks is None:
         accepted_risks = [None]
         if lane_change_strategies is None:  # not a platoon scenario
@@ -92,7 +91,7 @@ def create_multiple_scenarios(
     return scenarios
 
 
-def print_scenario(scenario: ScenarioInfo):
+def print_scenario(scenario: ScenarioInfo) -> str:
     str_list = []
     veh_percent_list = [str(p) + "% " + vt.name.lower()
                         for vt, p in scenario.vehicle_percentages.items()]
@@ -115,13 +114,13 @@ def print_scenario(scenario: ScenarioInfo):
 
 
 def filter_scenarios(
-        scenarios: List[ScenarioInfo],
-        desired_vehicle_percentages: List[Dict[VehicleType, int]] = None,
-        vehicles_per_lane: Tuple[Union[int, None],
+        scenarios: list[ScenarioInfo],
+        desired_vehicle_percentages: list[dict[VehicleType, int]] = None,
+        vehicles_per_lane: tuple[Union[int, None],
                                  Union[int, None]] = None,
-        accepted_risk: Tuple[Union[int, None], Union[int, None]] = None,
-        dest_lane_speeds: Tuple[Union[int, None], Union[int, None]] = None,
-        special_cases: List[str] = None) -> List[ScenarioInfo]:
+        accepted_risk: tuple[Union[int, None], Union[int, None]] = None,
+        dest_lane_speeds: tuple[Union[int, None], Union[int, None]] = None,
+        special_cases: list[str] = None) -> list[ScenarioInfo]:
     """
 
     Returns a new scenario list containing only scenarios that respect the
@@ -159,8 +158,8 @@ def filter_scenarios(
     return new_list
 
 
-def split_scenario_by(scenarios: List[ScenarioInfo], attribute: str) \
-        -> Dict[Any, List[ScenarioInfo]]:
+def split_scenario_by(scenarios: list[ScenarioInfo], attribute: str) \
+        -> dict[Any, list[ScenarioInfo]]:
     """
     Splits a list of scenarios in subsets based on the value of the attribute.
     :returns: Dictionary where keys are unique values of the attribute and
@@ -182,7 +181,7 @@ def split_scenario_by(scenarios: List[ScenarioInfo], attribute: str) \
     return subsets
 
 
-def vehicle_percentage_dict_to_string(vp_dict: Dict[VehicleType, int]) -> str:
+def vehicle_percentage_dict_to_string(vp_dict: dict[VehicleType, int]) -> str:
     if sum(vp_dict.values()) == 0:
         return "100% HDV"
     ret_str = []
@@ -193,7 +192,7 @@ def vehicle_percentage_dict_to_string(vp_dict: Dict[VehicleType, int]) -> str:
 
 def get_platoon_lane_change_scenarios(
         select: str = None, with_hdv: bool = False,
-        include_no_lane_change: bool = False) -> List[ScenarioInfo]:
+        include_no_lane_change: bool = False) -> list[ScenarioInfo]:
     """
 
     :param select: "all" returns all the 56 lane change scenarios;

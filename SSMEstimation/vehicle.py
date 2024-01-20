@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Union, Tuple
+from typing import Union
 
 from math import sin, cos
 import numpy as np
@@ -262,7 +262,7 @@ class Vehicle:
                 self.max_brake_lane_change))
 
     def compute_vehicle_following_parameters(self, leader_max_brake: float,
-                                             rho: float) -> (float, float):
+                                             rho: float) -> tuple[float, float]:
         """
         Computes time headway (h) and constant term (d) of the time headway
         policy: g = h.v + d.
@@ -295,7 +295,8 @@ class Vehicle:
 
         return h, d
 
-    def _compute_emergency_braking_parameters(self, max_brake):
+    def _compute_emergency_braking_parameters(
+            self, max_brake: float) -> tuple[float, float, float]:
         tau_j = (self.accel_t0 + max_brake) / self.max_jerk
         lambda1 = ((self.accel_t0 + max_brake)
                    * (self.brake_delay + tau_j / 2))
@@ -305,19 +306,24 @@ class Vehicle:
 
         return tau_j, lambda0, lambda1
 
-    def simulate_emergency_braking_as_leader(self, x0, v0):
+    def simulate_emergency_braking_as_leader(
+            self, x0: float, v0: float
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         return self.simulate_emergency_braking(x0, v0, False, False,
                                                -self.max_brake)
 
-    def simulate_emergency_braking_as_follower(self, x0, v0,
-                                               is_lane_changing, a0=None):
+    def simulate_emergency_braking_as_follower(
+            self, x0: float, v0: float, is_lane_changing: bool, a0: float = None
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         if a0 is None:
             a0 = self.accel_t0
         return self.simulate_emergency_braking(x0, v0, True,
                                                is_lane_changing, a0)
 
-    def simulate_emergency_braking(self, x0, v0, is_follower,
-                                   is_lane_changing, a0):
+    def simulate_emergency_braking(
+            self, x0: float, v0: float, is_follower: bool, 
+            is_lane_changing: bool, a0: float
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         sampling_time = self._sampling_time  # [s]
         t = [0]
         x = [x0]
@@ -341,8 +347,9 @@ class Vehicle:
         v[-1] = 0
         return np.array(t), np.array(x), np.array(v), np.array(a)
 
-    def get_jerk_and_accel(self, time, current_accel, is_follower,
-                           is_lane_changing):
+    def get_jerk_and_accel(self, time: float, current_accel: float, 
+                           is_follower: bool, is_lane_changing: float
+                           ) -> tuple[float, float]:
         if is_follower:
             tau_j = self.tau_j_lane_change if is_lane_changing else self.tau_j
             if time < self.brake_delay:
@@ -366,19 +373,14 @@ class Vehicle:
         pass
 
 
-def severity_in_2d_collision(vx0: Tuple[float, float],
-                             vy0: Tuple[float, float],
-                             omega0: Tuple[float, float],
-                             restitution_coefficient: float,
-                             friction_coefficient: Union[float, str],
-                             moment_coefficient: float,
-                             mass: Tuple[float, float],
-                             moment_of_inertia: Tuple[float, float],
-                             heading_angle: Tuple[float, float],
-                             angle_to_impact_line: Tuple[float, float],
-                             impact_angle: float,
-                             distance_to_impact_center: Tuple[float, float]
-                             ):
+def severity_in_2d_collision(
+        vx0: tuple[float, float], vy0: tuple[float, float],
+        omega0: tuple[float, float], restitution_coefficient: float,
+        friction_coefficient: Union[float, str], moment_coefficient: float,
+        mass: tuple[float, float], moment_of_inertia: tuple[float, float],
+        heading_angle: tuple[float, float],
+        angle_to_impact_line: tuple[float, float], impact_angle: float,
+        distance_to_impact_center: tuple[float, float]) -> np.ndarray:
     """
     Computes the Delta-V of a collision treating vehicles as rigid bodies.
     :param vx0:

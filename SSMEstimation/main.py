@@ -466,13 +466,14 @@ def run_a_platoon_simulation():
     other_vehicles = {VehicleType.HDV: 100}
     strategy = PlatoonLaneChangeStrategy.single_body_platoon
     scenario = scenario_handling.ScenarioInfo(
-        other_vehicles, 0, None, strategy, ("70", "90"),
-        "single_lane_change")
+        other_vehicles, 0, platoon_lane_change_strategy=strategy,
+        orig_and_dest_lane_speeds=("70", "90"),
+        special_case="single_lane_change")
     vi = vissim_interface.VissimInterface()
     vi.load_simulation(scenario_name)
     vi.set_random_seed(8)
     vi.set_logged_vehicle_id(280)
-    vi.run_platoon_lane_change_scenario(scenario)
+    vi.run_platoon_scenario_sample(scenario, number_of_runs=1)
     vi.close_vissim()
 
 

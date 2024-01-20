@@ -66,6 +66,7 @@ class PostProcessedDataWriter(DataWriter):
         Parameters with None value are only accepted for test runs.
 
         :param data: data to be saved
+        :param scenario_info:
         :return: Nothing, just saves the data
         """
 

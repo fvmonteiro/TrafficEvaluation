@@ -1,5 +1,5 @@
 import os
-from typing import List, Dict, Union
+from typing import Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -75,8 +75,8 @@ class ResultAnalyzer:
 
     # Plots aggregating results from multiple simulations ==================== #
     def plot_xy(self, x: str, y: str, hue: str,
-                scenarios: List[ScenarioInfo],
-                warmup_time: float = 0):
+                scenarios: list[ScenarioInfo],
+                warmup_time: float = 0) -> plt.Axes:
         """
 
         """
@@ -88,8 +88,8 @@ class ResultAnalyzer:
         return ax
 
     def plot_y_vs_time(self, y: str,
-                       scenarios: List[ScenarioInfo],
-                       warmup_time: float = 10):
+                       scenarios: list[ScenarioInfo],
+                       warmup_time: float = 10) -> plt.Axes:
         """Plots averaged y over several runs with the same vehicle input 
         versus time.fi
         
@@ -113,12 +113,12 @@ class ResultAnalyzer:
         return ax
 
     def plot_fundamental_diagram(
-            self, scenarios: List[ScenarioInfo],
+            self, scenarios: list[ScenarioInfo],
             link_number: int,
-            link_segment_number: int = None, lanes: List[int] = None,
+            link_segment_number: int = None, lanes: list[int] = None,
             hue: str = None, col: str = None,
             aggregation_period: int = 30, warmup_time: float = 10,
-            will_plot: bool = False):
+            will_plot: bool = False) -> list[plt.Axes]:
         """
         Computes flow from link evaluation data.
         """
@@ -157,10 +157,10 @@ class ResultAnalyzer:
         return axes
 
     def plot_fundamental_diagram_from_flow(
-            self, scenarios: List[ScenarioInfo],
+            self, scenarios: list[ScenarioInfo],
             flow_sensor_identifier: Union[str, int] = None,
             link_segment_number: int = None,
-            aggregation_period: int = 30, warmup_time: float = 10):
+            aggregation_period: int = 30, warmup_time: float = 10) -> None:
         """
         Computes flow from data collection sensors and uses density from link
         evaluation.
@@ -189,8 +189,8 @@ class ResultAnalyzer:
         plt.show()
 
     def plot_fundamental_diagram_per_control_percentage(
-            self, scenarios: List[ScenarioInfo],
-            warmup_time: float = 10, aggregation_period: int = 30):
+            self, scenarios: list[ScenarioInfo],
+            warmup_time: float = 10, aggregation_period: int = 30) -> None:
         main_link = self.file_handler.get_main_links()[0]
         self.plot_fundamental_diagram(
             scenarios, main_link, hue="control percentages",
@@ -200,10 +200,10 @@ class ResultAnalyzer:
         plt.show()
 
     def plot_flow_box_plot_vs_controlled_percentage(
-            self, scenarios: List[ScenarioInfo],
+            self, scenarios: list[ScenarioInfo],
             warmup_time: float = 10,
             flow_sensor_name: str = "in",
-            aggregation_period: int = 30):
+            aggregation_period: int = 30) -> None:
 
         # for sc in scenarios:
         #     if sc.accepted_risk is None:
@@ -227,10 +227,10 @@ class ResultAnalyzer:
                                 show_variation=True)
 
     def plot_link_data_box_plot_vs_controlled_percentage(
-            self, y: str, scenarios: List[ScenarioInfo],
+            self, y: str, scenarios: list[ScenarioInfo],
             before_or_after_lc_point: str = None, lanes: str = None,
             link_segment_number: int = None,
-            warmup_time: float = 10, aggregation_period: int = 30):
+            warmup_time: float = 10, aggregation_period: int = 30) -> None:
 
         link, lane_numbers = self._select_link_and_lanes(
             before_or_after_lc_point, lanes)
@@ -252,8 +252,8 @@ class ResultAnalyzer:
                                 show_variation=True)
 
     def box_plot_y_vs_controlled_percentage(
-            self, y: str, scenarios: List[ScenarioInfo],
-            warmup_time: float = 10):
+            self, y: str, scenarios: list[ScenarioInfo],
+            warmup_time: float = 10) -> None:
         """Plots averaged y over several runs with the same vehicle input
         versus controlled vehicles percentage as a box plot.
 
@@ -274,8 +274,8 @@ class ResultAnalyzer:
 
     def box_plot_y_vs_vehicle_type(
             self, y: str, hue: str,
-            scenarios: List[ScenarioInfo],
-            warmup_time: float = 10, sensor_name: str = None):
+            scenarios: list[ScenarioInfo],
+            warmup_time: float = 10, sensor_name: str = None) -> None:
         """
         Plots averaged y over several runs with the same vehicle input
         versus vehicles type as a box plot. Parameter hue controls how to
@@ -333,9 +333,9 @@ class ResultAnalyzer:
 
     def plot_risk_histograms(
             self, risk_type: str,
-            scenarios: List[ScenarioInfo],
+            scenarios: list[ScenarioInfo],
             warmup_time: float = 10, min_risk: float = 0.1
-    ):
+    ) -> None:
         """
         Plot one histogram of lane change risks for each vehicle percentage
         each single risk value
@@ -388,9 +388,9 @@ class ResultAnalyzer:
 
     def plot_lane_change_risk_histograms_risk_as_hue(
             self, risk_type: str,
-            scenarios: List[ScenarioInfo],
+            scenarios: list[ScenarioInfo],
             warmup_time: float = 10, min_risk: int = 0.1
-    ):
+    ) -> None:
         """
         Plot one histogram of lane change risks for each vehicle percentage.
         All risk values on the same plot
@@ -438,9 +438,9 @@ class ResultAnalyzer:
 
     def plot_row_of_lane_change_risk_histograms(
             self, risk_type: str,
-            scenarios: List[ScenarioInfo],
+            scenarios: list[ScenarioInfo],
             warmup_time: float = 10, min_risk: int = 0.1
-    ):
+    ) -> None:
         """
         Plots histograms of lane change risks for a single penetration
         percentage and varied risk
@@ -475,9 +475,9 @@ class ResultAnalyzer:
 
     def plot_grid_of_lane_change_risk_histograms(
             self, risk_type: str,
-            scenarios: List[ScenarioInfo],
+            scenarios: list[ScenarioInfo],
             warmup_time: float = 10, min_risk: int = 0.1
-    ):
+    ) -> None:
         """
         Creates a grid of size "# of vehicle types" vs "# of accepted risks"
         and plots the histogram of lane changes" total risks for each case
@@ -523,8 +523,8 @@ class ResultAnalyzer:
         plt.show()
 
     def hist_plot_lane_change_initial_risks(
-            self, scenarios: List[ScenarioInfo],
-            warmup_time: float = 0):
+            self, scenarios: list[ScenarioInfo],
+            warmup_time: float = 0) -> None:
         """
 
         :param scenarios: List of simulation parameters for several scenarios
@@ -567,9 +567,9 @@ class ResultAnalyzer:
                 plt.show()
 
     def plot_heatmap_risk_vs_control(
-            self, y: str, scenarios: List[ScenarioInfo],
+            self, y: str, scenarios: list[ScenarioInfo],
             warmup_time: float = 10, normalize: bool = False
-    ):
+    ) -> None:
         """
 
         :param y:
@@ -638,7 +638,7 @@ class ResultAnalyzer:
 
     def plot_risk_heatmap(
             self, risk_type: str,
-            scenarios: List[ScenarioInfo],
+            scenarios: list[ScenarioInfo],
             normalizer: float = None) -> float:
         """
         Plots a heatmap of the chosen risk type. Returns normalizer so that
@@ -699,7 +699,7 @@ class ResultAnalyzer:
         return normalizer
 
     def plot_pointplot_vs_accepted_risk(self, y, scenarios, sensor_name=None,
-                                        warmup_time=10):
+                                        warmup_time=10) -> None:
         raw_data = self._load_data(y, scenarios)
 
         # We do it per group because some set of simulations might have
@@ -753,7 +753,7 @@ class ResultAnalyzer:
             self.save_fig(fig, fig_name=fig_name)
 
     def plot_barplot_vs_accepted_risk(self, y, scenarios, sensor_name=None,
-                                      warmup_time=10):
+                                      warmup_time=10) -> None:
         raw_data = self._load_data(y, scenarios)
 
         # We do it per group because some set of simulations might have
@@ -810,8 +810,8 @@ class ResultAnalyzer:
             self.save_fig(fig, fig_name=fig_name)
 
     def plot_fd_discomfort(
-            self, scenarios: List[ScenarioInfo],
-            brake_threshold: int = 4):
+            self, scenarios: list[ScenarioInfo],
+            brake_threshold: int = 4) -> None:
         y = "fd_discomfort"
         data = self._load_data(y, scenarios)
         post_processing.drop_warmup_samples(data, 10)
@@ -836,8 +836,8 @@ class ResultAnalyzer:
                                 show_variation=True)
 
     def plot_discomfort_heatmap(
-            self, scenarios: List[ScenarioInfo],
-            max_brake: int = 4):
+            self, scenarios: list[ScenarioInfo],
+            max_brake: int = 4) -> None:
         data = self._load_data("discomfort", scenarios)
         y = "discomfort_" + str(max_brake)
         post_processing.drop_warmup_samples(data, 10)
@@ -853,7 +853,7 @@ class ResultAnalyzer:
             self.save_fig(fig, fig_name=fig_name)
 
     def plot_total_output_heatmap(
-            self, scenarios: List[ScenarioInfo]):
+            self, scenarios: list[ScenarioInfo]) -> None:
         y = "vehicle_count"
         data = self._load_data("vehicle_count", scenarios)
         data = self._prepare_data_collection_data(data, sensor_identifier="out",
@@ -875,7 +875,7 @@ class ResultAnalyzer:
             self.save_fig(fig, fig_name=fig_name)
 
     def plot_total_output_heatmap_vs_risk(
-            self, scenarios: List[ScenarioInfo]):
+            self, scenarios: list[ScenarioInfo]) -> None:
         y = "vehicle_count"
         data = self._load_data("vehicle_count", scenarios)
         data = self._prepare_data_collection_data(data, sensor_identifier="out",
@@ -909,9 +909,9 @@ class ResultAnalyzer:
             self.save_fig(fig, fig_name=fig_name)
 
     def plot_emission_heatmap(
-            self, scenarios: List[ScenarioInfo],
+            self, scenarios: list[ScenarioInfo],
             pollutant_id: int = 91
-    ):
+    ) -> None:
         y = "emission_per_volume"
         data = self._load_data(y, scenarios)
         data = ResultAnalyzer._prepare_pollutant_data(data, pollutant_id)
@@ -938,8 +938,8 @@ class ResultAnalyzer:
                                 np.sum, show_variation=True)
 
     def plot_lane_change_count_heatmap(
-            self, scenarios: List[ScenarioInfo],
-            warmup_time: float = 10):
+            self, scenarios: list[ScenarioInfo],
+            warmup_time: float = 10) -> None:
         y = "lane_change_count"
         agg_function = np.count_nonzero
         col_to_count = "veh_id"
@@ -956,8 +956,8 @@ class ResultAnalyzer:
         _produce_console_output(data, col_to_count, scenarios, agg_function)
 
     def plot_lane_change_count_heatmap_per_risk(
-            self, scenarios: List[ScenarioInfo],
-            warmup_time: float = 10):
+            self, scenarios: list[ScenarioInfo],
+            warmup_time: float = 10) -> None:
         y = "lane_change_count"
         agg_function = np.count_nonzero
         col_to_count = "veh_id"
@@ -986,7 +986,7 @@ class ResultAnalyzer:
         _produce_console_output(data, col_to_count, scenarios, agg_function)
 
     def print_unfinished_lane_changes_for_risky_scenario(
-            self, scenarios: List[ScenarioInfo]):
+            self, scenarios: list[ScenarioInfo]) -> None:
         data = self._load_data("lane_change_issues",
                                scenarios)
         # n_simulations = data["simulation_number"].nunique()
@@ -995,8 +995,8 @@ class ResultAnalyzer:
              "accepted_risk"])["percent unfinished"].mean())
 
     def print_summary_of_issues(
-            self, scenarios: List[ScenarioInfo],
-            warmup_time: float = 10):
+            self, scenarios: list[ScenarioInfo],
+            warmup_time: float = 10) -> None:
         """
         Prints out a summary with average number of times the AV requested
         human intervention and average number of vehicles removed from
@@ -1029,14 +1029,14 @@ class ResultAnalyzer:
                   "vissim_in_control"].mean())
 
     def plot_all_pollutant_heatmaps(
-            self, scenarios: List[ScenarioInfo]):
+            self, scenarios: list[ScenarioInfo]) -> None:
 
         for p_id in self._pollutant_id_to_string:
             self.plot_emission_heatmap(scenarios, p_id)
 
     def count_lane_changes_from_vehicle_record(
             self, scenario_info: ScenarioInfo
-    ):
+    ) -> None:
         """
         Counts the lane changes over all simulations under a determined
         simulation configuration
@@ -1069,10 +1069,10 @@ class ResultAnalyzer:
     # Platoon LC plots ======================================================= #
 
     def plot_fundamental_diagram_per_strategy(
-            self, scenarios: List[ScenarioInfo],
+            self, scenarios: list[ScenarioInfo],
             before_or_after_lc_point: str, lanes: str,
             link_segment_number: int = None,
-            aggregation_period: int = 30, warmup_time: float = 10):
+            aggregation_period: int = 30, warmup_time: float = 10) -> None:
         """
         Uses volume and density from link evaluation.
         """
@@ -1089,9 +1089,9 @@ class ResultAnalyzer:
         plt.show()
 
     def plot_y_vs_vehicle_input(
-            self, y: str, scenarios: List[ScenarioInfo]):
+            self, y: str, scenarios: list[ScenarioInfo]) -> None:
         """
-        Line plot with vehicle input on the x axis and LC strategies as hue
+        Line plot with vehicle input on the x-axis and LC strategies as hue
 
         :param y: Options: was_lane_change_completed, maneuver_time,
         travel_time, accel_cost, stayed_in_platoon
@@ -1102,9 +1102,9 @@ class ResultAnalyzer:
             is_bar_plot=True)
 
     def plot_y_vs_platoon_lc_strategy(
-            self, y: str, scenarios: List[ScenarioInfo]):
+            self, y: str, scenarios: list[ScenarioInfo]) -> None:
         """
-        Line plot with strategies on the x axis and vehicle input as hue
+        Line plot with strategies on the x-axis and vehicle input as hue
 
         :param y: Options: was_lane_change_completed, maneuver_time,
         travel_time, accel_cost, stayed_in_platoon
@@ -1116,8 +1116,8 @@ class ResultAnalyzer:
 
     def plot_results_for_platoon_scenario(
             self, y: str, x: str, hue: str,
-            scenarios: List[ScenarioInfo],
-            is_bar_plot: bool = False):
+            scenarios: list[ScenarioInfo],
+            is_bar_plot: bool = False) -> None:
         """
 
         """
@@ -1158,7 +1158,7 @@ class ResultAnalyzer:
         plt.show()
 
     def plot_results_for_platoon_scenario_comparing_speeds(
-            self, y: str, scenarios: List[ScenarioInfo]):
+            self, y: str, scenarios: list[ScenarioInfo]) -> None:
         """
 
         """
@@ -1188,7 +1188,7 @@ class ResultAnalyzer:
         plt.show()
 
     def plot_successful_maneuvers(
-            self, scenarios: List[ScenarioInfo]):
+            self, scenarios: list[ScenarioInfo]) -> None:
         y = "was_lane_change_completed"
         data = self._load_data(y, scenarios)
         hue_order = data["lane_change_strategy"].unique()
@@ -1223,11 +1223,11 @@ class ResultAnalyzer:
         figure.show()
 
     def plot_flow_box_plot_vs_strategy(
-            self, scenarios: List[ScenarioInfo],
+            self, scenarios: list[ScenarioInfo],
             before_or_after_lc_point: str, lanes: str,
             hue: str = "vehicles_per_lane",
             warmup_time: float = 5,
-            aggregation_period: int = 30):
+            aggregation_period: int = 30) -> None:
         """
 
         """
@@ -1247,11 +1247,11 @@ class ResultAnalyzer:
             self.save_fig(fig, fig_name=fig_name)
 
     def plot_link_data_box_plot_vs_strategy(
-            self, y: str, scenarios: List[ScenarioInfo],
+            self, y: str, scenarios: list[ScenarioInfo],
             before_or_after_lc_point: str, lanes: str,
             segment_number: int = None, warmup_time: float = 5,
             sim_time: float = None,
-            aggregation_period: int = 30):
+            aggregation_period: int = 30) -> None:
         """
 
         """
@@ -1279,10 +1279,10 @@ class ResultAnalyzer:
             self.save_fig(fig, fig_name=fig_name)
 
     def plot_flows_vs_time_per_strategy(
-            self, scenarios: List[ScenarioInfo],
+            self, scenarios: list[ScenarioInfo],
             before_or_after_lc_point: str, lanes: str,
             warmup_time: float = 5, aggregation_period: int = 30,
-            use_all_simulations: bool = False):
+            use_all_simulations: bool = False) -> None:
 
         y = "vehicle_count"
         aggregated_data = self._load_flow_data_for_platoon_lc_scenario(
@@ -1301,11 +1301,11 @@ class ResultAnalyzer:
         plt.show()
 
     def plot_link_data_vs_time_per_strategy(
-            self, y: str, scenarios: List[ScenarioInfo],
+            self, y: str, scenarios: list[ScenarioInfo],
             before_or_after_lc_point: str, lanes: str,
             link_segment_number: int = None,
             aggregation_period: int = 30, warmup_time: float = 10,
-            sim_time: float = None, use_all_simulations: bool = False):
+            sim_time: float = None, use_all_simulations: bool = False) -> None:
 
         link, lane_numbers = self._select_link_and_lanes(
                 before_or_after_lc_point, lanes)
@@ -1354,7 +1354,7 @@ class ResultAnalyzer:
         fig.show()
 
     def plot_relevant_vehicles_states(
-            self, scenarios: List[ScenarioInfo]):
+            self, scenarios: list[ScenarioInfo]) -> None:
         """
         Plots the acceleration and velocity of platoon vehicles and
         destination lane follower. All strategies are shown in the same plot for
@@ -1390,8 +1390,7 @@ class ResultAnalyzer:
                      hue="lane_change_strategy", style="lane_change_strategy")
         plt.show()
 
-    def plot_sample_trajectories(
-            self, scenario: ScenarioInfo):
+    def plot_sample_trajectories(self, scenario: ScenarioInfo) -> None:
         """
         Plots the trajectories (x vs t) of the platoon vehicles and some
         surrounding vehicles
@@ -1434,7 +1433,7 @@ class ResultAnalyzer:
                     aspect=1)
         plt.show()
 
-    def plot_platoon_states(self, scenario: ScenarioInfo):
+    def plot_platoon_states(self, scenario: ScenarioInfo) -> None:
         reader = readers.VehicleRecordReader(self.scenario_name)
         veh_record = reader.load_sample_data_from_scenario(scenario)
         platoon_vehicles = veh_record[veh_record["veh_type"]
@@ -1473,8 +1472,8 @@ class ResultAnalyzer:
         fig.show()
 
     def compare_travel_times(
-            self, scenarios: List[ScenarioInfo], x: str, plot_cols: str = None,
-            warmup_time: float = 10, sim_time: float = None):
+            self, scenarios: list[ScenarioInfo], x: str, plot_cols: str = None,
+            warmup_time: float = 10, sim_time: float = None) -> None:
         """
         Plots a bar plot to compare how the strategies perform in each scenario.
         Strategy is passed as hue.
@@ -1550,8 +1549,8 @@ class ResultAnalyzer:
         figure.show()
 
     def plot_travel_times_vs_entrance_times(
-            self, scenarios: List[ScenarioInfo],
-            warmup_time: float = 10, sim_time: float = None):
+            self, scenarios: list[ScenarioInfo],
+            warmup_time: float = 10, sim_time: float = None) -> None:
         """
 
         :param scenarios: List of simulation parameters for several scenarios
@@ -1588,7 +1587,7 @@ class ResultAnalyzer:
     def illustrate_travel_time_delay(
             self, scenario: ScenarioInfo,
             lane: str = "Destination",
-            warmup_time: float = 10, sim_time: float = None):
+            warmup_time: float = 10, sim_time: float = None) -> None:
         """
 
         :param scenario: List of simulation parameters for several scenarios
@@ -1634,7 +1633,7 @@ class ResultAnalyzer:
         plt.show()
 
     def get_vehicles_impacted_by_lane_change(
-            self, scenarios: List[ScenarioInfo]) -> pd.DataFrame:
+            self, scenarios: list[ScenarioInfo]) -> pd.DataFrame:
 
         y = "travel_time"
         data = self._load_data(y, scenarios)
@@ -1660,9 +1659,9 @@ class ResultAnalyzer:
 
     # TODO [march 24, 23]: merge with plot_emission_heatmap?
     def compare_emissions_for_platoon_scenarios(
-            self, scenarios: List[ScenarioInfo],
+            self, scenarios: list[ScenarioInfo],
             pollutant_id: int = 91
-    ):
+    ) -> None:
         y = "emission"
         data = self._load_data(y, scenarios)
         data = ResultAnalyzer._prepare_pollutant_data(data, pollutant_id)
@@ -1695,7 +1694,8 @@ class ResultAnalyzer:
             self.save_fig(fig, fig_name=fig_name)
 
     def normalize_lane_change_times(self, output_data: pd.DataFrame,
-                                    lane_change_data: pd.DataFrame):
+                                    lane_change_data: pd.DataFrame
+                                    ) -> pd.DataFrame:
         """
         :param output_data: Link evaluation or data collection measurements
         :param lane_change_data: Detailed lane change data for the scenarios
@@ -1727,7 +1727,7 @@ class ResultAnalyzer:
     @staticmethod
     def _add_maneuver_phases_to_plot(
             data: pd.DataFrame, facet_grid: sns.FacetGrid,
-            hue_order: List):
+            hue_order: list[str]) -> None:
         """
         Given a facet grid of some variable y vs time, this function adds
         markers for relevant lane change phases.
@@ -1768,8 +1768,8 @@ class ResultAnalyzer:
     # Traffic Light Scenario Plots =========================================== #
 
     def plot_violations_per_control_percentage(
-            self, scenarios: List[ScenarioInfo],
-            warmup_time: float = 10):
+            self, scenarios: list[ScenarioInfo],
+            warmup_time: float = 10) -> None:
         """
         Plots number of violations .
 
@@ -1797,8 +1797,8 @@ class ResultAnalyzer:
         print(results)
 
     def plot_heatmap_for_traffic_light_scenario(
-            self, y: str, scenarios: List[ScenarioInfo],
-            warmup_time: float = 10):
+            self, y: str, scenarios: list[ScenarioInfo],
+            warmup_time: float = 10) -> None:
         """
         Plots a heatmap
         :param y:
@@ -1843,8 +1843,8 @@ class ResultAnalyzer:
             plt.show()
 
     def plot_violations_heatmap(
-            self, scenarios: List[ScenarioInfo],
-            warmup_time: float = 10):
+            self, scenarios: list[ScenarioInfo],
+            warmup_time: float = 10) -> None:
         n_simulations = 10
         plt.rc("font", size=17)
         data = self._load_data("violations", scenarios)
@@ -1881,7 +1881,7 @@ class ResultAnalyzer:
 
     # Others ================================================================= #
 
-    def accel_vs_time_for_different_vehicle_pairs(self):
+    def accel_vs_time_for_different_vehicle_pairs(self) -> None:
         """
         Plots acceleration vs time for human following CAV and CAV following
         human. This requires very specific knowledge of the simulation being
@@ -1972,7 +1972,7 @@ class ResultAnalyzer:
                 fig.savefig(os.path.join(self._figure_folder, fig_name))
             fig.show()
 
-    def risk_vs_time_example(self):
+    def risk_vs_time_example(self) -> None:
         scenario_name = "in_and_out_safe"
         vehicle_percentage = {VehicleType.CONNECTED: 0}
         vehicles_per_lane = 1000
@@ -2006,7 +2006,7 @@ class ResultAnalyzer:
 
     def speed_color_map(self, scenario: ScenarioInfo,
                         link: int, lane: int = None, warmup_time: float = 0,
-                        sim_time: float = None):
+                        sim_time: float = None) -> None:
         """
         :param scenario: Simulation scenario parameters
         :param link: road link for which we want the color map
@@ -2043,9 +2043,7 @@ class ResultAnalyzer:
 
     # Multiple plots  ======================================================== #
 
-    def get_flow_and_risk_plots(self,
-                                scenarios: List[
-                                    ScenarioInfo]):
+    def get_flow_and_risk_plots(self, scenarios: list[ScenarioInfo]) -> None:
         """Generates the plots used in the Safe Lane Changes paper."""
 
         self.plot_flow_box_plot_vs_controlled_percentage(scenarios,
@@ -2055,7 +2053,7 @@ class ResultAnalyzer:
                                   min_risk=1)
 
     # Support methods ======================================================== #
-    def _load_data(self, y: str, scenarios: List[ScenarioInfo]) -> pd.DataFrame:
+    def _load_data(self, y: str, scenarios: list[ScenarioInfo]) -> pd.DataFrame:
         """
         :param y: Desired variable; it determines which reader will be used
         :param scenarios: List of simulation parameters for several scenarios
@@ -2074,7 +2072,7 @@ class ResultAnalyzer:
         return data
 
     def _load_flow_data_for_platoon_lc_scenario(
-            self, scenarios: List[ScenarioInfo],
+            self, scenarios: list[ScenarioInfo],
             before_or_after_lc_point: str, lanes: str,
             warmup_time: float = 5, aggregation_period: int = 30
     ) -> pd.DataFrame:
@@ -2098,7 +2096,7 @@ class ResultAnalyzer:
 
         return pd.concat([data_in, data_out])
 
-    # def _get_maneuver_times(self, scenarios: List[ScenarioInfo]):
+    # def _get_maneuver_times(self, scenarios: list[ScenarioInfo]):
     #     lc_data = self._load_data("platoon_maneuver_time", scenarios)
     #     lc_data.rename(columns={"first_platoon_time": "first_lane keeping"},
     #                    inplace=True)
@@ -2116,7 +2114,8 @@ class ResultAnalyzer:
     #     state_to_value_map = dict(zip(full_row["index"], full_row.index))
     #     grouped = lc_data.groupby("lane_change_strategy")
 
-    def _get_platoon_maneuver_times(self, scenarios: List[ScenarioInfo]):
+    def _get_platoon_maneuver_times(self, scenarios: list[ScenarioInfo]
+                                    ) -> pd.DataFrame:
         lc_data = self._load_data("platoon_maneuver_time", scenarios)
         lc_data.rename(columns={"first_platoon_time": "entrance_time"},
                        inplace=True)
@@ -2143,7 +2142,7 @@ class ResultAnalyzer:
 
     def _prepare_data_collection_data(
             self, data: pd.DataFrame,
-            sensor_identifier: Union[List[int], str] = None,
+            sensor_identifier: Union[list[int], str] = None,
             aggregate_sensors: bool = True,
             warmup_time: float = 10,
             aggregation_period: int = 30) -> pd.DataFrame:
@@ -2192,7 +2191,7 @@ class ResultAnalyzer:
 
     def _prepare_link_evaluation_data(
             self, data: pd.DataFrame, link: int, segment: int = None,
-            lanes: List[int] = None, sensor_name: str = None,
+            lanes: list[int] = None, sensor_name: str = None,
             aggregate_lanes: bool = True, warmup_time: float = 10,
             sim_time: float = None,
             aggregation_period: int = 30) -> pd.DataFrame:
@@ -2244,7 +2243,7 @@ class ResultAnalyzer:
 
     def _prepare_data_for_plotting(
             self, y: str, data: pd.DataFrame, warmup_time: float = 0,
-            sim_time: float = None, sensor_name: List[str] = None,
+            sim_time: float = None, sensor_name: list[str] = None,
             pollutant_id: int = None) -> pd.DataFrame:
         """
         Performs several operations to make the data proper for plotting:
@@ -2329,8 +2328,9 @@ class ResultAnalyzer:
                                     "lane": "Lane"})
 
     @staticmethod
-    def _select_sensors_for_platoon_lc_scenario(before_or_after_lc_point: str,
-                                                lanes: str):
+    def _select_sensors_for_platoon_lc_scenario(
+            before_or_after_lc_point: str, lanes: str
+    ) -> tuple[list[int], list[int]]:
         if lanes == "orig":
             lane_numbers = [1]
         elif lanes == "dest":
@@ -2356,7 +2356,7 @@ class ResultAnalyzer:
         return in_flow_sensors, out_flow_sensors
 
     def _select_link_and_lanes(self, before_or_after_lc_point: str = None,
-                               lanes: str = None) -> (int, List[int]):
+                               lanes: str = None) -> tuple[int, list[int]]:
         if "in_and_out" in self.scenario_name:
             link = FileHandler(self.scenario_name).get_main_links()[0]
             lane_numbers = [1, 2, 30]
@@ -2374,7 +2374,8 @@ class ResultAnalyzer:
         return link, lane_numbers
 
     def _select_link_and_lanes_for_two_lane_highway(
-            self, before_or_after_lc_point: str, lanes: str):
+            self, before_or_after_lc_point: str, lanes: str
+    ) -> tuple[int, list[int]]:
         if lanes == "orig":
             lane_numbers = [1]
         elif lanes == "dest":
@@ -2395,7 +2396,7 @@ class ResultAnalyzer:
         return link, lane_numbers
 
     @staticmethod
-    def _check_if_data_is_uniform(data: pd.DataFrame):
+    def _check_if_data_is_uniform(data: pd.DataFrame) -> None:
         """
         Checks whether all loaded scenarios were run with the same random seeds.
         :param data:
@@ -2408,7 +2409,7 @@ class ResultAnalyzer:
                   "This might create misleading plots.")
 
     def _make_data_uniform(self, data: pd.DataFrame,
-                           use_all_simulations: bool = True):
+                           use_all_simulations: bool = True) -> pd.DataFrame:
         """
         During tests, some strategies might be run with more random seeds or
         longer than others. This function will keep only the simulation
@@ -2431,7 +2432,7 @@ class ResultAnalyzer:
         return cropped_data.copy()
 
     @staticmethod
-    def remove_deadlock_simulations(data):
+    def remove_deadlock_simulations(data) -> None:
         deadlock_entries = (data.loc[
                                 data["flow"] == 0,
                                 ["vehicles_per_lane", "random_seed"]
@@ -2446,9 +2447,9 @@ class ResultAnalyzer:
 
     def save_fig(self, fig: plt.Figure, plot_type: str = None,
                  measurement_name: str = None,
-                 scenarios: List[ScenarioInfo] = None,
+                 scenarios: list[ScenarioInfo] = None,
                  fig_name: str = None
-                 ):
+                 ) -> None:
         """
         Saves the figure. We must provide either the fig_name or
         enough information for the figure name to be automatically generated
@@ -2489,7 +2490,7 @@ class ResultAnalyzer:
 
     def create_figure_name(
             self, plot_type: str, measurement_name: str,
-            scenarios: List[ScenarioInfo]) -> str:
+            scenarios: list[ScenarioInfo]) -> str:
 
         # TODO [March 1, 2023]: not tested for platoon scenarios
         vehicles_per_lane_strings = set()
@@ -2520,14 +2521,14 @@ class ResultAnalyzer:
         return fig_name
 
     @staticmethod
-    def widen_fig(fig: plt.Figure, n_boxes: int):
+    def widen_fig(fig: plt.Figure, n_boxes: int) -> None:
         if n_boxes >= 4:
             fig.set_size_inches(6.4 * 2, 4.8)
 
     # Plots for a single simulation - OUTDATED: might not work =============== #
 
     # These methods require post-processed data with SSMs already computed #
-    def plot_ssm(self, ssm_names, vehicle_record):
+    def plot_ssm(self, ssm_names, vehicle_record) -> None:
         """Plots the sum of the surrogate safety measure over all vehicles
         versus time
         Plotting this way is not recommended as we get too much noise.
@@ -2554,7 +2555,7 @@ class ResultAnalyzer:
         plt.show()
 
     def plot_ssm_moving_average(self, vehicle_record, ssm_name,
-                                window=100, save_path=None):
+                                window=100, save_path=None) -> None:
         """
         Plots the moving average of the surrogate safety measure over all
         vehicles versus time
@@ -2589,7 +2590,7 @@ class ResultAnalyzer:
             fig.savefig(save_path + ssm_name)
 
     @staticmethod
-    def plot_risk_counter(ssm_name, vehicle_record_data):
+    def plot_risk_counter(ssm_name, vehicle_record_data) -> None:
         """Temporary function to compare how the exact and estimated risks
         vary over time"""
         fig, ax = plt.subplots()
@@ -2604,8 +2605,8 @@ class ResultAnalyzer:
 
     # Data integrity checks ================================================== #
 
-    def find_unfinished_simulations(
-            self, scenarios: List[ScenarioInfo]):
+    def find_unfinished_simulations(self, scenarios: list[ScenarioInfo]
+                                    ) -> None:
         """
         Checks whether simulations crashed. This is necessary because,
         when doing multiple runs from the COM interface, VISSIM does not
@@ -2644,7 +2645,7 @@ def _make_pretty_label(var: str) -> str:
     return with_unit.replace("delta v", "$\\Delta v$")
 
 
-def _get_units(var: str):
+def _get_units(var: str) -> str:
     var = var.lower()
     if "time" in var:
         y = "time"
@@ -2668,7 +2669,7 @@ def _get_units(var: str):
     return units_map[y]
 
 
-def list_of_dicts_to_1d_list(dict_list: List[Dict]):
+def list_of_dicts_to_1d_list(dict_list: list[dict]) -> tuple[list, list]:
     keys = []
     values = []
     for d in dict_list:
@@ -2677,7 +2678,7 @@ def list_of_dicts_to_1d_list(dict_list: List[Dict]):
     return keys, values
 
 
-def vehicle_percentage_dict_to_string(vp_dict: Dict[VehicleType, int]) -> str:
+def vehicle_percentage_dict_to_string(vp_dict: dict[VehicleType, int]) -> str:
     if sum(vp_dict.values()) == 0:
         return "100% HDV"
     ret_str = []
@@ -2687,8 +2688,9 @@ def vehicle_percentage_dict_to_string(vp_dict: Dict[VehicleType, int]) -> str:
 
 
 def _aggregate_data_over_time(data: pd.DataFrame,
-                              aggregated_variable: Union[str, List[str]],
-                              aggregation_period: int, aggregation_function):
+                              aggregated_variable: Union[str, list[str]],
+                              aggregation_period: int, aggregation_function
+                              ) -> pd.DataFrame:
     data.reset_index(drop=True, inplace=True)
     interval_per_group = data.groupby("control percentages")[
         "time_interval"].first()
@@ -2729,7 +2731,7 @@ def _has_per_lane_results(data: pd.DataFrame) -> bool:
 
 
 def _select_flow_sensors_from_in_and_out_scenario(
-        data: pd.DataFrame, sensor_name: str = None):
+        data: pd.DataFrame, sensor_name: str = None) -> pd.DataFrame:
     """
     Keeps only data from the sensors with the given sensor names.
     """
@@ -2745,7 +2747,7 @@ def _select_flow_sensors_from_in_and_out_scenario(
 
 
 def _select_lanes_for_in_and_out_scenario(data: pd.DataFrame,
-                                          sensor_name: str = None):
+                                          sensor_name: str = None) -> list[int]:
     """
     Chooses which lanes from the link evaluation data to keep based on the
     sensor names.
@@ -2765,10 +2767,12 @@ def _select_lanes_for_in_and_out_scenario(data: pd.DataFrame,
     return lanes
 
 
-def _plot_heatmap(data: pd.DataFrame, value: str, rows: str, columns: str,
-                  normalizer: int = 1, agg_function=np.sum,
-                  custom_colorbar_range: bool = False,
-                  show_figure: bool = True, fill_na_cols: bool = False):
+def _plot_heatmap(
+        data: pd.DataFrame, value: str, rows: str, columns: str,
+        normalizer: int = 1, agg_function=np.sum,
+        custom_colorbar_range: bool = False,
+        show_figure: bool = True, fill_na_cols: bool = False
+) -> tuple[plt.Figure, plt.Axes]:
     fig = plt.figure()
     plt.rc("font", size=17)
     table = data.pivot_table(values=value,
@@ -2797,7 +2801,8 @@ def _plot_heatmap(data: pd.DataFrame, value: str, rows: str, columns: str,
 
 
 def _my_boxplot(relevant_data: pd.DataFrame, x: str, y: str,
-                hue: str = "vehicles per hour", will_show: bool = True):
+                hue: str = "vehicles per hour", will_show: bool = True
+                ) -> tuple[plt.Figure, plt.Axes]:
     # Plot
     fig = plt.figure()
     plt.rc("font", size=22)
@@ -2811,7 +2816,7 @@ def _my_boxplot(relevant_data: pd.DataFrame, x: str, y: str,
     return fig, ax
 
 
-def _fit_fundamental_diagram(data: pd.DataFrame, by: str):
+def _fit_fundamental_diagram(data: pd.DataFrame, by: str) -> None:
     """
     :param data: Link evaluation treated data
     :param by: How to split the data; must be column of data
@@ -2827,7 +2832,7 @@ def _fit_fundamental_diagram(data: pd.DataFrame, by: str):
     plt.show()
 
 
-def find_critical_density(data):
+def find_critical_density(data) -> None:
     max_density = data["density"].max()
     reg_u = LinearRegression(fit_intercept=False)
     reg_c = LinearRegression()
@@ -2856,9 +2861,9 @@ def find_critical_density(data):
 
 def _produce_console_output(
         data: pd.DataFrame, y: str,
-        scenarios: List[ScenarioInfo], aggregation_functions,
+        scenarios: list[ScenarioInfo], aggregation_functions,
         show_variation: bool = False,
-        normalizer: int = None):
+        normalizer: int = None) -> None:
     if normalizer is None:
         try:
             normalizer = data["simulation_number"].nunique()

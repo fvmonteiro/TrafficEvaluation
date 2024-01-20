@@ -423,13 +423,11 @@ class VissimInterface:
         results_folder = self.file_handler.get_vissim_test_folder()
         is_folder_set = self.set_results_folder(results_folder)
         self.run_platoon_lane_change_scenario(scenario_info)
-        self.vissim.Graphics.CurrentNetworkWindow.SetAttValue(
-            "QuickMode", 0)
+        self.vissim.Graphics.CurrentNetworkWindow.SetAttValue("QuickMode", 0)
         if not is_folder_set:
             print("Copying result files to their proper "
                   "location")
-            self.file_handler.copy_all_files_from_temp_folder(
-                results_folder)
+            self.file_handler.copy_all_files_from_temp_folder(results_folder)
 
         print("Simulation done")
 
@@ -674,8 +672,8 @@ class VissimInterface:
 
         special_case = scenario.special_case
         if special_case is None:
-            first_platoon_time = 180
-            creation_period = 60
+            first_platoon_time = 60
+            creation_period = 120
         elif special_case == "no_lane_change":
             simulation_period = 600
             first_platoon_time = simulation_period + 1
