@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from enum import Enum
 import os
 import time
-from collections.abc import Mapping
-from typing import Callable, Union
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any, Callable, Union
 import warnings
 
 import pandas as pd
@@ -14,7 +14,6 @@ import data_writer
 from file_handling import FileHandler, delete_files_in_folder
 import readers
 from scenario_handling import ScenarioInfo, print_scenario
-import vehicle
 from vehicle import Vehicle, VehicleType, PlatoonLaneChangeStrategy
 
 
@@ -35,15 +34,15 @@ class _UDANumber(Enum):
 
 
 class VissimInterface:
+    file_handler: FileHandler
+    network_info: _ScenarioParameters
+
     vissim_net_ext = ".inpx"
     vissim_layout_ext = ".layx"
 
     _initial_random_seed = 7
 
     def __init__(self, vissim=None):
-        self.file_handler = None
-        self.network_info = None
-
         self._all_networks_info = {
             "in_and_out": _ScenarioParameters(1800, 1,
                                               self.run_in_and_out_scenario),
@@ -133,9 +132,9 @@ class VissimInterface:
         results are saved. The function is mostly useful during debugging when
         we want to avoid calling load_simulation several times.
         """
-        if self.file_handler is not None:
-            print("This object already has a file handler.")
-            return
+        # if self.file_handler is not None:
+        #     print("This object already has a file handler.")
+        #     return
         self.file_handler = FileHandler(scenario_name)
         self.network_info = self._all_networks_info[
             self.file_handler.get_network_name()]
@@ -234,7 +233,8 @@ class VissimInterface:
         self.vissim.Simulation.RunContinuous()
         print("Simulation done.")
 
-    def run_i710_simulation(self, scenario_idx: int = 1, demand=None) -> None:
+    def run_i710_simulation(self, scenario_idx: int = 1, demand: int = None
+                            ) -> None:
         """
         Run PTV VISSIM simulation of the I-710 with possible accident.
 
@@ -345,7 +345,7 @@ class VissimInterface:
 
         print("Simulation done")
 
-    def run_traffic_lights_scenario(self, vehicle_input=None) -> None:
+    def run_traffic_lights_scenario(self, vehicle_input: int = None) -> None:
         """
         Run PTV VISSIM simulation traffic_lights_study.
 
@@ -370,9 +370,11 @@ class VissimInterface:
             return
 
         # self.set_vissim_scenario_parameters(scenario)
-        platoon_size, platoon_speed, first_platoon_time, creation_period = (
+        platoon_speed, first_platoon_time, creation_period = (
             self.get_parameters_for_special_case_scenario(scenario)
         )
+        platoon_size = scenario.platoon_size
+        self.set_platoon_lane_change_parameters(scenario)
 
         simulation = self.vissim.Simulation
         run_counter = 0
@@ -393,9 +395,10 @@ class VissimInterface:
 
     def run_platoon_scenario_sample(
             self, scenario_info: ScenarioInfo,
-            simulation_period=60, number_of_runs=2,
-            random_seed=None, is_fast_mode=False,
-            is_simulation_verbose=False, logged_veh_id=None) -> None:
+            simulation_period: int = 60, number_of_runs: int = 2,
+            random_seed: int = None, is_fast_mode: bool = False,
+            is_simulation_verbose: bool = False,
+            logged_veh_id: int = None) -> None:
         """
         For initial test. Allows us to perform single runs of the platoon
         scenario with given parameters.
@@ -595,11 +598,11 @@ class VissimInterface:
         _print_run_time_with_unit(multiple_sim_start_time,
                                   multiple_sim_end_time, total_runs)
 
-    def _check_result_folder_length(self, results_folder) -> bool:
+    def _check_result_folder_length(self, results_folder: str) -> bool:
         return len(results_folder + self.file_handler.scenario_name) > 230
 
-    def run_us_101_with_different_speed_limits(self, possible_speeds=None
-                                               ) -> None:
+    def run_us_101_with_different_speed_limits(
+            self, possible_speeds: Sequence[float] = None) -> None:
         if not self.is_correct_network_loaded():
             return
 
@@ -663,17 +666,16 @@ class VissimInterface:
                                  "right_lane": scenario.vehicles_per_lane})
 
     def get_parameters_for_special_case_scenario(
-            self, scenario: ScenarioInfo) -> tuple[int, int, int, int]:
+            self, scenario: ScenarioInfo) -> tuple[int, int, int]:
         # TODO: the "special_case" member treatment is a mess
-        platoon_size = 4
         platoon_desired_speed = 110
         first_platoon_time = 180
         simulation_period = self.network_info.evaluation_period
 
         special_case = scenario.special_case
         if special_case is None:
-            first_platoon_time = 60
-            creation_period = 120
+            first_platoon_time = 30
+            creation_period = 1200
         elif special_case == "no_lane_change":
             simulation_period = 600
             first_platoon_time = simulation_period + 1
@@ -688,13 +690,13 @@ class VissimInterface:
         elif special_case.endswith("platoon_vehicles"):
             simulation_period = 1200
             creation_period = simulation_period + 1  # single lane change
-            platoon_size = int(special_case.split("_")[0])
+            # platoon_size = int(special_case.split("_")[0])
         else:
             raise ValueError("Unknown special case: {}. Not running "
                              "simulations".format(special_case))
 
         self.set_simulation_period(simulation_period)
-        return (platoon_size, platoon_desired_speed,
+        return (platoon_desired_speed,
                 first_platoon_time, creation_period)
 
     def set_evaluation_options(
@@ -748,7 +750,8 @@ class VissimInterface:
         evaluation.SetAttValue("LaneChangesWriteFile", save_lane_changes)
         evaluation.SetAttValue("LaneChangesFromTime", warm_up_time)
 
-    def set_simulation_parameters(self, sim_params: dict) -> None:
+    def set_simulation_parameters(
+            self, sim_params: dict[str, Union[int, float]]) -> None:
         """
         Sets parameters accessible through the Simulation member of a Vissim
         instance.
@@ -767,7 +770,7 @@ class VissimInterface:
                 print("Failed to set parameter")
                 print("err=", err)
 
-    def set_simulation_period(self, period) -> None:
+    def set_simulation_period(self, period: int) -> None:
         """Sets the period of the simulation if different from None. Otherwise,
         sets the default period based on the simulation name
         """
@@ -776,17 +779,17 @@ class VissimInterface:
         sim_params = {"SimPeriod": period}
         self.set_simulation_parameters(sim_params)
 
-    def set_random_seed(self, seed) -> None:
+    def set_random_seed(self, seed: int) -> None:
         """Sets the simulation random seed"""
         sim_params = {"RandSeed": seed}
         self.set_simulation_parameters(sim_params)
 
-    def set_random_seed_increment(self, seed_increment) -> None:
+    def set_random_seed_increment(self, seed_increment: int) -> None:
         """Sets the random seed increment when running several simulations"""
         sim_params = {"RandSeedIncr": seed_increment}
         self.set_simulation_parameters(sim_params)
 
-    def set_number_of_runs(self, number_of_runs) -> None:
+    def set_number_of_runs(self, number_of_runs: int) -> None:
         """Sets the total number of runs performed in a row"""
         sim_params = {"NumRuns": number_of_runs}
         self.set_simulation_parameters(sim_params)
@@ -809,7 +812,7 @@ class VissimInterface:
         self.vissim.Evaluation.SetAttValue("EvalOutDir", results_folder)
         return success
 
-    def set_vehicle_inputs(self, new_veh_inputs: dict) -> None:
+    def set_vehicle_inputs(self, new_veh_inputs: dict[str, int]) -> None:
         """
         Sets the several vehicle inputs in the simulation by name.
 
@@ -834,7 +837,7 @@ class VissimInterface:
                   "found in simulation".format(vi_key))
 
     def set_uniform_vehicle_input_for_all_lanes(self, input_per_lane: int,
-                                                time_interval=1) -> None:
+                                                time_interval: int = 1) -> None:
         """ Looks at all vehicle inputs and sets each of them equal to
         input_per_lane * n_lanes
 
@@ -1107,12 +1110,13 @@ class VissimInterface:
                             self.file_handler.get_file_name()
                             + str(sc_id))
 
-    def set_signal_controller(self, sc_id, signal_controller_container=None
-                              ) -> None:
+    def set_signal_controller(
+            self, sc_id: int, signal_controller_container=None
+    ) -> None:
         """
         Sets the file named [simulation_name]sc_id.sig as the supply file for
         signal controller with id sc_id. Creates a new signal controller if one
-        with sc_id doesn"t exist, but this requires manually saving the file
+        with sc_id doesn't exist, but this requires manually saving the file
         through VISSIM.
 
         :param sc_id: Signal controller id
@@ -1222,7 +1226,7 @@ class VissimInterface:
                                      rsa.AttValue("DesSpeedDistr(10)")))
 
     # ALTER SIMULATION DURING RUN -------------------------------------------- #
-    def _create_platoon(self, platoon_size, desired_speed) -> None:
+    def _create_platoon(self, platoon_size: int, desired_speed: float) -> None:
         """
 
         :param platoon_size: Number of vehicles in the platoon
@@ -1234,12 +1238,13 @@ class VissimInterface:
         if platoon_size == 0:
             return
 
-        platoon_type = vehicle.VehicleType.PLATOON
-        platoon_vehicle = vehicle.Vehicle(platoon_type)
-        vissim_vehicle_type = vehicle.Vehicle.ENUM_TO_VISSIM_ID[platoon_type]
+        platoon_type = VehicleType.PLATOON
+        platoon_vehicle = Vehicle(platoon_type)
+        vissim_vehicle_type = Vehicle.ENUM_TO_VISSIM_ID[platoon_type]
         platoon_vehicle.free_flow_velocity = desired_speed / 3.6
-        h, d = platoon_vehicle.compute_vehicle_following_parameters(
-            leader_max_brake=platoon_vehicle.max_brake, rho=0.1)
+        # h, d = platoon_vehicle.compute_vehicle_following_parameters(
+        #     leader_max_brake=platoon_vehicle.max_brake, rho=0.1)
+        h, d = 1.1, 1.0  # TODO: get information from parameters source
         platoon_safe_gap = h * desired_speed / 3.6 + d
 
         net = self.vissim.Net
@@ -1268,11 +1273,12 @@ class VissimInterface:
             added_vehicle = vehicles.AddVehicleAtLinkPosition(
                 vissim_vehicle_type, right_lane_link, lane, position,
                 desired_speed, interaction)
+            print("[Client] Vehicle created at position", position)
             position += added_vehicle.AttValue("Length") + platoon_safe_gap
 
-    def _periodically_set_desired_speed(self, simulation, first_platoon_time,
-                                        break_period, orig_lane_speed: int,
-                                        dest_lane_speed: int) -> None:
+    def _periodically_set_desired_speed(
+            self, simulation, first_platoon_time: int, break_period: int,
+            orig_lane_speed: int, dest_lane_speed: int) -> None:
         sim_time = simulation.AttValue("SimPeriod")
         origin_lane_link = 2
         dest_lane_link = 4
@@ -1297,9 +1303,10 @@ class VissimInterface:
                 simulation.SetAttValue("SimBreakAt", first_break_time - 1)
             simulation.RunContinuous()
 
-    def _periodically_create_platoon(self, simulation, first_platoon_time,
-                                     platoon_creation_period,
-                                     platoon_size, platoon_speed) -> None:
+    def _periodically_create_platoon(
+            self, simulation, first_platoon_time: int,
+            platoon_creation_period: int, platoon_size: int,
+            platoon_speed: float) -> None:
         sim_time = simulation.AttValue("SimPeriod")
         platoon_counter = 0
         platoon_creation_time = first_platoon_time
@@ -1588,7 +1595,8 @@ class VissimInterface:
             os.mkdir(results_directory)
 
 
-def _print_run_time_with_unit(start_time, end_time, total_runs) -> None:
+def _print_run_time_with_unit(start_time: float, end_time: float,
+                              total_runs: int) -> None:
     """
     Computes the run time and returns it with the appropriate unit. Run times
     are given in seconds if below a minute, in minutes if below an hour,

@@ -23,9 +23,10 @@ class ScenarioInfo:
     """
     vehicle_percentages: dict[VehicleType, int]
     vehicles_per_lane: int
-    accepted_risk: int = None
+    accepted_risk: Union[int, None] = None
     platoon_lane_change_strategy: PlatoonLaneChangeStrategy = None
     orig_and_dest_lane_speeds: tuple[Union[str, int], Union[str, int]] = None
+    platoon_size: int = None
     special_case: str = None
 
 

@@ -81,6 +81,7 @@ class PlatoonLaneChangeStrategy(Enum):
     leader_first = 2
     last_vehicle_first = 3
     leader_first_and_reverse = 4
+    graph = 5
 
 
 vehicle_type_to_print_name_map = {
