@@ -371,7 +371,7 @@ class VissimInterface:
 
         # self.set_vissim_scenario_parameters(scenario)
         platoon_speed, first_platoon_time, creation_period = (
-            self.get_parameters_for_special_case_scenario(scenario)
+            self.get_parameters_for_platoon_special_case_scenario(scenario)
         )
         platoon_size = scenario.platoon_size
         self.set_platoon_lane_change_parameters(scenario)
@@ -665,32 +665,31 @@ class VissimInterface:
         self.set_vehicle_inputs({"left_lane": 2000,
                                  "right_lane": scenario.vehicles_per_lane})
 
-    def get_parameters_for_special_case_scenario(
+    def get_parameters_for_platoon_special_case_scenario(
             self, scenario: ScenarioInfo) -> tuple[int, int, int]:
         # TODO: the "special_case" member treatment is a mess
         platoon_desired_speed = 110
         first_platoon_time = 180
         simulation_period = self.network_info.evaluation_period
+        creation_period = simulation_period
 
         special_case = scenario.special_case
-        if special_case is None:
-            first_platoon_time = 30
-            creation_period = 1200
-        elif special_case == "no_lane_change":
-            simulation_period = 600
-            first_platoon_time = simulation_period + 1
-            creation_period = simulation_period
-        elif special_case == "single_lane_change":
+        if special_case is None:  # creates a single lane change
             simulation_period = 1200
             if scenario.vehicle_percentages == {VehicleType.HDV: 100}:
                 simulation_period = 900
-            creation_period = simulation_period + 1
+        elif special_case == "test":
+            simulation_period = 600
+            first_platoon_time = 30
+        elif special_case == "no_lane_change":
+            simulation_period = 600
+            first_platoon_time = simulation_period + 1
+        elif special_case == "warmup":
+            # Runs that stop after the vehicles cross the lane change starting
+            # position
+            simulation_period = first_platoon_time + 120
         elif special_case.endswith("lane_change_period"):
             creation_period = int(special_case.split("_")[0])
-        elif special_case.endswith("platoon_vehicles"):
-            simulation_period = 1200
-            creation_period = simulation_period + 1  # single lane change
-            # platoon_size = int(special_case.split("_")[0])
         else:
             raise ValueError("Unknown special case: {}. Not running "
                              "simulations".format(special_case))
@@ -1032,9 +1031,12 @@ class VissimInterface:
         :return: None
         """
         print("[Client] Setting {} to {}".format(uda_number.name, uda_value))
-        uda = self.vissim.Net.UserDefinedAttributes.ItemByKey(
-            uda_number.value)
-        uda.SetAttValue("DefValue", uda_value)
+        try:
+            uda = self.vissim.Net.UserDefinedAttributes.ItemByKey(
+                uda_number.value)
+            uda.SetAttValue("DefValue", uda_value)
+        except pywintypes.com_error:
+            print("UDA not available in this simulation")
 
     def set_traffic_lights(self) -> None:
         """
@@ -1273,7 +1275,7 @@ class VissimInterface:
             added_vehicle = vehicles.AddVehicleAtLinkPosition(
                 vissim_vehicle_type, right_lane_link, lane, position,
                 desired_speed, interaction)
-            print("[Client] Vehicle created at position", position)
+            # print("[Client] Vehicle created at position", position)
             position += added_vehicle.AttValue("Length") + platoon_safe_gap
 
     def _periodically_set_desired_speed(

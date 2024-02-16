@@ -28,7 +28,16 @@ class _NetworkInfo:
 
 
 _folders_map: dict[str, _PCInfo] = {
-    "DESKTOP-P2O85S9": _PCInfo("personal_pc",
+    "FEIJAO": _PCInfo("old_personal_pc",
+                      "C:\\Users\\fvall\\Documents\\Research\\"
+                      "TrafficSimulation\\VISSIM_networks",
+                      "G:\\My Drive\\Safety in Mixed Traffic"
+                      "\\data_exchange",
+                      "C:\\Users\\fvall\\Documents\\Research\\"
+                      "EnvironmentalEvaluations",
+                      3307
+                      ),
+    "DESKTOP-P2O85S9": _PCInfo("old_personal_pc",
                                "C:\\Users\\fvall\\Documents\\Research\\"
                                "TrafficSimulation\\VISSIM_networks",
                                "G:\\My Drive\\Safety in Mixed Traffic"
