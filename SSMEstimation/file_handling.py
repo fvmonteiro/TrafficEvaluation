@@ -409,6 +409,8 @@ def create_file_path(
             and not is_all_human(scenario_info)):
         folder_list.append(create_accepted_risk_folder_name(
             scenario_info.accepted_risk))
+    if scenario_info.platoon_size is not None:
+        folder_list.append(str(scenario_info.platoon_size) + "_vehicle_platoon")
     if scenario_info.special_case is not None:
         folder_list.append(scenario_info.special_case)
 

@@ -11,8 +11,7 @@ from file_handling import FileHandler
 import post_processing
 import readers
 import scenario_handling
-from vehicle import VehicleType, vehicle_type_to_print_name_map, Vehicle, \
-    strategy_to_print_name_map
+from vehicle import VehicleType, Vehicle
 
 
 def plot_acc_av_and_cav_results(save_results=False):
@@ -205,7 +204,7 @@ def plots_for_platoon_scenarios(should_save_fig: bool = False):
                         is_debugging=False)
 
     cav_scenarios = scenario_handling.get_platoon_lane_change_scenarios(
-        "dest_lane_speed")
+        "dest_lane_speed", with_hdv=True)
     # for i in [1, 3, 7, 10]:  # chosen after checking all figures
     #     ra.plot_platoon_states(cav_scenarios[i])
     ra.illustrate_travel_time_delay(cav_scenarios[0], lane="Origin",
@@ -263,6 +262,21 @@ def plots_for_platoon_scenarios(should_save_fig: bool = False):
     #     #     ra.speed_color_map(sc, link=3, warmup_time=2, sim_time=7)
 
 
+def plots_for_graph_paper(should_save_fig: bool = False):
+    scenario_name = "platoon_discretionary_lane_change"
+    ra = ResultAnalyzer(scenario_name, should_save_fig,
+                        is_debugging=False)
+
+    scenarios = scenario_handling.get_lane_change_scenarios_graph_paper()
+    ra.plot_maneuver_time(scenarios)
+    ra.plot_successful_maneuvers(scenarios)
+    # ra.plot_y_vs_platoon_lc_strategy("platoon_maneuver_time", scenarios)
+
+    # ra.compare_travel_times(scenarios, x="delta_v",
+    #                         plot_cols="vehicles_per_lane",
+    #                         warmup_time=1, sim_time=11)
+
+
 class ResultAnalyzer:
     _data_reader_map = {
         "flow": readers.DataCollectionReader,
@@ -286,7 +300,7 @@ class ResultAnalyzer:
         "lane_change_issues": readers.LaneChangeIssuesReader,
         "emission": readers.MOVESDatabaseReader,
         "emission_per_volume": readers.MOVESDatabaseReader,
-        "was_lane_change_completed": readers.PlatoonLaneChangeEfficiencyReader,
+        "lane_change_completed": readers.PlatoonLaneChangeEfficiencyReader,
         "platoon_maneuver_time": readers.PlatoonLaneChangeEfficiencyReader,
         "platoon_travel_time": readers.PlatoonLaneChangeEfficiencyReader,
         "accel_cost": readers.PlatoonLaneChangeEfficiencyReader,
@@ -1343,7 +1357,7 @@ class ResultAnalyzer:
         """
         Line plot with vehicle input on the x-axis and LC strategies as hue
 
-        :param y: Options: was_lane_change_completed, maneuver_time,
+        :param y: Options: lane_change_completed, maneuver_time,
         travel_time, accel_cost, stayed_in_platoon
         :param scenarios: List of simulation parameters for several scenarios
         """
@@ -1357,7 +1371,7 @@ class ResultAnalyzer:
         """
         Line plot with strategies on the x-axis and vehicle input as hue
 
-        :param y: Options: was_lane_change_completed, maneuver_time,
+        :param y: Options: lane_change_completed, maneuver_time,
         travel_time, accel_cost, stayed_in_platoon
         :param scenarios: List of simulation parameters for several scenarios
         """
@@ -1386,7 +1400,7 @@ class ResultAnalyzer:
 
         # Presentation naming
         y_name_map = {
-            "was_lane_change_completed": "% Successful Lane Changes",
+            "lane_change_completed": "% Successful Lane Changes",
             "vehicle_maneuver_time": "Maneuver Time per Vehicle (s)",
             "platoon_maneuver_time": "Platoon Maneuver Time (s)",
             "travel_time": "Travel Time (s)",
@@ -1421,7 +1435,7 @@ class ResultAnalyzer:
 
         # Presentation naming
         y_name_map = {
-            "was_lane_change_completed": "% Successful Lane Changes",
+            "lane_change_completed": "% Successful Lane Changes",
             "vehicle_maneuver_time": "Maneuver Time per Vehicle (s)",
             "platoon_maneuver_time": "Platoon Maneuver Time (s)",
             "travel_time": "Travel Time (s)",
@@ -1441,38 +1455,139 @@ class ResultAnalyzer:
 
     def plot_successful_maneuvers(
             self, scenarios: list[scenario_handling.ScenarioInfo]) -> None:
-        y = "was_lane_change_completed"
+        y = "lane_change_completed"
         data = self._load_data(y, scenarios)
         hue_order = data["lane_change_strategy"].unique()
-        data["successful maneuver"] = (data["was_lane_change_completed"]
+        data["successful maneuver"] = (data["lane_change_completed"]
                                        & data["stayed_in_platoon"])
         data["$\\Delta v$"] = (data["dest_lane_speed"].astype(int)
                                - data["orig_lane_speed"].astype(int))
         grouped_per_sim = data.groupby(
             ["simulation_number", "vehicles_per_lane", "lane_change_strategy",
-             "$\\Delta v$"])
+             "$\\Delta v$", "platoon_size"])
         success_df = grouped_per_sim[
             "successful maneuver"].all().reset_index().rename(
             columns={"lane_change_strategy": "Strategy", }
             # "dest_lane_speed": "dest lane speed"}
         )
-        success_df["successful maneuver"] *= 10
+        # success_df["successful maneuver"] *= 10
         plt.rc("font", size=17)
-        g = sns.catplot(success_df, kind="point", y="successful maneuver",
-                        x="vehicles_per_lane", hue="Strategy", errorbar=None,
-                        hue_order=hue_order, col="$\\Delta v$", aspect=1)
-        # linewidth=4)
-        figure = g.figure
-        y_label = "# successful maneuvers"
-        x_label = "vehicles per lane (vehs/h)"
-        sns.move_legend(g, loc="upper left", bbox_to_anchor=(0.9, 0.9),
-                        frameon=True)
-        g.set_axis_labels(x_label, y_label)
-        figure.tight_layout()
-        if self.should_save_fig:
-            fig_name = "platoon_lane_change_success_rate"
-            self.save_fig(figure, fig_name=fig_name)
-        figure.show()
+        # g = sns.catplot(success_df, kind="bar", y="successful maneuver",
+        #                 x=x, hue="Strategy", errorbar=None,
+        #                 hue_order=hue_order, col="$\\Delta v$", aspect=1)
+        for x in ["platoon_size", "vehicles_per_lane", "$\\Delta v$"]:
+            g = sns.catplot(success_df, kind="bar", y="successful maneuver",
+                            x=x, hue="Strategy", errorbar=None,
+                            hue_order=hue_order, aspect=1)
+            # linewidth=4)
+            figure = g.figure
+            y_label = "% successful maneuvers"
+            x_label = " ".join(x.split("_"))
+            sns.move_legend(g, loc="upper left", bbox_to_anchor=(0.9, 0.9),
+                            frameon=True)
+            g.set_axis_labels(x_label, y_label)
+            figure.tight_layout()
+            if self.should_save_fig:
+                fig_name = "platoon_lane_change_success_rate"
+                self.save_fig(figure, fig_name=fig_name)
+            figure.show()
+
+    def plot_maneuver_time(
+            self, scenarios: list[scenario_handling.ScenarioInfo]) -> None:
+        # TODO: split the function
+
+        y = "platoon_maneuver_time"
+        data = self._load_data(y, scenarios)
+        data["delta_v"] = (pd.to_numeric(data["dest_lane_speed"])
+                           - pd.to_numeric(data["orig_lane_speed"]))
+        # Results by platoon
+        simulation_identifiers = ["platoon_size", "delta_v",
+                                  "vehicles_per_lane", "simulation_number"]
+        # Data is indexed by the simulation identifier. Strategy stays as a
+        # column
+        data_by_platoon = (
+            data.groupby(simulation_identifiers + ["lane_change_strategy"])[
+                ["lane_change_completed", "first_long adjustment",
+                 "last_lane changing"]].max()
+        ).reset_index(level=-1)
+        n_scenarios = data_by_platoon.index.nunique()
+        data_by_platoon[y] = (data_by_platoon["last_lane changing"]
+                              - data_by_platoon["first_long adjustment"])
+        data_by_platoon[y].fillna(np.inf, inplace=True)
+        failure_identifiers = dict()
+        success_counter = dict()
+        for strat in data_by_platoon["lane_change_strategy"].unique():
+            data_per_strategy = data_by_platoon.loc[
+                data_by_platoon["lane_change_strategy"] == strat]
+            failure_identifiers[strat] = (
+                data_per_strategy.loc[
+                    ~data_per_strategy["lane_change_completed"],
+                ].index
+            )
+            success_counter[strat] = n_scenarios - len(
+                failure_identifiers[strat])
+
+        graph_strategies = []
+        other_strategies = []
+
+        for s in data["lane_change_strategy"].unique():
+            if s.lower().startswith("graph"):
+                graph_strategies.append(s)
+            else:
+                other_strategies.append(s)
+
+        # Sanity check 1
+        if (len(failure_identifiers[graph_strategies[0]])
+                != len(failure_identifiers[graph_strategies[1]])
+            or np.any(failure_identifiers[graph_strategies[0]]
+                      != failure_identifiers[graph_strategies[1]])):
+            print("Different successful maneuvers between graph approach with "
+                  "different costs")
+        graph_failure = failure_identifiers[graph_strategies[0]]
+        # Sanity check 2
+        for other in other_strategies:
+            other_failure = failure_identifiers[other]
+            for simulation in graph_failure:
+                if simulation not in other_failure:
+                    print(
+                        f"{simulation} failed for graphs but not for {other}. "
+                        f"Check!")
+
+        data_without_graph_failures = data_by_platoon.drop(index=graph_failure)
+        # Per other strategy
+        for other in other_strategies:
+            other_failure = failure_identifiers[other]
+            relevant_results = data_without_graph_failures[
+                data_without_graph_failures["lane_change_strategy"].isin(
+                    graph_strategies + [other]
+                )
+            ].drop(index=other_failure, errors="ignore")
+            # TODO: plot?
+            print(relevant_results.groupby("lane_change_strategy")[y].mean())
+
+        # Best heuristic
+        # We reset and set index multiple times to make it easier to select and
+        # drop only the right simulations
+        # Get only non-graph strategies, and select the one with best cost
+        other_results = data_without_graph_failures[
+            data_without_graph_failures["lane_change_strategy"].isin(
+                other_strategies)].reset_index()
+        best_results = other_results.loc[other_results.groupby(
+            simulation_identifiers)[y].idxmin()].set_index(
+            simulation_identifiers)
+        best_results["lane_change_strategy"] = "Best Fixed-Order"
+        best_failure = best_results.loc[
+            ~best_results["lane_change_completed"]].index
+        success_counter["Best Fixed-Order"] = n_scenarios - len(best_failure)
+        graph_results = data_without_graph_failures[
+            data_without_graph_failures['lane_change_strategy'].isin(
+                graph_strategies)]
+        relevant_results = pd.concat([graph_results, best_results]).drop(
+            index=best_failure, errors="ignore")
+        print(relevant_results.groupby("lane_change_strategy")[
+                  "platoon_maneuver_time"].mean())
+
+        print(success_counter)
 
     def plot_flow_box_plot_vs_strategy(
             self, scenarios: list[scenario_handling.ScenarioInfo],
@@ -1720,9 +1835,9 @@ class ResultAnalyzer:
         ax.set_xlabel("time (s)")
         fig.tight_layout()
         if self.should_save_fig:
-            fig_name = "_".join(["platoon_states",
-                                 strategy_to_print_name_map[
-                                     scenario.platoon_lane_change_strategy]])
+            fig_name = "_".join([
+                "platoon_states",
+                scenario.platoon_lane_change_strategy.get_print_name()])
             self.save_fig(fig, fig_name=fig_name)
         fig.show()
 
@@ -2947,7 +3062,7 @@ def vehicle_percentage_dict_to_string(vp_dict: dict[VehicleType, int]) -> str:
         return "100% HDV"
     ret_str = []
     for veh_type, p in vp_dict.items():
-        ret_str.append(str(p) + "% " + vehicle_type_to_print_name_map[veh_type])
+        ret_str.append(str(p) + "% " + veh_type.get_print_name())
     return " ".join(sorted(ret_str))
 
 

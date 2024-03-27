@@ -13,7 +13,7 @@ import win32com.client as com
 import data_writer
 from file_handling import FileHandler, delete_files_in_folder
 import readers
-from scenario_handling import ScenarioInfo, print_scenario
+from scenario_handling import ScenarioInfo
 from vehicle import Vehicle, VehicleType, PlatoonLaneChangeStrategy
 
 
@@ -510,7 +510,7 @@ class VissimInterface:
         print("Starting multiple-scenario run.")
         multiple_sim_start_time = time.perf_counter()
         for sc in scenarios:
-            print("Scenario:\n", print_scenario(sc))
+            print("Scenario:\n", sc)
             self.reset_saved_simulations(warning_active=False)
             self.set_vissim_scenario_parameters(sc)
             if is_debugging:
@@ -569,7 +569,7 @@ class VissimInterface:
         print("Starting multiple-scenario run.")
         multiple_sim_start_time = time.perf_counter()
         for sc in scenarios:
-            print("Scenario:\n", print_scenario(sc))
+            print("Scenario:\n", sc)
             self.reset_saved_simulations(warning_active=False)
             self.set_vissim_scenario_parameters(sc)
             if is_debugging:
@@ -687,7 +687,7 @@ class VissimInterface:
         elif special_case == "warmup":
             # Runs that stop after the vehicles cross the lane change starting
             # position
-            simulation_period = first_platoon_time + 120
+            simulation_period = first_platoon_time + 240
         elif special_case.endswith("lane_change_period"):
             creation_period = int(special_case.split("_")[0])
         else:

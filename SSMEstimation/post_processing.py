@@ -2609,8 +2609,10 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
 
         result_df["traversed_network"] = (grouped_by_id["time"].last()
                                           != sim_time)
-        result_df["was_lane_change_completed"] = grouped_by_id["state"].agg(
-            lambda x: np.any(x == "lane changing")
+        # Check if a lane change started and if it was complete (back to lane
+        # keeping)
+        result_df["lane_change_completed"] = grouped_by_id["state"].agg(
+            lambda x: np.any(x == "lane changing") and x.iloc[-1] == "lane keeping"
         )
         result_df["travel_time"] = compute_time_interval_per_vehicle(
             platoon_vehicles)
@@ -2627,6 +2629,17 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
             maneuver_phase_times.columns.map("_".join), axis=1)
         result_df = result_df.merge(maneuver_phase_times, left_index=True,
                                     right_index=True)
+        if result_df["platoon_id"].nunique() > 1:
+            raise NotImplementedError("Not implemented for simulations with"
+                                      "more than 1 platoon")
+        # if np.all(result_df["lane_change_completed"]):
+        #     # it's max indeed. We only start counting once all platoon vehicles
+        #     # want to change lanes
+        #     start_time = result_df["first_long adjustment"].max()
+        #     end_time = result_df["last_lane changing"].max()
+        #     platoon_vehicles.loc[(platoon_vehicles["time"] >= start_time)
+        #     & (platoon_vehicles["time"] <= end_time), ["veh_id", "ax"]]
+
         # def accel_comp(g):
         #     start_time = platoon_maneuver_start_times.loc[
         #         g["platoon_id"].iloc[0]]
@@ -2881,12 +2894,13 @@ def create_summary_for_single_scenario(
 
     lane_change_reader = readers.VissimLaneChangeReader(scenario_name)
     vehicle_record_reader = readers.VehicleRecordReader(scenario_name)
-    n_rows = 10 ** 5 if debugging else None
+    # n_rows = 10 ** 5 if debugging else None
+    n_rows = None
     data_generator = vehicle_record_reader.generate_all_data_from_scenario(
         scenario_info, n_rows)
     data = defaultdict(list)
     print("Start of summary creation for network {}\nscenario{}".format(
-        scenario_name, scenario_handling.print_scenario(scenario_info)))
+        scenario_name, scenario_info))
 
     for (vehicle_records, file_number) in data_generator:
         # post_process_data(data_source_VISSIM, vehicle_records)

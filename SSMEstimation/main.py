@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 
 import data_writer
-from file_handling import FileHandler
+import file_handling
 import moves_file_handling
 import post_processing
 import result_analysis
@@ -105,7 +105,7 @@ def run_all_safe_lane_change_scenarios():
     #         scenario_name, ipl, sp, 0)
 
     # Transfer files to the cloud
-    file_handler = FileHandler(scenario_name)
+    file_handler = file_handling.FileHandler(scenario_name)
     try:
         file_handler.export_multiple_results_to_cloud(
             full_penetration_scenarios)
@@ -138,7 +138,7 @@ def run_comparison_method():
     #         scenario_name, ipl, sp, 0)
 
     # Transfer files to the cloud
-    file_handler = FileHandler(scenario_name)
+    file_handler = file_handling.FileHandler(scenario_name)
     try:
         file_handler.export_multiple_results_to_cloud(
             scenarios)
@@ -181,7 +181,7 @@ def run_all_risky_lane_change_scenarios():
     #         scenario_name, ipl, sp, 0)
 
     # Transfer files to the cloud
-    file_handler = FileHandler(scenario_name)
+    file_handler = file_handling.FileHandler(scenario_name)
     try:
         file_handler.export_multiple_results_to_cloud(
             full_penetration_scenarios)
@@ -213,17 +213,19 @@ def run_platoon_scenarios():
 def run_platoon_warm_up():
     scenario_name = "platoon_discretionary_lane_change"
     other_vehicles = [{VehicleType.HDV: 100}]
-    strategy = [PlatoonLaneChangeStrategy.graph]
-    vehicles_per_lane = [1000]
-    #         (
-    #     scenario_handling.all_platoon_simulation_configurations[
-    #         "vehicles_per_lane"]
-    # )
+    strategy = [PlatoonLaneChangeStrategy.graph_min_time]
+    # vehicles_per_lane = [1000]
+    vehicles_per_lane = (
+        scenario_handling.all_platoon_simulation_configurations[
+            "vehicles_per_lane"]
+    )
+    # orig_and_dest_lane_speeds = [("70", "50")]
     orig_and_dest_lane_speeds = (
         scenario_handling.all_platoon_simulation_configurations[
             "orig_and_dest_lane_speeds"])
-    platoon_size = [4]
-    # scenario_handling.all_platoon_simulation_configurations["platoon_size"]
+    platoon_size = [2]
+    # platoon_size = (
+    #     scenario_handling.all_platoon_simulation_configurations["platoon_size"])
     scenarios = scenario_handling.create_multiple_scenarios(
         other_vehicles, vehicles_per_lane, lane_change_strategies=strategy,
         orig_and_dest_lane_speeds=orig_and_dest_lane_speeds,
@@ -236,10 +238,11 @@ def run_platoon_warm_up():
 def run_a_platoon_simulation():
     scenario_name = "platoon_discretionary_lane_change"
     other_vehicles = {VehicleType.HDV: 100}
-    strategy = PlatoonLaneChangeStrategy.single_body_platoon
+    strategy = PlatoonLaneChangeStrategy.graph_min_time
     scenario = scenario_handling.ScenarioInfo(
-        other_vehicles, 0, platoon_lane_change_strategy=strategy,
-        orig_and_dest_lane_speeds=("70", "90"), platoon_size=2)
+        other_vehicles, 500, platoon_lane_change_strategy=strategy,
+        orig_and_dest_lane_speeds=("70", "50"), platoon_size=2,
+        special_case="warmup")
     vi = vissim_interface.VissimInterface()
     vi.load_simulation(scenario_name)
     # vi.set_random_seed(8)
@@ -253,13 +256,14 @@ def main():
     # plots_for_platoon_scenarios(False)
     # plot_comparison_scenario(False)
     # =============== Scenario Definition =============== #
-    # scenario_name = "risky_lane_changes"
+    scenario_name = "platoon_discretionary_lane_change"
 
     # =============== Running =============== #
 
     # run_a_platoon_simulation()
     # run_platoon_scenarios()
-    run_platoon_warm_up()
+    # run_a_platoon_simulation()
+    # run_platoon_warm_up()
 
     # vi = VissimInterface()
     # vi.load_simulation(scenario_name)
@@ -272,8 +276,9 @@ def main():
     # =============== Post processing =============== #
     # vehicle_types = [VehicleType.AUTONOMOUS, VehicleType.CONNECTED]
     # percentages = [0, 100]
-    # vehicle_percentages = create_vehicle_percentages_dictionary(
-    #     vehicle_types, percentages, 1)
+    # vehicle_percentages = (
+    #     scenario_handling.create_vehicle_percentages_dictionary(
+    #     vehicle_types, percentages, 1))
     # inputs_per_lane = [2000]
     # risks = [i for i in range(0, 31, 10)]
     # scenarios = file_handling.create_multiple_scenarios(
@@ -281,6 +286,10 @@ def main():
     # post_processing.create_summary_with_risks(scenario_name, scenarios)
     # post_processing.create_platoon_lane_change_summary(
     #     scenario_name, scenarios)
+
+    scenarios = scenario_handling.get_lane_change_scenarios_graph_paper()
+    post_processing.create_platoon_lane_change_summary(scenario_name,
+                                                       scenarios)
 
     # file_handler = file_handling.FileHandler(scenario_name)
     # file_handler.export_multiple_platoon_results_to_cloud(
@@ -300,7 +309,7 @@ def main():
     # moves_file_handling.platoon_scenario_to_moves(scenarios)
 
     # =============== Check results graphically =============== #
-
+    result_analysis.plots_for_graph_paper(False)
     # all_plots_for_scenarios_with_risk(scenario_name, save_fig=False)
     # all_plots_for_scenarios_with_risk_and_varying_penetration(scenario_name,
     #                                                           True)

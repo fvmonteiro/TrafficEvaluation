@@ -73,6 +73,46 @@ class VehicleType(Enum):
     BUS = 200
     MOTORCYCLE = 300
 
+    def get_print_name(self):
+        _vehicle_type_to_print_name: dict[VehicleType, str] = {
+            VehicleType.HDV: "HDV",
+            VehicleType.ACC: "ACC",
+            VehicleType.AUTONOMOUS: "AV",
+            VehicleType.CONNECTED: "CAV",
+            VehicleType.CONNECTED_NO_LANE_CHANGE: "CAV",
+            VehicleType.PLATOON: "Platoon",
+            VehicleType.TRAFFIC_LIGHT_ACC: "TL-ACC",
+            VehicleType.TRAFFIC_LIGHT_CACC: "TL-CACC",
+            VehicleType.VIRDI: "Virdi",
+            VehicleType.TRUCK: "truck",
+            VehicleType.BUS: "bus",
+            VehicleType.MOTORCYCLE: "motorcycle"
+        }
+        return _vehicle_type_to_print_name[self]
+
+    def get_vissim_id(self):
+        _vehicle_type_to_vissim_id: dict[VehicleType, int] = {
+            VehicleType.HDV: 100,
+            VehicleType.ACC: 105,
+            VehicleType.AUTONOMOUS: 110,
+            VehicleType.CONNECTED: 120,
+            VehicleType.CONNECTED_NO_LANE_CHANGE: 121,
+            VehicleType.TRAFFIC_LIGHT_ACC: 130,
+            VehicleType.TRAFFIC_LIGHT_CACC: 135,
+            VehicleType.PLATOON: 140,
+            VehicleType.VIRDI: 150,
+            VehicleType.TRUCK: 200,
+            VehicleType.BUS: 300
+        }
+        return _vehicle_type_to_vissim_id[self]
+
+    def get_ngsim_type(self):
+        pass
+        # _type_to_ngsim = {
+        #     NGSIM_MOTORCYCLE_ID = 1
+        # NGSIM_CAR_ID = 2
+        # NGSIM_TRUCK_ID = 3}
+
 
 class PlatoonLaneChangeStrategy(Enum):
     human_driven = -1  # baseline for comparison
@@ -81,33 +121,21 @@ class PlatoonLaneChangeStrategy(Enum):
     leader_first = 2
     last_vehicle_first = 3
     leader_first_and_reverse = 4
-    graph = 5
+    graph_min_time = 5
+    graph_min_accel = 6
 
-
-vehicle_type_to_print_name_map = {
-    VehicleType.HDV: "HDV",
-    VehicleType.ACC: "ACC",
-    VehicleType.AUTONOMOUS: "AV",
-    VehicleType.CONNECTED: "CAV",
-    VehicleType.CONNECTED_NO_LANE_CHANGE: "CAV",
-    VehicleType.PLATOON: "Platoon",
-    VehicleType.TRAFFIC_LIGHT_ACC: "TL-ACC",
-    VehicleType.TRAFFIC_LIGHT_CACC: "TL-CACC",
-    VehicleType.VIRDI: "Virdi",
-    VehicleType.TRUCK: "truck",
-    VehicleType.BUS: "bus",
-    VehicleType.MOTORCYCLE: "motorcycle"
-}
-
-
-strategy_to_print_name_map = {
-    PlatoonLaneChangeStrategy.human_driven: "HDV",
-    PlatoonLaneChangeStrategy.no_strategy: "CAV",
-    PlatoonLaneChangeStrategy.single_body_platoon: "SBP",
-    PlatoonLaneChangeStrategy.leader_first: "LdF",
-    PlatoonLaneChangeStrategy.last_vehicle_first: "LVF",
-    PlatoonLaneChangeStrategy.leader_first_and_reverse: "LdFR"
-}
+    def get_print_name(self):
+        _strategy_to_print_name: dict[PlatoonLaneChangeStrategy, str] = {
+            PlatoonLaneChangeStrategy.human_driven: "HDV",
+            PlatoonLaneChangeStrategy.no_strategy: "CAV",
+            PlatoonLaneChangeStrategy.single_body_platoon: "SBP",
+            PlatoonLaneChangeStrategy.leader_first: "LdF",
+            PlatoonLaneChangeStrategy.last_vehicle_first: "LVF",
+            PlatoonLaneChangeStrategy.leader_first_and_reverse: "LdFR",
+            PlatoonLaneChangeStrategy.graph_min_time: "Graph Min Time",
+            PlatoonLaneChangeStrategy.graph_min_accel: "Graph Min Control"
+        }
+        return _strategy_to_print_name[self]
 
 
 class Vehicle:
@@ -127,12 +155,6 @@ class Vehicle:
     VISSIM_VIRDI_CAR_ID = 150
     VISSIM_TRUCK_ID = 200
     VISSIM_BUS_ID = 300
-    # TYPE_CAR = "car"
-    # TYPE_AV = "autonomous vehicle"
-    # TYPE_CAV = "connected vehicle"
-    # TYPE_TRUCK = "truck"
-    # TYPE_BUS = "bus"
-    # TYPE_MOTORCYCLE = "motorcycle"
 
     RELEVANT_TYPES = {VehicleType.HDV, VehicleType.TRUCK,
                       VehicleType.ACC, VehicleType.PLATOON,

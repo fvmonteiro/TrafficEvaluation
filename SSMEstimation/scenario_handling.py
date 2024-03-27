@@ -28,6 +28,27 @@ class ScenarioInfo:
     platoon_size: int = None
     special_case: str = None
 
+    def __str__(self):
+        str_list = []
+        veh_percent_list = [str(p) + "% " + vt.name.lower()
+                            for vt, p in self.vehicle_percentages.items()]
+        str_list.append("Vehicles: " + ", ".join(veh_percent_list))
+        str_list.append("Input: " + str(self.vehicles_per_lane)
+                        + " vehs/lane/hour")
+        if self.platoon_lane_change_strategy is not None:
+            str_list.append("Platoon LC strat.: "
+                            + self.platoon_lane_change_strategy.name.lower())
+        if self.orig_and_dest_lane_speeds is not None:
+            str_list.append("Orig lane speed "
+                            + str(self.orig_and_dest_lane_speeds[0])
+                            + ". Dest lane speed: "
+                            + str(self.orig_and_dest_lane_speeds[1]))
+        if self.platoon_size is not None:
+            str_list.append("n_platoon=" + str(self.platoon_size))
+        if self.special_case is not None:
+            str_list.append("Special case: " + self.special_case)
+        return "\n".join(str_list)
+
 
 def is_all_human(scenario: ScenarioInfo) -> bool:
     return (sum(scenario.vehicle_percentages.values()) == 0
@@ -97,28 +118,6 @@ def create_multiple_scenarios(
     return scenarios
 
 
-def print_scenario(scenario: ScenarioInfo) -> str:
-    str_list = []
-    veh_percent_list = [str(p) + "% " + vt.name.lower()
-                        for vt, p in scenario.vehicle_percentages.items()]
-    str_list.append("Vehicles: " + ", ".join(veh_percent_list))
-    str_list.append("Input: " + str(scenario.vehicles_per_lane)
-                    + " vehs/lane/hour")
-    if scenario.accepted_risk is not None:
-        str_list.append("Accepted risk: " + str(scenario.accepted_risk))
-    if scenario.platoon_lane_change_strategy is not None:
-        str_list.append("Platoon LC strat.: "
-                        + scenario.platoon_lane_change_strategy.name.lower())
-    if scenario.orig_and_dest_lane_speeds is not None:
-        str_list.append("Orig lane speed "
-                        + str(scenario.orig_and_dest_lane_speeds[0])
-                        + ". Dest lane speed: "
-                        + str(scenario.orig_and_dest_lane_speeds[1]))
-    if scenario.special_case is not None:
-        str_list.append("Special case: " + scenario.special_case)
-    return "\n".join(str_list)
-
-
 def filter_scenarios(
         scenarios: Iterable[ScenarioInfo],
         desired_vehicle_percentages: Iterable[dict[vehicle.VehicleType, int]] = None,
@@ -177,7 +176,7 @@ def split_scenario_by(scenarios: Iterable[ScenarioInfo], attribute: str
         if attribute == "vehicle_percentages":
             return vehicle_percentage_dict_to_string(value)
         elif attribute == "platoon_lane_change_strategy":
-            return vehicle.strategy_to_print_name_map[value]
+            return value.get_print_name()
         else:
             return value
 
@@ -194,21 +193,21 @@ def vehicle_percentage_dict_to_string(vp_dict: dict[vehicle.VehicleType, int]
     ret_str = []
     for veh_type, p in vp_dict.items():
         ret_str.append(str(p) + "% "
-                       + vehicle.vehicle_type_to_print_name_map[veh_type])
+                       + veh_type.get_print_name())
     return " ".join(sorted(ret_str))
 
 
 all_platoon_simulation_configurations: dict[str, Iterable] = {
     "strategies": [
         vehicle.PlatoonLaneChangeStrategy.single_body_platoon,
-        vehicle.PlatoonLaneChangeStrategy.leader_first,
         vehicle.PlatoonLaneChangeStrategy.last_vehicle_first,
         vehicle.PlatoonLaneChangeStrategy.leader_first_and_reverse,
-        vehicle.PlatoonLaneChangeStrategy.graph
+        vehicle.PlatoonLaneChangeStrategy.graph_min_accel,
+        vehicle.PlatoonLaneChangeStrategy.graph_min_time
     ],
     "orig_and_dest_lane_speeds": [("70", "50"), ("70", "70"), ("70", "90")],
-    "platoon_size": [2, 3, 7, 9],
-    "vehicles_per_lane": [500, 1000, 2000, 3000]
+    "platoon_size": [2, 3, 4, 5],
+    "vehicles_per_lane": [500, 1000, 1500]
 }
 
 
@@ -265,4 +264,27 @@ def get_platoon_lane_change_scenarios(
     if len(scenarios) == 0:
         raise ValueError("No scenarios selected. Probably parameter 'select' "
                          "is incorrect.")
+    return scenarios
+
+
+def get_lane_change_scenarios_graph_paper(
+        strategies: Iterable[vehicle.PlatoonLaneChangeStrategy] = None,
+        orig_and_dest_lane_speeds: Iterable[tuple[int, int]] = None,
+        platoon_size: Iterable[int] = None,
+        vehicles_per_lane: Iterable[int] = None):
+    other_vehicles = [{vehicle.VehicleType.HDV: 100}]
+    if strategies is None:
+        strategies = all_platoon_simulation_configurations["strategies"]
+    if orig_and_dest_lane_speeds is None:
+        orig_and_dest_lane_speeds = all_platoon_simulation_configurations[
+            "orig_and_dest_lane_speeds"]
+    if platoon_size is None:
+        platoon_size = all_platoon_simulation_configurations["platoon_size"]
+    if vehicles_per_lane is None:
+        vehicles_per_lane = all_platoon_simulation_configurations[
+            "vehicles_per_lane"]
+    scenarios = create_multiple_scenarios(
+        other_vehicles, vehicles_per_lane, lane_change_strategies=strategies,
+        orig_and_dest_lane_speeds=orig_and_dest_lane_speeds,
+        platoon_size=platoon_size)
     return scenarios

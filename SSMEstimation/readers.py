@@ -8,9 +8,8 @@ import pandas as pd
 import xml.etree.ElementTree as ET
 
 from file_handling import FileHandler, get_moves_database_port
-from scenario_handling import ScenarioInfo, print_scenario
-from vehicle import PlatoonLaneChangeStrategy, VehicleType, \
-    vehicle_type_to_print_name_map, strategy_to_print_name_map
+from scenario_handling import ScenarioInfo
+from vehicle import PlatoonLaneChangeStrategy, VehicleType
 
 
 def match_sim_number_to_random_seed(data) -> None:
@@ -36,13 +35,30 @@ def _add_scenario_info_columns(data: pd.DataFrame,
     """
     Modifies data in place
     """
-    _add_vehicle_type_columns(data, scenario_info.vehicle_percentages)
-    _add_vehicle_input_column(data, scenario_info.vehicles_per_lane)
-    _add_risk_column(data, scenario_info.accepted_risk)
-    _add_platoon_lane_change_strategy_column(
-        data, scenario_info.platoon_lane_change_strategy)
-    _add_speeds_column(data, scenario_info.orig_and_dest_lane_speeds)
-    _add_special_case_columns(data, scenario_info.special_case)
+    # Vehicle percentages
+    s = ""
+    if sum(scenario_info.vehicle_percentages.values()) == 0:
+        s = "100% HDV"
+    for vt, p in scenario_info.vehicle_percentages.items():
+        data[vt.name.lower() + "_percentage"] = p
+        if p > 0:
+            s += str(p) + "% " + vt.get_print_name()
+    data["control percentages"] = s
+
+    data["vehicles_per_lane"] = int(scenario_info.vehicles_per_lane)
+    if scenario_info.accepted_risk is not None:
+        data["accepted_risk"] = int(scenario_info.accepted_risk)
+    if scenario_info.platoon_lane_change_strategy is not None:
+        data["lane_change_strategy"] = (
+            scenario_info.platoon_lane_change_strategy.get_print_name())
+    else:
+        data["lane_change_strategy"] = "None"
+    if scenario_info.orig_and_dest_lane_speeds is not None:
+        data["orig_lane_speed"] = scenario_info.orig_and_dest_lane_speeds[0]
+        data["dest_lane_speed"] = scenario_info.orig_and_dest_lane_speeds[1]
+    if scenario_info.platoon_size is not None:
+        data["platoon_size"] = scenario_info.platoon_size
+    # _add_special_case_columns(data, scenario_info.special_case)
 
 
 def _add_vehicle_type_columns(data: pd.DataFrame,
@@ -55,7 +71,7 @@ def _add_vehicle_type_columns(data: pd.DataFrame,
         for vt, p in vehicle_percentages.items():
             data[vt.name.lower() + "_percentage"] = p
             if p > 0:
-                s += str(p) + "% " + vehicle_type_to_print_name_map[vt]
+                s += str(p) + "% " + vt.get_print_name()
         data["control percentages"] = s
 
 
@@ -74,7 +90,7 @@ def _add_risk_column(data: pd.DataFrame,
 def _add_platoon_lane_change_strategy_column(
         data: pd.DataFrame, strategy: PlatoonLaneChangeStrategy) -> None:
     if strategy is not None:
-        data["lane_change_strategy"] = strategy_to_print_name_map[strategy]
+        data["lane_change_strategy"] = strategy.get_print_name()
     else:
         data["lane_change_strategy"] = "None"
 
@@ -436,7 +452,7 @@ class VehicleRecordReader(VissimDataReader):
          Used for debugging purposes.
         """
         for sc in scenarios:
-            print(print_scenario(sc))
+            print(sc)
             yield from self.generate_all_data_from_scenario(sc, n_rows)
 
 
@@ -1173,8 +1189,8 @@ class MOVESDatabaseReader (DataReader):
                                  "with mixed vehicles.")
             veh_type_str = self._vehicle_type_str_map[
                 list(veh_percentages.keys())[0]]
-            strategy_str = strategy_to_print_name_map[
-                scenario.platoon_lane_change_strategy]
+            strategy_str = (
+                scenario.platoon_lane_change_strategy.get_print_name())
             speed_str = str(scenario.orig_and_dest_lane_speeds[1])
             return "_".join([self.file_handler.get_file_name(), veh_type_str,
                              strategy_str, speed_str, "dest_speed"])
