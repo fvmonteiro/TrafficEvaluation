@@ -287,9 +287,9 @@ def main():
     # post_processing.create_platoon_lane_change_summary(
     #     scenario_name, scenarios)
 
-    scenarios = scenario_handling.get_lane_change_scenarios_graph_paper()
-    post_processing.create_platoon_lane_change_summary(scenario_name,
-                                                       scenarios)
+    # scenarios = scenario_handling.get_lane_change_scenarios_graph_paper()
+    # post_processing.create_platoon_lane_change_summary(scenario_name,
+    #                                                    scenarios)
 
     # file_handler = file_handling.FileHandler(scenario_name)
     # file_handler.export_multiple_platoon_results_to_cloud(

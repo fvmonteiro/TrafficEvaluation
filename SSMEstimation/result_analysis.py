@@ -268,7 +268,7 @@ def plots_for_graph_paper(should_save_fig: bool = False):
                         is_debugging=False)
 
     scenarios = scenario_handling.get_lane_change_scenarios_graph_paper()
-    ra.plot_maneuver_time(scenarios)
+    ra.plot_platoon_maneuver_cost("accel_cost", scenarios)
     ra.plot_successful_maneuvers(scenarios)
     # ra.plot_y_vs_platoon_lc_strategy("platoon_maneuver_time", scenarios)
 
@@ -1492,12 +1492,27 @@ class ResultAnalyzer:
                 self.save_fig(figure, fig_name=fig_name)
             figure.show()
 
-    def plot_maneuver_time(
+    def plot_all_platoon_maneuver_costs(
             self, scenarios: list[scenario_handling.ScenarioInfo]) -> None:
+        for cost in ["platoon_maneuver_time", "accel_cost"]:
+            self.plot_platoon_maneuver_cost(cost, scenarios)
+
+    def plot_platoon_maneuver_cost(
+            self, cost: str, scenarios: list[scenario_handling.ScenarioInfo]
+    ) -> None:
+        """
+        Compares graph approaches (min time and min accel) to other fixed order
+        strategies. The accepted costs are 'platoon_maneuver_time' and
+        'accel_cost'
+        """
         # TODO: split the function
 
-        y = "platoon_maneuver_time"
-        data = self._load_data(y, scenarios)
+        if cost not in ["platoon_maneuver_time", "accel_cost"]:
+            raise ValueError(
+                f"{cost} not accepted as a cost. The accepted costs "
+                f"are 'platoon_maneuver_time' and 'accel_cost'")
+
+        data = self._load_data(cost, scenarios)
         data["delta_v"] = (pd.to_numeric(data["dest_lane_speed"])
                            - pd.to_numeric(data["orig_lane_speed"]))
         # Results by platoon
@@ -1505,15 +1520,13 @@ class ResultAnalyzer:
                                   "vehicles_per_lane", "simulation_number"]
         # Data is indexed by the simulation identifier. Strategy stays as a
         # column
-        data_by_platoon = (
-            data.groupby(simulation_identifiers + ["lane_change_strategy"])[
-                ["lane_change_completed", "first_long adjustment",
-                 "last_lane changing"]].max()
-        ).reset_index(level=-1)
+        grouped_by_platoon = data.groupby(
+            simulation_identifiers + ["platoon_id", "lane_change_strategy"])
+        data_by_platoon = grouped_by_platoon.agg(
+            {"lane_change_completed": "min", "platoon_maneuver_time": "first",
+             "accel_cost": "sum"}).reset_index(level=[-1])
         n_scenarios = data_by_platoon.index.nunique()
-        data_by_platoon[y] = (data_by_platoon["last_lane changing"]
-                              - data_by_platoon["first_long adjustment"])
-        data_by_platoon[y].fillna(np.inf, inplace=True)
+        data_by_platoon[cost].fillna(np.inf, inplace=True)
         failure_identifiers = dict()
         success_counter = dict()
         for strat in data_by_platoon["lane_change_strategy"].unique():
@@ -1563,17 +1576,17 @@ class ResultAnalyzer:
                 )
             ].drop(index=other_failure, errors="ignore")
             # TODO: plot?
-            print(relevant_results.groupby("lane_change_strategy")[y].mean())
+            print(relevant_results.groupby("lane_change_strategy")[cost].mean())
 
         # Best heuristic
         # We reset and set index multiple times to make it easier to select and
         # drop only the right simulations
         # Get only non-graph strategies, and select the one with best cost
-        other_results = data_without_graph_failures[
-            data_without_graph_failures["lane_change_strategy"].isin(
+        other_results = data_by_platoon[
+            data_by_platoon["lane_change_strategy"].isin(
                 other_strategies)].reset_index()
         best_results = other_results.loc[other_results.groupby(
-            simulation_identifiers)[y].idxmin()].set_index(
+            simulation_identifiers)[cost].idxmin()].set_index(
             simulation_identifiers)
         best_results["lane_change_strategy"] = "Best Fixed-Order"
         best_failure = best_results.loc[
@@ -1584,8 +1597,7 @@ class ResultAnalyzer:
                 graph_strategies)]
         relevant_results = pd.concat([graph_results, best_results]).drop(
             index=best_failure, errors="ignore")
-        print(relevant_results.groupby("lane_change_strategy")[
-                  "platoon_maneuver_time"].mean())
+        print(relevant_results.groupby("lane_change_strategy")[cost].mean())
 
         print(success_counter)
 

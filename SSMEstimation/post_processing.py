@@ -2600,6 +2600,7 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
         grouped_by_id = platoon_vehicles.groupby("veh_id")
         platoon_veh_ids = grouped_by_id.groups.keys()
         result_df = pd.DataFrame(index=platoon_veh_ids)
+        result_df.index.rename("veh_id", inplace=True)
         result_df["simulation_number"] = data.iloc[0]["simulation_number"]
 
         platoon_ids = grouped_by_id.agg({"platoon_id": ["first", "last"]})
@@ -2612,46 +2613,52 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
         # Check if a lane change started and if it was complete (back to lane
         # keeping)
         result_df["lane_change_completed"] = grouped_by_id["state"].agg(
-            lambda x: np.any(x == "lane changing") and x.iloc[-1] == "lane keeping"
+            lambda x: (np.any(x == "lane changing")
+                       and x.iloc[-1] == "lane keeping")
         )
         result_df["travel_time"] = compute_time_interval_per_vehicle(
             platoon_vehicles)
         maneuver_phase_times = platoon_vehicles.groupby(
-            ["veh_id", "state"]).agg({"time": ["first", "last"]})
+            ["platoon_id", "veh_id", "state"]).agg({"time": ["first", "last"]})
         maneuver_phase_times.columns = maneuver_phase_times.columns.droplevel()
-        maneuver_phase_times.drop(level=1, index="lane keeping", inplace=True)
+        maneuver_phase_times.drop(level=-1, index="lane keeping", inplace=True)
         maneuver_phase_times = maneuver_phase_times.unstack()
-        # TODO: double check maneuver time computations for vehs and platoons
-        # result_df["vehicle_maneuver_time"] = (
-        #         maneuver_phase_times["last"].max(axis=1)
-        #         - maneuver_phase_times["first"].min(axis=1))
         maneuver_phase_times = maneuver_phase_times.set_axis(
-            maneuver_phase_times.columns.map("_".join), axis=1)
-        result_df = result_df.merge(maneuver_phase_times, left_index=True,
-                                    right_index=True)
-        if result_df["platoon_id"].nunique() > 1:
-            raise NotImplementedError("Not implemented for simulations with"
-                                      "more than 1 platoon")
-        # if np.all(result_df["lane_change_completed"]):
-        #     # it's max indeed. We only start counting once all platoon vehicles
-        #     # want to change lanes
-        #     start_time = result_df["first_long adjustment"].max()
-        #     end_time = result_df["last_lane changing"].max()
-        #     platoon_vehicles.loc[(platoon_vehicles["time"] >= start_time)
-        #     & (platoon_vehicles["time"] <= end_time), ["veh_id", "ax"]]
+            maneuver_phase_times.columns.map(" ".join), axis=1)
+        if "last lane changing" not in maneuver_phase_times.columns:
+            maneuver_phase_times["last lane changing"] = np.inf
+        result_df = result_df.merge(maneuver_phase_times.reset_index(),
+                                    left_on=["veh_id", "platoon_id"],
+                                    right_on=["veh_id", "platoon_id"])
 
-        # def accel_comp(g):
-        #     start_time = platoon_maneuver_start_times.loc[
-        #         g["platoon_id"].iloc[0]]
-        #     end_time = platoon_maneuver_end_times.loc[
-        #         g["platoon_id"].iloc[1]]
-        #     return np.sum(np.power(g.loc[(g["time"] > start_time)
-        #                                  & (g["time"] < end_time), "ax"], 2)
-        #                   * sampling_time)
-        # grouped_by_id = platoon_vehicles.groupby("veh_id")
-        # result_df["accel_cost"] = grouped_by_id.apply(accel_comp)
+        by_platoon = result_df.groupby(
+            "platoon_id")[["lane_change_completed"]].min()
+        by_platoon[["start", "end"]] = maneuver_phase_times.groupby(level=0)[
+            ["first long adjustment", "last lane changing"]].max()
 
-        result_df.reset_index(inplace=True, names="veh_id")
+        by_platoon["platoon_maneuver_time"] = (by_platoon["end"]
+                                               - by_platoon["start"])
+        by_platoon.loc[~by_platoon["lane_change_completed"],
+                       "platoon_maneuver_time"] = np.inf
+        for idx, row in by_platoon.iterrows():
+            this_platoon_vehicles = platoon_vehicles[
+                platoon_vehicles["platoon_id"] == idx]
+            if row["lane_change_completed"]:
+                accel_cost = this_platoon_vehicles.loc[
+                    (this_platoon_vehicles["time"] >= row["start"])
+                    & (this_platoon_vehicles["time"] <= row["end"])
+                    ].groupby("veh_id")["ax"].agg(
+                    lambda x: np.sum(np.power(x, 2)))
+            else:
+                accel_cost = pd.Series(
+                    data=np.inf,
+                    index=this_platoon_vehicles["veh_id"].unique())
+            result_df = result_df.merge(accel_cost.rename("accel_cost"),
+                                        left_on="veh_id", right_index=True)
+        result_df = result_df.merge(
+            by_platoon["platoon_maneuver_time"],
+            left_on="platoon_id", right_index=True)
+
         return result_df
 
     def post_process_baseline_scenario(self, data) -> None:
