@@ -1,4 +1,5 @@
 import os
+import warnings
 from collections.abc import Iterable
 from typing import Union
 
@@ -313,6 +314,23 @@ class ResultAnalyzer:
                             "high_DRAC": "High DRAC",
                             "CPI": "CPI",
                             "risk": "CRI"}
+
+    _category_plot_names = {
+        "Graph-based_time": "Graph Min Time",
+        "Graph-based_accel": "Graph Min Control",
+        "LVF": "Last Vehicle First"
+    }
+    _column_plot_names = {
+        "platoon_maneuver_time": "Maneuver Time [s]",
+        "accel_cost": "Control Effort [m/s]",
+        "dist_cost": "Dist. Before LC [m]",
+        "platoon_size": "Platoon Size",
+        "lane_change_strategy": "Strategy"
+    }
+
+    _simulation_identifiers = ["platoon_size", "delta_v",
+                               "vehicles_per_lane", "simulation_number"]
+    _platoon_cost_names = ["platoon_maneuver_time", "accel_cost", "dist_cost"]
 
     _pollutant_id_to_string = {
         1: "Gaseous Hydrocarbons", 5: "Methane (CH4)",
@@ -1495,34 +1513,33 @@ class ResultAnalyzer:
 
     def plot_comparison_to_LVF(
             self, scenarios: list[scenario_handling.ScenarioInfo]):
-        costs = ["platoon_maneuver_time", "accel_cost", "dist_cost"]
         graph_strategies = ['Graph Min Control', 'Graph Min Time']
-        other_strategies = ['LVF']
+        other_strategies = [self._category_plot_names['LVF']]
 
         # all costs are loaded by the same reader
-        data = self._load_data(costs[0], scenarios)
-        data.rename(columns={"lane_change_strategy": "Approach"}, inplace=True)
+        data = self._load_data(self._platoon_cost_names[0], scenarios)
+        data["lane_change_strategy"] = data["lane_change_strategy"].map(
+            self._category_plot_names).fillna(data["lane_change_strategy"])
         data["delta_v"] = (pd.to_numeric(data["dest_lane_speed"])
                            - pd.to_numeric(data["orig_lane_speed"]))
         data.drop(
-            index=data[~data["Approach"].isin(
+            index=data[~data["lane_change_strategy"].isin(
                 graph_strategies + other_strategies)].index, inplace=True
         )
-        # Results by platoon
-        simulation_identifiers = ["platoon_size", "delta_v",
-                                  "vehicles_per_lane", "simulation_number"]
+
         # Data is indexed by the simulation identifier. Strategy stays as a
         # column
         grouped_by_platoon = data.groupby(
-            simulation_identifiers + ["platoon_id", "Approach"])
+            self._simulation_identifiers + ["platoon_id",
+                                            "lane_change_strategy"])
         data_by_platoon = grouped_by_platoon.agg(
             {"lane_change_completed": "min", "platoon_maneuver_time": "first",
              "accel_cost": "sum", "dist_cost": "mean"}).reset_index(level=[-1])
         data_by_platoon.fillna(np.inf, inplace=True)
         failure_identifiers = dict()
-        for strat in data_by_platoon["Approach"].unique():
+        for strat in data_by_platoon["lane_change_strategy"].unique():
             data_per_strategy = data_by_platoon.loc[
-                data_by_platoon["Approach"] == strat]
+                data_by_platoon["lane_change_strategy"] == strat]
             failure_identifiers[strat] = (
                 data_per_strategy.loc[
                     ~data_per_strategy["lane_change_completed"],
@@ -1531,29 +1548,36 @@ class ResultAnalyzer:
 
         graph_failure = failure_identifiers[graph_strategies[0]]
         data_without_graph_failures = data_by_platoon.drop(index=graph_failure)
-        name_map = {"platoon_maneuver_time": "Maneuver Time",
-                    "accel_cost": "Control Effort",
-                    "dist_cost": "Dist. Travelled Before LC"}
-        for c in costs:
-            # Per other strategy
-            for other in other_strategies:
+
+        # Per other strategy
+        for other in other_strategies:
+            fig, axes = plt.subplots(1, len(self._platoon_cost_names))
+            for i, c in enumerate(self._platoon_cost_names):
                 other_failure = failure_identifiers[other]
                 relevant_results = data_without_graph_failures[
-                    data_without_graph_failures["Approach"].isin(
+                    data_without_graph_failures["lane_change_strategy"].isin(
                         graph_strategies + [other]
                     )
-                ].drop(index=other_failure, errors="ignore")
-                ax = sns.pointplot(
-                    data=relevant_results.reset_index(),
-                    x="platoon_size", y=c, hue="Approach", errorbar=None
+                ].drop(index=other_failure, errors="ignore").reset_index()
+
+                x, y, hue = self._get_plot_names(
+                    ["platoon_size", c, "lane_change_strategy"])
+                sns.pointplot(
+                    data=relevant_results.rename(
+                        columns=self._column_plot_names),
+                    x=x, y=y, hue=hue, errorbar=None, ax=axes[i]
                 )
-                sns.move_legend(ax, "upper left")
-                # ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1),
-                #           title="Approach", ncols=1)
-                ax.set_ylabel(name_map[c])
-                fig = ax.figure
-                fig.tight_layout()
-                fig.show()
+            # Single legend for all axes in the figure
+            handles, labels = axes[0].get_legend_handles_labels()
+            [ax.legend().remove() for ax in axes]
+            fig.set_size_inches(12, 4)
+            fig.legend(handles, labels, loc="center", ncols=3,
+                       bbox_to_anchor=(0.5, 0.95))
+            fig.tight_layout()
+            fig.show()
+            if self.should_save_fig:
+                fig_name = "platoon_lc_comparison_to_LVF"
+                self.save_fig(fig, fig_name=fig_name)
 
     def print_comparative_costs(
             self, scenarios: list[scenario_handling.ScenarioInfo],
@@ -1565,12 +1589,11 @@ class ResultAnalyzer:
         'accel_cost'
         """
         # TODO: split the function
-        all_costs = ["platoon_maneuver_time", "accel_cost", "dist_cost"]
         if costs is None:
-            costs = all_costs
+            costs = self._platoon_cost_names
         else:
             for c in costs:
-                if c not in all_costs:
+                if c not in self._platoon_cost_names:
                     raise ValueError(
                         f"{c} not accepted as a cost. The accepted costs "
                         f"are 'platoon_maneuver_time' and 'accel_cost'")
@@ -1579,13 +1602,11 @@ class ResultAnalyzer:
         data = self._load_data(costs[0], scenarios)
         data["delta_v"] = (pd.to_numeric(data["dest_lane_speed"])
                            - pd.to_numeric(data["orig_lane_speed"]))
-        # Results by platoon
-        simulation_identifiers = ["platoon_size", "delta_v",
-                                  "vehicles_per_lane", "simulation_number"]
+
         # Data is indexed by the simulation identifier. Strategy stays as a
         # column
         grouped_by_platoon = data.groupby(
-            simulation_identifiers + ["platoon_id", "lane_change_strategy"])
+            self._simulation_identifiers + ["platoon_id", "lane_change_strategy"])
         data_by_platoon = grouped_by_platoon.agg(
             {"lane_change_completed": "min", "platoon_maneuver_time": "first",
              "accel_cost": "sum", "dist_cost": "mean"}).reset_index(level=[-1])
@@ -1659,8 +1680,8 @@ class ResultAnalyzer:
         #     data_by_platoon["lane_change_strategy"].isin(
         #         other_strategies)].reset_index()
         # best_results = other_results.loc[other_results.groupby(
-        #     simulation_identifiers)[cost].idxmin()].set_index(
-        #     simulation_identifiers)
+        #     self._simulation_identifiers)[cost].idxmin()].set_index(
+        #     self._simulation_identifiers)
         # best_results["lane_change_strategy"] = "Best Fixed-Order"
         # best_failure = best_results.loc[
         #     ~best_results["lane_change_completed"]].index
@@ -2871,6 +2892,18 @@ class ResultAnalyzer:
             print("Not all scenarios have the same number of samples.\n"
                   "This might create misleading plots.")
 
+    def _get_plot_names(self, var_names: Iterable[str]) -> list[str]:
+        res = []
+        for name in var_names:
+            if name in self._column_plot_names:
+                res.append(self._column_plot_names[name])
+            elif name in self._category_plot_names:
+                res.append(self._category_plot_names[name])
+            else:
+                warnings.warn(f"Variable {name} not in any 'plot_name' map")
+                res.append(name)
+        return res
+
     def _make_data_uniform(self, data: pd.DataFrame,
                            use_all_simulations: bool = True) -> pd.DataFrame:
         """
@@ -2949,7 +2982,8 @@ class ResultAnalyzer:
         #     print("not saving")
         # else:
         #     print("saving")
-        fig.savefig(os.path.join(self._figure_folder, fig_name), dpi=400)
+        fig.savefig(os.path.join(self._figure_folder, fig_name),
+                    bbox_inches="tight", dpi=400)
 
     def create_figure_name(
             self, plot_type: str, measurement_name: str,

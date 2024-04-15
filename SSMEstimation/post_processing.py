@@ -2626,6 +2626,7 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
         maneuver_phase_times = maneuver_phase_times.set_axis(
             maneuver_phase_times.columns.map(" ".join), axis=1)
         if "last lane changing" not in maneuver_phase_times.columns:
+            maneuver_phase_times["first lane changing"] = np.inf
             maneuver_phase_times["last lane changing"] = np.inf
         result_df = result_df.merge(maneuver_phase_times.reset_index(),
                                     left_on=["veh_id", "platoon_id"],
@@ -2633,27 +2634,45 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
 
         by_platoon = result_df.groupby(
             "platoon_id")[["lane_change_completed"]].min()
-        by_platoon[["start", "end"]] = maneuver_phase_times.groupby(level=0)[
-            ["first long adjustment", "last lane changing"]].max()
+        by_platoon[["lc_intention_time", "lc_start_time",
+                    "lc_complete_time"]] = (
+            maneuver_phase_times.groupby(level=0).agg(
+                {"first long adjustment": "max", "first lane changing": "min",
+                 "last lane changing": "max"})
+        )
 
-        by_platoon["platoon_maneuver_time"] = (by_platoon["end"]
-                                               - by_platoon["start"])
+        by_platoon["platoon_maneuver_time"] = (
+                by_platoon["lc_complete_time"] - by_platoon["lc_intention_time"]
+        )
         by_platoon.loc[~by_platoon["lane_change_completed"],
                        "platoon_maneuver_time"] = np.inf
         for idx, row in by_platoon.iterrows():
-            this_platoon_vehicles = platoon_vehicles[
+            focus_vehicles = platoon_vehicles[
                 platoon_vehicles["platoon_id"] == idx]
             if row["lane_change_completed"]:
-                accel_cost = this_platoon_vehicles.loc[
-                    (this_platoon_vehicles["time"] >= row["start"])
-                    & (this_platoon_vehicles["time"] <= row["end"])
+                accel_cost = focus_vehicles.loc[
+                    (focus_vehicles["time"] >= row["lc_intention_time"])
+                    & (focus_vehicles["time"] <= row["lc_complete_time"])
                     ].groupby("veh_id")["ax"].agg(
                     lambda x: np.sum(np.power(x, 2)))
+                dist_cost = (
+                        focus_vehicles.loc[
+                            focus_vehicles["time"] == row["lc_start_time"],
+                            "rear_x"].to_numpy()
+                        - focus_vehicles.loc[
+                            focus_vehicles["time"] == row["lc_intention_time"],
+                            "rear_x"].to_numpy()
+                )
+                dist_cost = pd.Series(data=dist_cost,
+                                      index=focus_vehicles["veh_id"].unique())
             else:
                 accel_cost = pd.Series(
                     data=np.inf,
-                    index=this_platoon_vehicles["veh_id"].unique())
+                    index=focus_vehicles["veh_id"].unique())
+                dist_cost = accel_cost
             result_df = result_df.merge(accel_cost.rename("accel_cost"),
+                                        left_on="veh_id", right_index=True)
+            result_df = result_df.merge(dist_cost.rename("dist_cost"),
                                         left_on="veh_id", right_index=True)
         result_df = result_df.merge(
             by_platoon["platoon_maneuver_time"],

@@ -292,9 +292,7 @@ def main():
     #                                                    scenarios)
 
     # file_handler = file_handling.FileHandler(scenario_name)
-    # file_handler.export_multiple_platoon_results_to_cloud(
-    #         vehicle_percentages, vehicle_inputs, strategies,
-    #         orig_and_dest_lane_speeds)
+    # file_handler.export_multiple_results_to_cloud(scenarios)
     # file_handler.import_multiple_results_from_cloud(lc_scenarios)
     # file_handler.import_multiple_results_from_cloud(no_lc_scenarios)
 
