@@ -1534,7 +1534,9 @@ class ResultAnalyzer:
                                             "lane_change_strategy"])
         data_by_platoon = grouped_by_platoon.agg(
             {"lane_change_completed": "min", "platoon_maneuver_time": "first",
-             "accel_cost": "sum", "dist_cost": "mean"}).reset_index(level=[-1])
+             "accel_cost": "sum", "dist_cost": "mean",
+             "first long adjustment": "max", "last lane changing": "max"}
+        ).reset_index(level=[-1])
         data_by_platoon.fillna(np.inf, inplace=True)
         failure_identifiers = dict()
         for strat in data_by_platoon["lane_change_strategy"].unique():

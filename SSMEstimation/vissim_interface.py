@@ -626,7 +626,7 @@ class VissimInterface:
                                        scenario: ScenarioInfo) -> None:
         if "platoon" in self.file_handler.scenario_name:
             self.set_platoon_lane_change_parameters(scenario)
-        if "risky" in self.file_handler.scenario_name:
+        elif "risky" in self.file_handler.scenario_name:
             self.set_risky_lane_change_parameters(scenario)
         else:
             self.set_safe_lane_change_parameters(scenario)

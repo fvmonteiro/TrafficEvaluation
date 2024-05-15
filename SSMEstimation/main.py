@@ -265,13 +265,12 @@ def main():
     # run_a_platoon_simulation()
     # run_platoon_warm_up()
 
-    # vi = VissimInterface()
-    # vi.load_simulation(scenario_name)
-    # # # vi.run_multiple_platoon_lane_change_scenarios(
-    # # #     lc_scenarios, runs_per_scenario=1, is_debugging=False)
-    # vi.run_multiple_platoon_lane_change_scenarios(
-    #     all_scenarios, runs_per_scenario=1)
-    # vi.close_vissim()
+    scenarios = scenario_handling.get_lane_change_scenarios_graph_paper()
+    vi = VissimInterface()
+    vi.load_simulation(scenario_name)
+    vi.run_multiple_platoon_lane_change_scenarios(
+        scenarios, runs_per_scenario=3, is_debugging=False)
+    vi.close_vissim()
 
     # =============== Post processing =============== #
     # vehicle_types = [VehicleType.AUTONOMOUS, VehicleType.CONNECTED]
@@ -287,9 +286,8 @@ def main():
     # post_processing.create_platoon_lane_change_summary(
     #     scenario_name, scenarios)
 
-    # scenarios = scenario_handling.get_lane_change_scenarios_graph_paper()
-    # post_processing.create_platoon_lane_change_summary(scenario_name,
-    #                                                    scenarios)
+    post_processing.create_platoon_lane_change_summary(
+        scenario_name, scenarios)
 
     # file_handler = file_handling.FileHandler(scenario_name)
     # file_handler.export_multiple_results_to_cloud(scenarios)
