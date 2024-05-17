@@ -270,9 +270,9 @@ def plots_for_graph_paper(should_save_fig: bool = False):
                         is_debugging=False)
 
     scenarios = scenario_handling.get_lane_change_scenarios_graph_paper()
-    # ra.print_comparative_costs(scenarios)
-    ra.plot_comparison_to_LVF(scenarios)
     # ra.plot_successful_maneuvers(scenarios)
+    ra.print_comparative_costs(scenarios)
+    ra.plot_comparison_to_LVF(scenarios)
     # ra.compare_travel_times(scenarios, x="delta_v",
     #                         plot_cols="vehicles_per_lane",
     #                         warmup_time=1, sim_time=11)

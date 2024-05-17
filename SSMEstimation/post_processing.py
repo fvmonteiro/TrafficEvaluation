@@ -2641,6 +2641,26 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
                  "last lane changing": "max"})
         )
 
+        # Dist cost
+        # TODO: instead we should save x when each veh has lc intention and
+        #  x when it starts lc. Then it's just a matter of getting max the first
+        #  and min the second (max and min in that order to agree with paper)
+        if platoon_vehicles["platoon_id"].nunique() > 1:
+            warnings.warn("More than one platoon in the simulation. "
+                          "Code for distance cost must be updated")
+        else:
+            leader_id = platoon_vehicles.groupby("veh_id")["x"].first().idxmax()
+            x0 = platoon_vehicles.loc[
+                (platoon_vehicles["veh_id"] == leader_id)
+                & (platoon_vehicles["time"]
+                   == by_platoon["lc_intention_time"].values[0]), "x"
+            ].values[0]
+            xf = platoon_vehicles[
+                platoon_vehicles["state"] == "lane changing"].iloc[0]["x"]
+            by_platoon["x0"] = x0
+            by_platoon["xf"] = xf
+            by_platoon["dist_cost"] = xf - x0
+
         by_platoon["platoon_maneuver_time"] = (
                 by_platoon["lc_complete_time"] - by_platoon["lc_intention_time"]
         )
@@ -2672,10 +2692,10 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
                 dist_cost = accel_cost
             result_df = result_df.merge(accel_cost.rename("accel_cost"),
                                         left_on="veh_id", right_index=True)
-            result_df = result_df.merge(dist_cost.rename("dist_cost"),
-                                        left_on="veh_id", right_index=True)
+            # result_df = result_df.merge(dist_cost.rename("dist_cost"),
+            #                             left_on="veh_id", right_index=True)
         result_df = result_df.merge(
-            by_platoon["platoon_maneuver_time"],
+            by_platoon[["platoon_maneuver_time", "dist_cost"]],
             left_on="platoon_id", right_index=True)
 
         return result_df
