@@ -248,13 +248,17 @@ class FileHandler:
 
     def _move_multiple_results(
             self, is_exporting: bool, scenarios: list[ScenarioInfo]) -> None:
-        for sc in scenarios:
+        print("Exporting" if is_exporting else "Importing"
+              + f" {len(scenarios)} scenarios")
+        for i, sc in enumerate(scenarios):
+            if i % 10 == 0:
+                print(f"{i/len(scenarios)*100:.1f}%", end=", ")
             try:
                 self.move_result_files(is_exporting, sc)
             except FileNotFoundError:
                 destination = "cloud" if is_exporting else "local"
-                print("Couldn't move scenario {} to {} "
-                      "folder.".format(sc, destination))
+                print(f"Couldn't move scenario {sc} to {destination} "
+                      "folder.")
                 continue
 
     def move_result_files(self, is_exporting: bool,

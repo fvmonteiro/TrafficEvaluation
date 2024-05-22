@@ -265,19 +265,19 @@ def main():
     # run_a_platoon_simulation()
     # run_platoon_warm_up()
 
-    other_vehicles = [{vehicle.VehicleType.HDV: 100}]
-    strategies = [vehicle.PlatoonLaneChangeStrategy.graph_min_time,
-                  vehicle.PlatoonLaneChangeStrategy.last_vehicle_first]
-    vehicles_per_lane = [500]
-    orig_and_dest_lane_speeds = [("70", "50")]
-    platoon_size = [3]
-    scenarios = scenario_handling.create_multiple_scenarios(
-        vehicle_percentages=other_vehicles,
-        vehicle_inputs=vehicles_per_lane,
-        lane_change_strategies=strategies,
-        orig_and_dest_lane_speeds=orig_and_dest_lane_speeds,
-        platoon_size=platoon_size)
-    # scenarios = scenario_handling.get_lane_change_scenarios_graph_paper()
+    # other_vehicles = [{vehicle.VehicleType.HDV: 100}]
+    # strategies = [vehicle.PlatoonLaneChangeStrategy.graph_min_time,
+    #               vehicle.PlatoonLaneChangeStrategy.last_vehicle_first]
+    # vehicles_per_lane = [500]
+    # orig_and_dest_lane_speeds = [("70", "50")]
+    # platoon_size = [3]
+    # scenarios = scenario_handling.create_multiple_scenarios(
+    #     vehicle_percentages=other_vehicles,
+    #     vehicle_inputs=vehicles_per_lane,
+    #     lane_change_strategies=strategies,
+    #     orig_and_dest_lane_speeds=orig_and_dest_lane_speeds,
+    #     platoon_size=platoon_size)
+    scenarios = scenario_handling.get_lane_change_scenarios_graph_paper()
     # vi = VissimInterface()
     # vi.load_simulation(scenario_name)
     # vi.run_multiple_platoon_lane_change_scenarios(
@@ -298,12 +298,12 @@ def main():
     # post_processing.create_platoon_lane_change_summary(
     #     scenario_name, scenarios
 
-    post_processing.create_platoon_lane_change_summary(
-        scenario_name, scenarios)
+    # post_processing.create_platoon_lane_change_summary(
+    #     scenario_name, scenarios)
 
-    file_handler = file_handling.FileHandler(scenario_name)
-    # # file_handler.export_multiple_results_to_cloud(scenarios)
-    file_handler.import_multiple_results_from_cloud(scenarios)
+    # file_handler = file_handling.FileHandler(scenario_name)
+    # file_handler.export_multiple_results_to_cloud(scenarios)
+    # file_handler.import_multiple_results_from_cloud(scenarios)
     # file_handler.import_multiple_results_from_cloud(no_lc_scenarios)
 
     # =============== To MOVES =============== #
