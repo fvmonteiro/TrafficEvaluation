@@ -2593,7 +2593,6 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
         # TODO: split the function
 
         sim_time = data.iloc[-1]["time"]
-        # sampling_time = 0.1  # TODO: read from data
 
         platoon_vehicles = data[data["veh_type"]
                                 == Vehicle.VISSIM_PLATOON_CAR_ID]
@@ -2655,8 +2654,12 @@ class PlatoonLaneChangeProcessor(VISSIMDataPostProcessor):
                 & (platoon_vehicles["time"]
                    == by_platoon["lc_intention_time"].values[0]), "x"
             ].values[0]
-            xf = platoon_vehicles[
-                platoon_vehicles["state"] == "lane changing"].iloc[0]["x"]
+            try:
+                xf = platoon_vehicles[
+                    platoon_vehicles["state"] == "lane changing"].iloc[0]["x"]
+            except IndexError:
+                warnings.warn("No LC")
+                xf = platoon_vehicles['x'].max()
             by_platoon["x0"] = x0
             by_platoon["xf"] = xf
             by_platoon["dist_cost"] = xf - x0

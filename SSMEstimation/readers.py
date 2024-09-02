@@ -56,6 +56,8 @@ def _add_scenario_info_columns(data: pd.DataFrame,
     if scenario_info.orig_and_dest_lane_speeds is not None:
         data["orig_lane_speed"] = scenario_info.orig_and_dest_lane_speeds[0]
         data["dest_lane_speed"] = scenario_info.orig_and_dest_lane_speeds[1]
+    if scenario_info.computation_time is not None:
+        data["computation_time"] = scenario_info.computation_time
     if scenario_info.platoon_size is not None:
         data["platoon_size"] = scenario_info.platoon_size
     # _add_special_case_columns(data, scenario_info.special_case)
@@ -732,7 +734,7 @@ class PostProcessedDataReader(DataReader):
         try:
             data = pd.read_csv(full_address)
         except OSError:
-            # Old format files end with a three digit number. Let"s try to
+            # Old format files end with a three-digit number. Let's try to
             # read that before giving up
             network_file_name = self.file_handler.get_file_name()
             data_folder = os.path.dirname(full_address)

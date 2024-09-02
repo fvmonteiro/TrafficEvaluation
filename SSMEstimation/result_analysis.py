@@ -279,6 +279,14 @@ def plots_for_graph_paper(should_save_fig: bool = False):
     #                         warmup_time=1, sim_time=11)
 
 
+def plot_computation_time_results(should_save_fig: bool = False):
+    scenario_name = "platoon_discretionary_lane_change"
+    ra = ResultAnalyzer(scenario_name, should_save_fig,
+                        is_debugging=False)
+    scenarios = scenario_handling.get_varying_computation_time_scenarios()
+    ra.plot_cost_vs_comp_time(scenarios)
+
+
 class ResultAnalyzer:
     _data_reader_map = {
         "flow": readers.DataCollectionReader,
@@ -326,7 +334,8 @@ class ResultAnalyzer:
         "accel_cost": "Control Effort [m/s]",
         "dist_cost": "Dist. Before LC [m]",
         "platoon_size": "Platoon Size",
-        "lane_change_strategy": "Strategy"
+        "lane_change_strategy": "Strategy",
+        "computation_time": "Max. Computation Time [s]"
     }
 
     _simulation_identifiers = ["platoon_size", "delta_v",
@@ -1636,6 +1645,61 @@ class ResultAnalyzer:
                 fig_name = "search_and_exec_times"
                 self.save_fig(fig, fig_name=fig_name)
 
+    def plot_cost_vs_comp_time(
+            self, scenarios: list[scenario_handling.ScenarioInfo]):
+        graph_strategies = ['Graph Min Time', 'Graph Min Control']
+        costs = self._platoon_cost_names[:2]
+        # other_strategies = [self._category_plot_names['LVF']]
+
+        # all costs are loaded by the same reader
+        data = self._load_data(self._platoon_cost_names[0], scenarios)
+        data["lane_change_strategy"] = data["lane_change_strategy"].map(
+            self._category_plot_names).fillna(data["lane_change_strategy"])
+        data["delta_v"] = (pd.to_numeric(data["dest_lane_speed"])
+                           - pd.to_numeric(data["orig_lane_speed"]))
+        data.drop(
+            index=data[~data["lane_change_strategy"].isin(
+                graph_strategies)].index, inplace=True
+        )
+
+        data_by_platoon = self._group_by_platoon(data)
+
+        data_by_platoon.fillna(np.inf, inplace=True)
+        fig, axes = plt.subplots(1, len(graph_strategies), figsize=(12, 4))
+        for i, strat in enumerate(graph_strategies):
+            data_per_strategy = data_by_platoon.loc[
+                data_by_platoon["lane_change_strategy"] == strat]
+            failure_identifiers = (
+                data_per_strategy.loc[
+                    ~data_per_strategy["lane_change_completed"],
+                ].index
+            )
+            data_without_failures = data_per_strategy.drop(
+                index=failure_identifiers).reset_index()
+            x, y, hue = self._get_plot_names(
+                ["computation_time", costs[i],
+                 "lane_change_strategy"]
+            )
+            sns.pointplot(
+                data=data_without_failures.rename(
+                    columns=self._column_plot_names),
+                x=x, y=y, hue=hue, errorbar=None, ax=axes[i]
+            )
+
+        # # Single legend for all axes in the figure
+        # fig.tight_layout()
+        # handles, labels = axes[0].get_legend_handles_labels()
+        # [ax.legend().remove() for ax in axes]
+        # # axes[2].legend(loc="center", ncols=3, bbox_to_anchor=(-1., 1.1))
+        # fig.legend(handles, labels, loc="center", ncols=3,
+        #            bbox_to_anchor=(0.5, 0.94))
+        # fig.tight_layout(rect=[0, -0.05, 1, 0.94])
+        fig.tight_layout()
+        fig.show()
+        if self.should_save_fig:
+            fig_name = "platoon_lc_comparison_to_LVF"
+            self.save_fig(fig, fig_name=fig_name)
+
     def print_comparative_costs(
             self, scenarios: list[scenario_handling.ScenarioInfo],
             costs: Iterable[str] = None
@@ -2261,9 +2325,14 @@ class ResultAnalyzer:
     def _group_by_platoon(self, data: pd.DataFrame):
         # Data is indexed by the simulation identifier. Strategy stays as a
         # column
+        if "computation_time" in data.columns:
+            additional_identifiers = [
+                "platoon_id", "computation_time", "lane_change_strategy"
+            ]
+        else:
+            additional_identifiers = ["platoon_id", "lane_change_strategy"]
         grouped_by_platoon = data.groupby(
-            self._simulation_identifiers + ["platoon_id",
-                                            "lane_change_strategy"])
+            self._simulation_identifiers + additional_identifiers)
         data_by_platoon = grouped_by_platoon.agg(
             {"lane_change_completed": "min", "platoon_maneuver_time": "first",
              "accel_cost": "sum", "dist_cost": "mean",

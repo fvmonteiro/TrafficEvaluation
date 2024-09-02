@@ -415,6 +415,8 @@ def create_file_path(
             scenario_info.accepted_risk))
     if scenario_info.platoon_size is not None:
         folder_list.append(str(scenario_info.platoon_size) + "_vehicle_platoon")
+    if scenario_info.computation_time is not None:
+        folder_list.append(str(scenario_info.computation_time) + "_comp_time")
     if scenario_info.special_case is not None:
         folder_list.append(scenario_info.special_case)
 
