@@ -277,7 +277,7 @@ def main():
     #     lane_change_strategies=strategies,
     #     orig_and_dest_lane_speeds=orig_and_dest_lane_speeds,
     #     platoon_size=platoon_size)
-    scenarios = scenario_handling.get_lane_change_scenarios_graph_paper()
+    # scenarios = scenario_handling.get_lane_change_scenarios_graph_paper()
     # vi = VissimInterface()
     # vi.load_simulation(scenario_name)
     # vi.run_multiple_platoon_lane_change_scenarios(
@@ -300,6 +300,9 @@ def main():
 
     # post_processing.create_platoon_lane_change_summary(
     #     scenario_name, scenarios)
+    # scenarios = scenario_handling.get_varying_computation_time_scenarios()
+    # post_processing.create_platoon_lane_change_summary(
+    #     scenario_name, scenarios)
 
     # file_handler = file_handling.FileHandler(scenario_name)
     # file_handler.export_multiple_results_to_cloud(scenarios)
@@ -317,8 +320,9 @@ def main():
     # moves_file_handling.platoon_scenario_to_moves(scenarios)
 
     # =============== Check results graphically =============== #
-    result_analysis.plots_for_graph_paper(False)
-
+    # result_analysis.plots_for_graph_paper(False)
+    # result_analysis.plots_for_graph_paper_2(True)
+    result_analysis.plot_computation_time_results(True)
     # all_plots_for_scenarios_with_risk(scenario_name, save_fig=False)
     # all_plots_for_scenarios_with_risk_and_varying_penetration(scenario_name,
     #                                                           True)

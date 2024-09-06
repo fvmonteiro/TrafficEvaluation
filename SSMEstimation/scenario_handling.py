@@ -26,6 +26,7 @@ class ScenarioInfo:
     platoon_lane_change_strategy: vehicle.PlatoonLaneChangeStrategy = None
     orig_and_dest_lane_speeds: tuple[Union[str, int], Union[str, int]] = None
     platoon_size: int = None
+    computation_time: int = None
     special_case: str = None
 
     def __str__(self):
@@ -45,6 +46,8 @@ class ScenarioInfo:
                             + str(self.orig_and_dest_lane_speeds[1]))
         if self.platoon_size is not None:
             str_list.append("n_platoon=" + str(self.platoon_size))
+        if self.computation_time is not None:
+            str_list.append("computation_time=" + str(self.computation_time))
         if self.special_case is not None:
             str_list.append("Special case: " + self.special_case)
         return "\n".join(str_list)
@@ -93,6 +96,7 @@ def create_multiple_scenarios(
         orig_and_dest_lane_speeds: Iterable[tuple[Union[str, int],
                                             Union[str, int]]] = None,
         platoon_size: Iterable[int] = None,
+        computation_times: Iterable[int] = None,
         special_cases: Iterable[str] = None) -> list[ScenarioInfo]:
     if accepted_risks is None:
         accepted_risks = [None]
@@ -105,16 +109,18 @@ def create_multiple_scenarios(
         orig_and_dest_lane_speeds = [None]
     if platoon_size is None:
         platoon_size = [None]
+    if computation_times is None:
+        computation_times = [None]
     if special_cases is None:
         special_cases = [None]
     scenarios = []
-    for vp, vi, ar, st, speeds, sizes, case in itertools.product(
+    for vp, vi, ar, lcs, speeds, ps, ct, case in itertools.product(
             vehicle_percentages, vehicle_inputs, accepted_risks,
             lane_change_strategies, orig_and_dest_lane_speeds, platoon_size,
-            special_cases):
+            computation_times, special_cases):
         if sum(vp.values()) == 0 and ar is not None and ar > 0:
             continue
-        scenarios.append(ScenarioInfo(vp, vi, ar, st, speeds, sizes, case))
+        scenarios.append(ScenarioInfo(vp, vi, ar, lcs, speeds, ps, ct, case))
     return scenarios
 
 
@@ -287,4 +293,26 @@ def get_lane_change_scenarios_graph_paper(
         other_vehicles, vehicles_per_lane, lane_change_strategies=strategies,
         orig_and_dest_lane_speeds=orig_and_dest_lane_speeds,
         platoon_size=platoon_size)
+    return scenarios
+
+
+def get_varying_computation_time_scenarios() -> list[ScenarioInfo]:
+    other_vehicles = [{vehicle.VehicleType.HDV: 100}]
+    strategy_comp_times = {
+        vehicle.PlatoonLaneChangeStrategy.graph_min_time: [0, 20, 40, 61],
+        vehicle.PlatoonLaneChangeStrategy.graph_min_accel: [0, 20, 40, 60]
+    }
+    orig_and_dest_lane_speeds = all_platoon_simulation_configurations[
+        "orig_and_dest_lane_speeds"]
+    platoon_size = [5]
+    vehicles_per_lane = all_platoon_simulation_configurations[
+        "vehicles_per_lane"]
+
+    scenarios = []
+    for strategy, comp_times in strategy_comp_times.items():
+        scenarios.extend(create_multiple_scenarios(
+            other_vehicles, vehicles_per_lane,
+            lane_change_strategies=[strategy],
+            orig_and_dest_lane_speeds=orig_and_dest_lane_speeds,
+            platoon_size=platoon_size, computation_times=comp_times))
     return scenarios
