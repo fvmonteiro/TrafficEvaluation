@@ -300,7 +300,7 @@ def get_varying_computation_time_scenarios() -> list[ScenarioInfo]:
     other_vehicles = [{vehicle.VehicleType.HDV: 100}]
     strategy_comp_times = {
         vehicle.PlatoonLaneChangeStrategy.graph_min_time: [0, 20, 40, 61],
-        vehicle.PlatoonLaneChangeStrategy.graph_min_accel: [0, 20, 40, 60, 139]
+        vehicle.PlatoonLaneChangeStrategy.graph_min_accel: [0, 20, 40, 60]
     }
     orig_and_dest_lane_speeds = all_platoon_simulation_configurations[
         "orig_and_dest_lane_speeds"]

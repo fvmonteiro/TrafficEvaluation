@@ -320,8 +320,9 @@ def main():
     # moves_file_handling.platoon_scenario_to_moves(scenarios)
 
     # =============== Check results graphically =============== #
-    result_analysis.plots_for_graph_paper(False)
-    # result_analysis.plot_computation_time_results(False)
+    # result_analysis.plots_for_graph_paper(False)
+    # result_analysis.plots_for_graph_paper_2(True)
+    result_analysis.plot_computation_time_results(True)
     # all_plots_for_scenarios_with_risk(scenario_name, save_fig=False)
     # all_plots_for_scenarios_with_risk_and_varying_penetration(scenario_name,
     #                                                           True)

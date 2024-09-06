@@ -272,11 +272,25 @@ def plots_for_graph_paper(should_save_fig: bool = False):
     scenarios = scenario_handling.get_lane_change_scenarios_graph_paper()
     # ra.plot_successful_maneuvers(scenarios)
     # ra.print_comparative_costs(scenarios)
-    ra.plot_comparison_to_LVF(scenarios)
-    ra.plot_search_and_execution_time(scenarios)
+    ra.plot_comparison_to_LVF(scenarios, "platoon_size")
+    # ra.plot_search_and_execution_time(scenarios)
     # ra.compare_travel_times(scenarios, x="delta_v",
     #                         plot_cols="vehicles_per_lane",
     #                         warmup_time=1, sim_time=11)
+
+
+def plots_for_graph_paper_2(should_save_fig: bool = False):
+    scenario_name = "platoon_discretionary_lane_change"
+    ra = ResultAnalyzer(scenario_name, should_save_fig,
+                        is_debugging=False)
+    scenarios = scenario_handling.get_lane_change_scenarios_graph_paper(
+        platoon_size=[5]
+    )
+    # ra.barplot_success_rate(scenarios)
+    metrics = ["lane_change_completed"] + ResultAnalyzer._platoon_cost_names[:-1]
+    ra.plot_comparison_to_LVF(scenarios, "vehicles_per_lane", metrics)
+    ra.plot_comparison_to_LVF(scenarios, "delta_v", metrics)
+
 
 
 def plot_computation_time_results(should_save_fig: bool = False):
@@ -335,7 +349,10 @@ class ResultAnalyzer:
         "dist_cost": "Dist. Before LC [m]",
         "platoon_size": "Platoon Size",
         "lane_change_strategy": "Strategy",
-        "computation_time": "Max. Computation Time [s]"
+        "computation_time": "Max. Computation Time [s]",
+        "delta_v": "$\Delta v$ [km/h]",
+        "vehicles_per_lane": "D [vehs/lane/hour]",
+        "lane_change_completed": "Success Rate %"
     }
 
     _simulation_identifiers = ["platoon_size", "delta_v",
@@ -1522,7 +1539,11 @@ class ResultAnalyzer:
             figure.show()
 
     def plot_comparison_to_LVF(
-            self, scenarios: list[scenario_handling.ScenarioInfo]):
+            self, scenarios: list[scenario_handling.ScenarioInfo],
+            x_variable: str, costs: Iterable[str] = None):
+        if costs is None:
+            costs = self._platoon_cost_names
+
         graph_strategies = ['Graph Min Control', 'Graph Min Time']
         other_strategies = [self._category_plot_names['LVF']]
 
@@ -1555,19 +1576,27 @@ class ResultAnalyzer:
 
         # Per other strategy
         for other in other_strategies:
-            fig, axes = plt.subplots(1, len(self._platoon_cost_names),
+            fig, axes = plt.subplots(1, len(costs),
                                      figsize=(12, 4))
-            for i, c in enumerate(self._platoon_cost_names):
-                other_failure = failure_identifiers[other]
-                relevant_results = data_without_graph_failures[
-                    data_without_graph_failures["lane_change_strategy"].isin(
-                        graph_strategies + [other]
-                    )
-                ].drop(index=other_failure, errors="ignore").reset_index()
+            for i, c in enumerate(costs):
+
+                if c == "lane_change_completed":
+                    source = data_by_platoon
+                else:
+                    other_failure = failure_identifiers[other]
+                    source = data_without_graph_failures.drop(
+                        index=other_failure, errors="ignore")
+                relevant_results = source[source["lane_change_strategy"].isin(
+                            graph_strategies + [other])].reset_index()
+
+                # relevant_results = data_without_graph_failures[
+                #     data_without_graph_failures["lane_change_strategy"].isin(
+                #         graph_strategies + [other]
+                #     )].drop(index=other_failure, errors="ignore").reset_index()
 
                 x, y, hue = self._get_plot_names(
-                    ["platoon_size", c, "lane_change_strategy"])
-                sns.pointplot(
+                    [x_variable, c, "lane_change_strategy"])
+                sns.barplot(
                     data=relevant_results.rename(
                         columns=self._column_plot_names),
                     x=x, y=y, hue=hue, errorbar=None, ax=axes[i]
@@ -1582,7 +1611,55 @@ class ResultAnalyzer:
             fig.tight_layout(rect=[0, -0.05, 1, 0.94])
             fig.show()
             if self.should_save_fig:
-                fig_name = "platoon_lc_comparison_to_LVF"
+                fig_name = "cost_comparison_to_LVF_per_" + x_variable
+                self.save_fig(fig, fig_name=fig_name)
+
+    def barplot_success_rate(
+            self, scenarios: list[scenario_handling.ScenarioInfo]):
+        graph_strategies = ['Graph Min Control', 'Graph Min Time']
+        other_strategies = [self._category_plot_names['LVF']]
+
+        # all costs are loaded by the same reader
+        data = self._load_data(self._platoon_cost_names[0], scenarios)
+        data["lane_change_strategy"] = data["lane_change_strategy"].map(
+            self._category_plot_names).fillna(data["lane_change_strategy"])
+        data["delta_v"] = (pd.to_numeric(data["dest_lane_speed"])
+                           - pd.to_numeric(data["orig_lane_speed"]))
+        data.drop(
+            index=data[~data["lane_change_strategy"].isin(
+                graph_strategies + other_strategies)].index, inplace=True
+        )
+
+        data_by_platoon = self._group_by_platoon(data)
+
+        data_by_platoon.fillna(np.inf, inplace=True)
+
+        # Per other strategy
+        x_variables = ["vehicles_per_lane", "delta_v"]
+        for other in other_strategies:
+            fig, axes = plt.subplots(1, len(x_variables), figsize=(12, 4))
+            relevant_results = data_by_platoon[
+                data_by_platoon["lane_change_strategy"].isin(
+                    graph_strategies + [other])].reset_index()
+            for i, ix in enumerate(x_variables):
+                x, y, hue = self._get_plot_names(
+                    [ix, "lane_change_completed", "lane_change_strategy"])
+                sns.barplot(
+                    data=relevant_results.rename(
+                        columns=self._column_plot_names),
+                    x=x, y=y, hue=hue, errorbar=None, ax=axes[i]
+                )
+            # Single legend for all axes in the figure
+            # fig.tight_layout()
+            handles, labels = axes[0].get_legend_handles_labels()
+            [ax.legend().remove() for ax in axes]
+            # axes[2].legend(loc="center", ncols=3, bbox_to_anchor=(-1., 1.1))
+            fig.legend(handles, labels, loc="center", ncols=3,
+                       bbox_to_anchor=(0.5, 0.94))
+            fig.tight_layout(rect=[0, -0.05, 1, 0.94])
+            fig.show()
+            if self.should_save_fig:
+                fig_name = "success_rate_comparison_to_LVF"
                 self.save_fig(fig, fig_name=fig_name)
 
     def plot_search_and_execution_time(
@@ -1632,7 +1709,7 @@ class ResultAnalyzer:
             for i, c in enumerate(["search_time", "execution_time",
                                    "platoon_maneuver_time"]):
                 axis.plot("platoon_size", c,
-                          data=min_time.groupby(
+                          data=relevant_results.groupby(
                               "platoon_size", as_index=False)[c].mean(),
                           color=sns.color_palette("Paired")[i], marker='o',
                           linewidth=3, label=y_names[c])
@@ -1644,6 +1721,40 @@ class ResultAnalyzer:
             if self.should_save_fig:
                 fig_name = "search_and_exec_times"
                 self.save_fig(fig, fig_name=fig_name)
+
+    def heatmap_success_rate(
+            self, scenarios: list[scenario_handling.ScenarioInfo]):
+        graph_strategies = ['Graph Min Control']
+        other_strategies = [self._category_plot_names['LVF']]
+
+        # all costs are loaded by the same reader
+        data = self._load_data(self._platoon_cost_names[0], scenarios)
+        data["lane_change_strategy"] = data["lane_change_strategy"].map(
+            self._category_plot_names).fillna(data["lane_change_strategy"])
+        data["delta_v"] = (pd.to_numeric(data["dest_lane_speed"])
+                           - pd.to_numeric(data["orig_lane_speed"]))
+        data.drop(
+            index=data[~data["lane_change_strategy"].isin(
+                graph_strategies + other_strategies)].index, inplace=True
+        )
+        data_by_platoon = self._group_by_platoon(data)
+        diff = (data_by_platoon.loc[
+                    data_by_platoon['lane_change_strategy'] == other_strategies[
+                        0], 'lane_change_completed'] !=
+                data_by_platoon.loc[
+                    data_by_platoon['lane_change_strategy'] == graph_strategies[
+                        0], 'lane_change_completed'])
+        table = diff.reset_index().pivot_table(values='lane_change_completed',
+                                               index='delta_v',
+                                               columns='vehicles_per_lane',
+                                               aggfunc='mean')
+        ax = sns.heatmap(table, annot=True, fmt=".2g", cbar=False)
+        ax.set_title("Success Rate Absolute Variation")
+        fig = plt.gcf()
+        fig.tight_layout()
+        fig.show()
+        if self.should_save_fig:
+            self.save_fig(fig, fig_name="success_rate_heat_map")
 
     def plot_cost_vs_comp_time(
             self, scenarios: list[scenario_handling.ScenarioInfo]):
@@ -1662,13 +1773,16 @@ class ResultAnalyzer:
                 graph_strategies)].index, inplace=True
         )
 
+        # TODO: bad hard coding
+        data.loc[data["computation_time"] == 61, "computation_time"] = 60
+
         data_by_platoon = self._group_by_platoon(data)
 
         data_by_platoon.fillna(np.inf, inplace=True)
         fig, axes = plt.subplots(1, len(graph_strategies), figsize=(12, 4))
         for i, strat in enumerate(graph_strategies):
             data_per_strategy = data_by_platoon.loc[
-                data_by_platoon["lane_change_strategy"] == strat]
+                data_by_platoon["lane_change_strategy"].isin(graph_strategies)]
             failure_identifiers = (
                 data_per_strategy.loc[
                     ~data_per_strategy["lane_change_completed"],
@@ -1686,18 +1800,18 @@ class ResultAnalyzer:
                 x=x, y=y, hue=hue, errorbar=None, ax=axes[i]
             )
 
-        # # Single legend for all axes in the figure
-        # fig.tight_layout()
-        # handles, labels = axes[0].get_legend_handles_labels()
-        # [ax.legend().remove() for ax in axes]
-        # # axes[2].legend(loc="center", ncols=3, bbox_to_anchor=(-1., 1.1))
-        # fig.legend(handles, labels, loc="center", ncols=3,
-        #            bbox_to_anchor=(0.5, 0.94))
-        # fig.tight_layout(rect=[0, -0.05, 1, 0.94])
+        # Single legend for all axes in the figure
+        fig.tight_layout()
+        handles, labels = axes[0].get_legend_handles_labels()
+        [ax.legend().remove() for ax in axes]
+        # axes[2].legend(loc="center", ncols=3, bbox_to_anchor=(-1., 1.1))
+        fig.legend(handles, labels, loc="center", ncols=3,
+                   bbox_to_anchor=(0.5, 0.94))
+        fig.tight_layout(rect=[0, -0.05, 1, 0.94])
         fig.tight_layout()
         fig.show()
         if self.should_save_fig:
-            fig_name = "platoon_lc_comparison_to_LVF"
+            fig_name = "costs_vs_computational_time"
             self.save_fig(fig, fig_name=fig_name)
 
     def print_comparative_costs(
@@ -1751,8 +1865,8 @@ class ResultAnalyzer:
         # Sanity check 1
         if (len(failure_identifiers[graph_strategies[0]])
                 != len(failure_identifiers[graph_strategies[1]])
-            or np.any(failure_identifiers[graph_strategies[0]]
-                      != failure_identifiers[graph_strategies[1]])):
+                or np.any(failure_identifiers[graph_strategies[0]]
+                          != failure_identifiers[graph_strategies[1]])):
             print("Different successful maneuvers between graph approach with "
                   "different costs")
         graph_failure = failure_identifiers[graph_strategies[0]]
@@ -1782,8 +1896,8 @@ class ResultAnalyzer:
                 other_results = relevant_results[
                     relevant_results["lane_change_strategy"] == other]
                 relevant_results[c + " variation"] = (
-                        (relevant_results[c] - other_results[c])
-                        # / other_results[cost]
+                    (relevant_results[c] - other_results[c])
+                    # / other_results[cost]
                 )
                 print(relevant_results.groupby("lane_change_strategy")[
                           c + " variation"].mean() / other_results[c].mean())
@@ -1932,7 +2046,7 @@ class ResultAnalyzer:
             maneuver_times = self._get_platoon_maneuver_times(lc_scenarios)
             maneuver_times["time"] = (
                     (maneuver_times["time_exact"] - warmup_time * 60
-                        + aggregation_period / 2 - 0.1)
+                     + aggregation_period / 2 - 0.1)
                     // aggregation_period * aggregation_period
             )
             maneuver_times["time"] = maneuver_times["time"].astype(int)
@@ -2099,7 +2213,8 @@ class ResultAnalyzer:
         normalizer = grouped[y].mean().loc[-1]
         delays = dict()
         for key, group in grouped:
-            group[y] = (group[y] - normalizer.loc[key[1:]]) / normalizer.loc[key[1:]]
+            group[y] = (group[y] - normalizer.loc[key[1:]]) / normalizer.loc[
+                key[1:]]
             delays[key] = group[y].sum()
 
         new_y = "travel_time_delay"
